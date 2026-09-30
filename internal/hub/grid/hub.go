@@ -158,6 +158,7 @@ const (
 	EventServices    EventKind = "services"     // Payload: protocol.Services
 	EventPackages    EventKind = "packages"     // Payload: protocol.Packages
 	EventJobQueued   EventKind = "job_queued"   // Payload: Job
+	EventJobStarted  EventKind = "job_started"  // Payload: Job (went from queued to running)
 	EventJobOutput   EventKind = "job_output"   // Payload: JobOutputEvent
 	EventJobDone     EventKind = "job_done"     // Payload: Job (finished: done, failed or canceled)
 )
