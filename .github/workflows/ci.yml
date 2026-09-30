@@ -23,7 +23,14 @@ jobs:
       - name: gofmt
         run: |
           out="$(gofmt -l .)"
-          if [ -n "$out" ]; then echo "$out"; exit 1; fi
+          if [ -n "$out" ]; then
+            echo "$out"
+            for f in $out; do
+              msg="$(gofmt -d "$f" | head -40 | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+              echo "::error file=$f,title=gofmt::${msg}"
+            done
+            exit 1
+          fi
       - name: vet
         run: go vet ./...
       - name: test
