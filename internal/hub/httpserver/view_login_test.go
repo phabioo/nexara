@@ -116,7 +116,7 @@ func TestLoginWithoutTOTP(t *testing.T) {
 			t.Errorf("session not valid: %v", err)
 		}
 		// The new cookie opens the app.
-		if rec := e.get("/", withCookies(sc)); rec.Code != 501 {
+		if rec := e.get("/", withCookies(sc)); rec.Code != http.StatusOK {
 			t.Errorf("GET / with new session = %d", rec.Code)
 		}
 	})
@@ -229,7 +229,7 @@ func TestLoginWithTOTP(t *testing.T) {
 		if sc.MaxAge <= 0 {
 			t.Errorf("persistent choice lost: Max-Age %d", sc.MaxAge)
 		}
-		if rec := e.get("/", withCookies(sc)); rec.Code != 501 {
+		if rec := e.get("/", withCookies(sc)); rec.Code != http.StatusOK {
 			t.Errorf("GET / with the new session = %d", rec.Code)
 		}
 		if c := findCookie(rec, loginChallengeCookie); c == nil || c.MaxAge >= 0 {
