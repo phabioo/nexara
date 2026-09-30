@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/coreos/go-systemd/v22 v22.7.0
+	github.com/creack/pty v1.1.24
 	github.com/pquerna/otp v1.5.0
 	github.com/shirou/gopsutil/v4 v4.26.8
 	go.yaml.in/yaml/v3 v3.0.5
