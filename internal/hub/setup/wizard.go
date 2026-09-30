@@ -52,6 +52,9 @@ var RetentionChoices = []int{30, 90, 365}
 var (
 	operatorIDRe = regexp.MustCompile(`^[a-z0-9._-]+$`)
 	hostLabelRe  = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`)
+	// hubNameRe is the same pattern as hub.name in package config, so the name
+	// the operator types is exactly the name nexus.yaml stores.
+	hubNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$`)
 
 	// ErrStepLocked is returned when a step cannot be reached yet.
 	ErrStepLocked = errors.New("setup: complete the previous steps first")
@@ -283,8 +286,8 @@ func (w *Wizard) SubmitHub(in HubInput) error {
 	in.Name = strings.TrimSpace(in.Name)
 	in.TimeZone = strings.TrimSpace(in.TimeZone)
 	in.AgentHost = strings.TrimSpace(in.AgentHost)
-	if in.Name == "" || utf8.RuneCountInString(in.Name) > 64 {
-		errs["name"] = "Enter a name of up to 64 characters."
+	if !hubNameRe.MatchString(in.Name) {
+		errs["name"] = "Use 1 to 63 letters, digits, dots, dashes or underscores, starting with a letter or digit."
 	}
 	if in.TimeZone == "" || in.TimeZone == "Local" {
 		errs["timezone"] = "Choose a time zone."
@@ -343,6 +346,18 @@ func (w *Wizard) SubmitSelfLink(in SelfLinkInput) error {
 	w.res.SelfLink = SelfLinkInput{Enabled: in.Enabled, Capabilities: caps}
 	w.complete(StepSelfLink)
 	return nil
+}
+
+// Draft returns what has been entered so far, for pre-filling a step the
+// operator returns to. Unlike Result it works at any time, and it never
+// contains the passphrase. Fields of steps not yet completed are zero.
+func (w *Wizard) Draft() Result {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	r := w.res
+	r.Passphrase = ""
+	r.SelfLink.Capabilities = slices.Clone(r.SelfLink.Capabilities)
+	return r
 }
 
 // Result returns the collected data once every step before Ready is complete.

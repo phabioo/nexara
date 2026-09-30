@@ -43,6 +43,9 @@ type SetupDeps struct {
 	// Commit persists a completed wizard (see SetupCommitFunc). It is nil only
 	// in tests; views reach it through Server.commitSetup.
 	Commit SetupCommitFunc
+	// CA is the hub's certificate authority for the Trust step (QR code,
+	// downloads, fingerprint). Nil hides those parts (*pki.CA implements it).
+	CA TrustAnchor
 }
 
 // Options are the injected dependencies of a Server.

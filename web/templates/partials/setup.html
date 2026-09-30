@@ -1,0 +1,150 @@
+{{/* Setup wizard step bodies. Data: httpserver.setupPage. Every form posts to /setup/<step> with the
+     double-submit CSRF token; Back is a plain link, so Enter always submits the primary button. */}}
+
+{{define "setup-errors"}}{{range .Errors}}{{template "form-error" .}}{{end}}{{end}}
+
+{{define "setup-actions"}}<div class="setup-actions">
+  {{with .Back}}<a class="btn-card btn-card-grey" href="{{.}}"><span>Back</span></a>{{end}}
+  <button type="submit" class="btn-card"{{if .Locked}} disabled{{end}} data-trust-next><span>{{.NextLabel}}</span>{{icon "arrow-right" 16}}</button>
+</div>{{end}}
+
+{{/* 1 Unlock */}}
+{{define "setup-unlock"}}<form class="setup-form" method="post" action="/setup/unlock" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <div class="field">
+    <span class="t-label">Printed by the installer</span>
+    <div class="setup-code-box" aria-label="Example of the installer output">
+      <span class="setup-line">✓ Nexus {{.InstallLines.Version}} installed<span class="only-wide"> · service running</span></span>
+      <span class="setup-line">  Open  {{.InstallLines.URL}}</span>
+      <span class="setup-line">  Code  XXXX-XXXX <span class="only-wide">(valid 60 min)</span><span class="only-narrow">(60 min)</span></span>
+      {{with .InstallLines.Fingerprint}}<span class="setup-line only-wide">  Cert  SHA-256 {{.}}</span>{{end}}
+    </div>
+    <span class="hint">Lost it? <b>sudo nexus setup code</b> prints a new one. Codes renew every 60 minutes.</span>
+  </div>
+  {{if .Locked}}
+  <div class="setup-lock" role="alert">
+    <span class="setup-lock-icon" aria-hidden="true">{{icon "lock" 16}}</span>
+    <span class="setup-lock-text"><span class="t-label setup-lock-title">Input locked for 15 minutes</span><span class="setup-lock-sub">5 wrong codes. After the lockout the hub writes a new code to the journal. About {{.LockLeft}} left.</span></span>
+  </div>
+  {{else}}
+  <div class="field">
+    <div class="setup-between"><label for="f-code" class="t-label">Setup code</label><span class="hint">{{.AttemptsText}}</span></div>
+    <input id="f-code" name="code" class="input" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="16" placeholder="XXXX-XXXX"{{if .Invalid.code}} aria-invalid="true"{{end}}>
+  </div>
+  {{end}}
+  {{template "setup-errors" .}}
+  {{template "setup-actions" .}}
+</form>{{end}}
+
+{{/* 2 Trust */}}
+{{define "setup-trust"}}<form class="setup-form" method="post" action="/setup/trust">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  {{if .TrustAvailable}}
+  <div class="setup-split">
+    {{with .TrustQR}}<div class="setup-split-aside">{{.}}<span class="hint">Scan on your phone</span></div>{{end}}
+    <div class="setup-split-main">
+      <div class="field">
+        <span class="t-label">Install on</span>
+        <div class="setup-list">
+          <a class="setup-chip setup-chip-wide" href="/setup/trust/nexara-ca.crt" data-trust-download><span>This computer (.crt)</span><span data-state>Download</span></a>
+          <a class="setup-chip setup-chip-wide" href="/setup/trust/nexara-ca.mobileconfig" data-trust-download><span>iPhone / iPad (profile)</span><span data-state>Download</span></a>
+          <a class="setup-chip setup-chip-wide" href="/setup/trust/nexara-ca.crt" data-trust-download><span>Android (.crt)</span><span data-state>Download</span></a>
+        </div>
+      </div>
+      <div class="field">
+        <span class="t-label">Fingerprint</span>
+        <div class="setup-code-box is-plain"><span class="setup-fp">SHA-256 {{range $i, $b := .FingerprintParts}}{{if $i}}:<wbr>{{end}}{{$b}}{{end}}</span></div>
+        <span class="hint">Must match the fingerprint the installer printed.</span>
+      </div>
+    </div>
+  </div>
+  {{else}}
+  <p class="hint">The hub's certificate authority is not available in this mode. You can continue; devices can install it later.</p>
+  {{end}}
+  {{template "setup-errors" .}}
+  {{template "setup-actions" .}}
+</form>{{end}}
+
+{{/* 3 Operator */}}
+{{define "setup-operator"}}<form class="setup-form" method="post" action="/setup/operator">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <div class="field"><label for="f-op" class="t-label">Operator ID</label><input id="f-op" name="id" class="input" type="text" autocomplete="username" spellcheck="false" autocapitalize="none" placeholder="fabio" value="{{.OperatorID}}"{{if .Invalid.id}} aria-invalid="true"{{end}}></div>
+  <div class="setup-pair">
+    <div class="field"><label for="f-p1" class="t-label">Passphrase</label><input id="f-p1" name="passphrase" class="input" type="password" autocomplete="new-password" data-strength-input{{if .Invalid.passphrase}} aria-invalid="true"{{end}}></div>
+    <div class="field"><label for="f-p2" class="t-label">Repeat passphrase</label><input id="f-p2" name="confirm" class="input" type="password" autocomplete="new-password"{{if .Invalid.confirm}} aria-invalid="true"{{end}}></div>
+  </div>
+  <div class="field">
+    <div class="setup-between"><span class="t-label">Strength</span><span class="hint" data-strength-text>—</span></div>
+    <div class="strength" data-strength aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    <span class="hint">At least 12 characters. Stored as an argon2id hash on the hub only.</span>
+  </div>
+  {{template "setup-errors" .}}
+  {{template "setup-actions" .}}
+</form>{{end}}
+
+{{/* 4 Two-factor */}}
+{{define "setup-two-factor"}}<form class="setup-form" method="post" action="/setup/two-factor" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <div class="setup-split">
+    <div class="setup-split-aside">{{.TOTPQR}}<span class="hint">Scan with your app</span></div>
+    <div class="setup-split-main">
+      <div class="field"><span class="t-label">Or enter the key manually</span><div class="setup-code-box is-plain setup-key">{{.TOTPKey}}</div></div>
+      <div class="field"><label for="f-totp" class="t-label">6-digit code</label><input id="f-totp" name="totp" class="input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="000000"{{if .Invalid.totp}} aria-invalid="true"{{end}}></div>
+      <div class="setup-skip"><button type="submit" form="f-skip" class="setup-link">Skip for now</button><span class="hint">Required from v0.2.</span></div>
+    </div>
+  </div>
+  {{template "setup-errors" .}}
+  {{template "setup-actions" .}}
+</form>
+<form id="f-skip" method="post" action="/setup/two-factor" hidden><input type="hidden" name="csrf_token" value="{{.CSRF}}"><input type="hidden" name="skip" value="1"></form>{{end}}
+
+{{/* 5 Hub */}}
+{{define "setup-hub"}}<form class="setup-form" method="post" action="/setup/hub">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <div class="setup-pair">
+    <div class="field"><label for="f-hn" class="t-label">Hub name</label><input id="f-hn" name="name" class="input" type="text" spellcheck="false" autocapitalize="none" value="{{.HubName}}"{{if .Invalid.name}} aria-invalid="true"{{end}}></div>
+    <div class="field"><label for="f-tz" class="t-label">Time zone</label><input id="f-tz" name="timezone" class="input" type="text" spellcheck="false" autocapitalize="none" value="{{.TimeZone}}"{{if .Invalid.timezone}} aria-invalid="true"{{end}}></div>
+    <div class="field"><label for="f-ad" class="t-label">Address for agents</label><input id="f-ad" name="agent_host" class="input" type="text" spellcheck="false" autocapitalize="none" value="{{.AgentHost}}"{{if .Invalid.agent_host}} aria-invalid="true"{{end}}></div>
+    <div class="field"><label for="f-po" class="t-label">HTTPS port</label><input id="f-po" name="https_port" class="input" type="text" inputmode="numeric" value="{{.Port}}"{{if .Invalid.https_port}} aria-invalid="true"{{end}}></div>
+  </div>
+  <div class="field">
+    <span class="t-label" id="l-ret">Keep hourly history for</span>
+    <div class="setup-chips" role="radiogroup" aria-labelledby="l-ret">
+      {{range .Choices}}<label class="setup-chip"><input type="radio" name="retention" value="{{.Days}}"{{if .On}} checked{{end}}><span>{{.Label}}</span></label>{{end}}
+    </div>
+    <span class="hint">Minute values are always kept for 7 days.</span>
+  </div>
+  {{template "setup-errors" .}}
+  {{template "setup-actions" .}}
+</form>{{end}}
+
+{{/* 6 Self-link */}}
+{{define "setup-self-link"}}<form class="setup-form setup-selflink" method="post" action="/setup/self-link">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <label class="setup-toggle" for="f-self">
+    <input id="f-self" class="visually-hidden" type="checkbox" name="self_link" value="1"{{if .SelfLink}} checked{{end}}>
+    <span class="setup-toggle-box" aria-hidden="true">{{icon "check" 14}}</span>
+    <span class="setup-toggle-text"><span class="t-label">Manage this Pi as a host</span><span class="hint">Installs a Grid Agent on {{.HubName}} so it shows up like every other host.</span></span>
+  </label>
+  <div class="field setup-caps">
+    <span class="t-label" id="l-caps">Capabilities on {{.HubName}}</span>
+    <div class="setup-chips" role="group" aria-labelledby="l-caps">
+      {{range .Caps}}<label class="setup-chip"><input type="checkbox" name="capabilities" value="{{.Key}}"{{if .On}} checked{{end}}><span>{{.Label}}</span></label>{{end}}
+    </div>
+    <span class="hint">Every capability can be changed later in Settings.</span>
+  </div>
+  {{template "setup-errors" .}}
+  {{template "setup-actions" .}}
+</form>{{end}}
+
+{{/* 7 Ready, before and after the commit */}}
+{{define "setup-ready"}}<form class="setup-form" method="post" action="/setup/ready" aria-live="polite">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <div class="setup-banner"><span class="setup-banner-cross" aria-hidden="true"></span><span class="setup-banner-title t-serif">{{.Banner}}</span><span class="setup-banner-cross" aria-hidden="true"></span></div>
+  <div class="setup-rows">{{range .Summary}}<div class="setup-row"><span>{{.Label}}</span><b>{{.Value}}</b></div>{{end}}</div>
+  {{range .Warnings}}<div class="form-error" role="status"><span aria-hidden="true">!</span><span>{{.}}</span></div>{{end}}
+  {{template "setup-errors" .}}
+  {{if .Done}}
+  <div class="setup-actions"><a class="btn-card btn-card-lime" href="/login"><span>Enter Nexus</span>{{icon "arrow-right" 16}}</a></div>
+  {{else}}{{template "setup-actions" .}}{{end}}
+</form>{{end}}
