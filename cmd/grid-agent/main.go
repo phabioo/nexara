@@ -14,10 +14,8 @@ import (
 // Exit codes.
 const (
 	exitOK          = 0
-	exitUsageOrStub = 2 // bad usage, or a command that is not implemented yet
+	exitUsageOrStub = 2 // bad usage
 )
-
-const notImplemented = "not implemented yet"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -41,18 +39,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "run":
 		return runAgent(rest, stderr)
 	case "enroll":
-		fs := newFlagSet("enroll", stderr)
-		hub := fs.String("hub", "", "hub address, e.g. frpi5.local:8443")
-		token := fs.String("token", "", "one-time enrollment token")
-		if code, done := parse(fs, rest); done {
-			return code
-		}
-		if *hub == "" || *token == "" {
-			fmt.Fprintln(stderr, "grid-agent enroll: --hub and --token are required")
-			return exitUsageOrStub
-		}
-		fmt.Fprintf(stderr, "grid-agent enroll: %s\n", notImplemented)
-		return exitUsageOrStub
+		return runEnroll(rest, stdout, stderr)
 	case "version", "--version", "-v":
 		fmt.Fprintln(stdout, buildinfo.String("grid-agent"))
 		return exitOK
@@ -80,12 +67,4 @@ func parse(fs *flag.FlagSet, args []string) (int, bool) {
 		return exitUsageOrStub, true
 	}
 	return 0, false
-}
-
-func stub(fs *flag.FlagSet, args []string, name string, stderr io.Writer) int {
-	if code, done := parse(fs, args); done {
-		return code
-	}
-	fmt.Fprintf(stderr, "grid-agent %s: %s\n", name, notImplemented)
-	return exitUsageOrStub
 }
