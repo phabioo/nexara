@@ -8,7 +8,39 @@ import (
 	"testing"
 
 	"github.com/phabioo/nexara/internal/hub/auth"
+	"github.com/phabioo/nexara/internal/hub/views"
+	"github.com/phabioo/nexara/web"
 )
+
+// newLoginEnv is newEnv with the real templates, so the login page renders.
+func newLoginEnv(t *testing.T) *env {
+	t.Helper()
+	e := newEnv(t)
+	r, err := views.New(web.Templates, views.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.srv.renderer = r
+	return e
+}
+
+func mustContain(t *testing.T, body string, want ...string) {
+	t.Helper()
+	for _, w := range want {
+		if !strings.Contains(body, w) {
+			t.Errorf("body lacks %q", w)
+		}
+	}
+}
+
+func mustNotContain(t *testing.T, body string, unwanted ...string) {
+	t.Helper()
+	for _, w := range unwanted {
+		if strings.Contains(body, w) {
+			t.Errorf("body contains %q", w)
+		}
+	}
+}
 
 // loginForm fetches the login page and returns a jar holding the CSRF cookie and the token.
 func loginForm(t *testing.T, e *env) (jar, string) {
@@ -35,7 +67,7 @@ func creds(token, op, pass string, extra ...string) url.Values {
 }
 
 func TestLoginPageSetsCSRFCookie(t *testing.T) {
-	e := newEnv(t)
+	e := newLoginEnv(t)
 	rec := e.get("/login")
 	c := findCookie(rec, auth.CSRFCookieName)
 	assertCookieAttrs(t, c)
@@ -55,7 +87,7 @@ func TestLoginPageSetsCSRFCookie(t *testing.T) {
 }
 
 func TestLoginRedirectsWhenSignedIn(t *testing.T) {
-	e := newEnv(t)
+	e := newLoginEnv(t)
 	cookie, _ := e.signIn()
 	rec := e.get("/login", withCookies(cookie))
 	if rec.Code != 303 || rec.Header().Get("Location") != "/" {
@@ -64,7 +96,7 @@ func TestLoginRedirectsWhenSignedIn(t *testing.T) {
 }
 
 func TestLoginWithoutTOTP(t *testing.T) {
-	e := newEnv(t)
+	e := newLoginEnv(t)
 
 	t.Run("success, browser-session cookie", func(t *testing.T) {
 		j, token := loginForm(t, e)
@@ -120,14 +152,17 @@ func TestLoginWithoutTOTP(t *testing.T) {
 		j, token := loginForm(t, e)
 		a := e.post("/login", withJar(j), withForm(creds(token, "ghost", "nope")))
 		b := e.post("/login", withJar(j), withForm(creds(token, testOperator, "nope")))
-		if a.Code != b.Code || a.Body.String() != b.Body.String() {
-			t.Errorf("responses differ: %d %q vs %d %q", a.Code, a.Body.String(), b.Code, b.Body.String())
+		// The page echoes the operator ID; apart from that nothing may differ.
+		bodyA := strings.ReplaceAll(a.Body.String(), `value="ghost"`, `value="OP"`)
+		bodyB := strings.ReplaceAll(b.Body.String(), `value="`+testOperator+`"`, `value="OP"`)
+		if a.Code != b.Code || bodyA != bodyB {
+			t.Errorf("responses differ: %d vs %d (bodies equal: %v)", a.Code, b.Code, bodyA == bodyB)
 		}
 	})
 }
 
 func TestLoginRateLimit(t *testing.T) {
-	e := newEnv(t)
+	e := newLoginEnv(t)
 	j, token := loginForm(t, e)
 	var last int
 	for i := 0; i < 8; i++ {
@@ -147,12 +182,12 @@ func TestLoginRateLimit(t *testing.T) {
 }
 
 func TestLoginWithTOTP(t *testing.T) {
-	e := newEnv(t)
+	e := newLoginEnv(t)
 	secret := e.addTOTP()
 
 	j, token := loginForm(t, e)
 	rec := e.post("/login", withJar(j), withForm(creds(token, testOperator, testPass, fieldKeep, "on")))
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Two-factor") {
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Step 2 of 2") {
 		t.Fatalf("step one: %d %q", rec.Code, rec.Body.String())
 	}
 	if findCookie(rec, auth.SessionCookieName) != nil {
@@ -182,13 +217,20 @@ func TestLoginWithTOTP(t *testing.T) {
 	t.Run("right code signs in and keeps the persistent choice", func(t *testing.T) {
 		v := url.Values{auth.CSRFFormField: {token}, fieldCode: {codeFor(secret)}}
 		rec := e.post("/login/verify", withJar(j), withForm(v))
-		if rec.Code != 303 || rec.Header().Get("Location") != "/" {
+		if rec.Code != 200 {
 			t.Fatalf("%d %q", rec.Code, rec.Body.String())
 		}
+		// "Access granted" continues to the app on its own, without script.
+		mustContain(t, rec.Body.String(), "Access granted", "Welcome back, <b>"+testOperator+"</b>",
+			`<meta http-equiv="refresh" content="2;url=/">`, `href="/"`, "Enter Nexus")
+		mustNotContain(t, rec.Body.String(), "<form", "<script>")
 		sc := findCookie(rec, auth.SessionCookieName)
 		assertCookieAttrs(t, sc)
 		if sc.MaxAge <= 0 {
 			t.Errorf("persistent choice lost: Max-Age %d", sc.MaxAge)
+		}
+		if rec := e.get("/", withCookies(sc)); rec.Code != 501 {
+			t.Errorf("GET / with the new session = %d", rec.Code)
 		}
 		if c := findCookie(rec, loginChallengeCookie); c == nil || c.MaxAge >= 0 {
 			t.Errorf("challenge cookie not cleared: %+v", c)
@@ -197,7 +239,7 @@ func TestLoginWithTOTP(t *testing.T) {
 }
 
 func TestLoginVerifyWithoutChallenge(t *testing.T) {
-	e := newEnv(t)
+	e := newLoginEnv(t)
 	e.addTOTP()
 	j, token := loginForm(t, e)
 	v := url.Values{auth.CSRFFormField: {token}, fieldCode: {"123456"}}
@@ -211,7 +253,7 @@ func TestLoginVerifyWithoutChallenge(t *testing.T) {
 }
 
 func TestLogout(t *testing.T) {
-	e := newEnv(t)
+	e := newLoginEnv(t)
 
 	t.Run("needs csrf", func(t *testing.T) {
 		cookie, _ := e.signIn()
@@ -251,4 +293,258 @@ func TestLogout(t *testing.T) {
 			t.Error("logout not audited")
 		}
 	})
+}
+
+func TestLoginPageContent(t *testing.T) {
+	e := newLoginEnv(t)
+	rec := e.get("/login")
+	if rec.Code != 200 || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/html") {
+		t.Fatalf("%d %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	body := rec.Body.String()
+	csrf := findCookie(rec, auth.CSRFCookieName)
+	mustContain(t, body,
+		`<title>Sign in · Nexara Nexus</title>`,
+		`action="/login"`, `method="post"`,
+		`name="csrf_token" value="`+csrf.Value+`"`,
+		`name="operator_id"`, `name="passphrase"`, `type="password"`, `name="keep_signed_in"`,
+		`data-toggle-password="l-pass"`,
+		"Authenticate", "Restricted", "Sessions end after 12 hours without activity.",
+		"Keep me signed in on this device", "sudo nexus user reset",
+		"LOCKED", "Awaiting operator credentials", "auth-login",
+	)
+	// Checked by default, like the design.
+	if !strings.Contains(body, `value="on" checked`) {
+		t.Error("keep-signed-in box is not checked by default")
+	}
+	// Hidden until v0.2 (decision #28); nothing else from later versions.
+	mustNotContain(t, body, "Restore", "restore", "Backup", "<script>", " onclick=", "style=")
+	if strings.Contains(body, `class="form-error"`) {
+		t.Error("error row on a fresh page")
+	}
+	if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'") {
+		t.Errorf("CSP %q", csp)
+	}
+}
+
+func TestLoginErrorStates(t *testing.T) {
+	tests := []struct {
+		name     string
+		form     func(token string) url.Values
+		status   int
+		wantText string
+		wantLog  string
+		checked  bool
+	}{
+		{"wrong passphrase", func(tk string) url.Values { return creds(tk, testOperator, "hunter2-not-it") },
+			401, "Invalid operator ID or passphrase.", "Sign-in rejected", false},
+		{"unknown operator", func(tk string) url.Values { return creds(tk, "ghost", "hunter2-not-it", fieldKeep, "on") },
+			401, "Invalid operator ID or passphrase.", "Sign-in rejected", true},
+		{"missing passphrase", func(tk string) url.Values { return creds(tk, testOperator, "") },
+			400, "Enter your operator ID and passphrase.", "Sign-in rejected", false},
+		{"missing operator", func(tk string) url.Values { return creds(tk, "  ", "whatever") },
+			400, "Enter your operator ID and passphrase.", "Sign-in rejected", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newLoginEnv(t)
+			j, token := loginForm(t, e)
+			form := tc.form(token)
+			rec := e.post("/login", withJar(j), withForm(form))
+			if rec.Code != tc.status {
+				t.Fatalf("status %d, want %d", rec.Code, tc.status)
+			}
+			body := rec.Body.String()
+			mustContain(t, body, `<div class="form-error" role="alert">`, tc.wantText, tc.wantLog, `name="csrf_token" value="`)
+			if got := strings.Contains(body, `value="on" checked`); got != tc.checked {
+				t.Errorf("keep-signed-in checked = %v, want %v", got, tc.checked)
+			}
+			if pass := form.Get(fieldPass); pass != "" {
+				mustNotContain(t, body, pass)
+			}
+			if op := strings.TrimSpace(form.Get(fieldOperator)); op != "" {
+				mustContain(t, body, `value="`+op+`"`)
+			}
+			if findCookie(rec, auth.SessionCookieName) != nil {
+				t.Error("session cookie on failure")
+			}
+			// The re-rendered form carries a token that still works.
+			if c := findCookie(rec, auth.CSRFCookieName); c != nil && !strings.Contains(body, c.Value) {
+				t.Error("new csrf cookie not in the form")
+			}
+		})
+	}
+}
+
+func TestLoginErrorEscapesOperator(t *testing.T) {
+	e := newLoginEnv(t)
+	j, token := loginForm(t, e)
+	evil := `"><script>alert(1)</script>`
+	rec := e.post("/login", withJar(j), withForm(creds(token, evil, "nope")))
+	body := rec.Body.String()
+	mustNotContain(t, body, "<script>alert(1)")
+	mustContain(t, body, "&lt;script&gt;alert(1)&lt;/script&gt;")
+}
+
+func TestLoginRateLimitedPage(t *testing.T) {
+	e := newLoginEnv(t)
+	j, token := loginForm(t, e)
+	for i := 0; i < 8; i++ {
+		rec := e.post("/login", withJar(j), withForm(creds(token, testOperator, "wrong")))
+		if rec.Code != http.StatusTooManyRequests {
+			continue
+		}
+		mustContain(t, rec.Body.String(), "Too many failed attempts. Try again in ", `role="alert"`, "Sign-in rejected")
+		if !strings.Contains(rec.Body.String(), "minute") {
+			t.Error("remaining time missing")
+		}
+		return
+	}
+	t.Fatal("never rate limited")
+}
+
+func TestLoginTOTPStep(t *testing.T) {
+	e := newLoginEnv(t)
+	secret := e.addTOTP()
+	j, token := loginForm(t, e)
+
+	rec := e.post("/login", withJar(j), withForm(creds(token, testOperator, testPass)))
+	body := rec.Body.String()
+	mustContain(t, body,
+		"Step 2 of 2", `action="/login/verify"`, `name="code"`, `autocomplete="one-time-code"`, `inputmode="numeric"`,
+		`name="operator_id" value="`+testOperator+`"`, "<b>"+testOperator+"</b>",
+		"Authentication code", `href="/login"`, "Back", "Verify",
+		"Lost your authenticator?", "sudo nexus user reset",
+		"Passphrase accepted · waiting for second factor",
+	)
+	mustNotContain(t, body, `name="passphrase"`, testPass, "Access granted")
+	j.absorb(rec)
+
+	tests := []struct {
+		name   string
+		code   string
+		status int
+		want   string
+	}{
+		{"not digits", "abcdef", 400, "Enter the 6-digit code."},
+		{"too short", "123", 400, "Enter the 6-digit code."},
+		{"empty", "", 400, "Enter the 6-digit code."},
+		{"wrong", wrongCodeFor(secret), 401, "Invalid authentication code."},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v := url.Values{auth.CSRFFormField: {token}, fieldOperator: {testOperator}, fieldCode: {tc.code}}
+			rec := e.post("/login/verify", withJar(j), withForm(v))
+			if rec.Code != tc.status {
+				t.Fatalf("status %d, want %d", rec.Code, tc.status)
+			}
+			body := rec.Body.String()
+			// Stays on the second step with the operator still named.
+			mustContain(t, body, tc.want, `role="alert"`, "Step 2 of 2", "<b>"+testOperator+"</b>")
+			if findCookie(rec, auth.SessionCookieName) != nil {
+				t.Error("session cookie on a bad code")
+			}
+		})
+	}
+
+	t.Run("a spaced code is accepted", func(t *testing.T) {
+		c := codeFor(secret)
+		v := url.Values{auth.CSRFFormField: {token}, fieldOperator: {testOperator}, fieldCode: {c[:3] + " " + c[3:]}}
+		rec := e.post("/login/verify", withJar(j), withForm(v))
+		if rec.Code != 200 {
+			t.Fatalf("status %d", rec.Code)
+		}
+		mustContain(t, rec.Body.String(), "Access granted", "Operator "+testOperator+" authenticated")
+	})
+}
+
+func TestLoginTOTPOperatorDisplayIsEscapedAndShort(t *testing.T) {
+	e := newLoginEnv(t)
+	e.addTOTP()
+	j, token := loginForm(t, e)
+	rec := e.post("/login", withJar(j), withForm(creds(token, testOperator, testPass)))
+	j.absorb(rec)
+	long := strings.Repeat("a", 200) + "<i>"
+	v := url.Values{auth.CSRFFormField: {token}, fieldOperator: {long}, fieldCode: {"000000"}}
+	rec = e.post("/login/verify", withJar(j), withForm(v))
+	body := rec.Body.String()
+	mustNotContain(t, body, strings.Repeat("a", 65), "<i>")
+	mustContain(t, body, strings.Repeat("a", 64))
+}
+
+func TestLoginBackDropsChallenge(t *testing.T) {
+	e := newLoginEnv(t)
+	e.addTOTP()
+	j, token := loginForm(t, e)
+	rec := e.post("/login", withJar(j), withForm(creds(token, testOperator, testPass)))
+	j.absorb(rec)
+	if j[loginChallengeCookie] == nil {
+		t.Fatal("no challenge cookie")
+	}
+	rec = e.get("/login", withJar(j))
+	if rec.Code != 200 {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if c := findCookie(rec, loginChallengeCookie); c == nil || c.MaxAge >= 0 {
+		t.Errorf("challenge cookie not cleared: %+v", c)
+	}
+	mustContain(t, rec.Body.String(), `name="passphrase"`)
+	mustNotContain(t, rec.Body.String(), "Step 2 of 2")
+}
+
+func TestLoginVerifyNeedsCSRF(t *testing.T) {
+	e := newLoginEnv(t)
+	e.addTOTP()
+	j, _ := loginForm(t, e)
+	v := url.Values{fieldCode: {"123456"}}
+	if rec := e.post("/login/verify", withJar(j), withForm(v)); rec.Code != 403 {
+		t.Errorf("status %d", rec.Code)
+	}
+}
+
+func TestLoginViewFor(t *testing.T) {
+	s := &Server{}
+	tests := []struct {
+		name    string
+		p       loginPage
+		step    string
+		log     string
+		refresh int
+	}{
+		{"fresh", loginPage{}, loginStepCreds, "Awaiting operator credentials", 0},
+		{"error", loginPage{Error: "x"}, loginStepCreds, "Sign-in rejected", 0},
+		{"totp", loginPage{SecondFactor: true}, loginStepTOTP, "Passphrase accepted · waiting for second factor", 0},
+		{"totp error", loginPage{SecondFactor: true, Error: "x"}, loginStepTOTP, "Second factor rejected", 0},
+		{"granted", loginPage{Granted: true, Operator: "frank"}, loginStepGranted, "Operator frank authenticated", grantedDelaySeconds},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v := s.loginViewFor(tc.p)
+			if v.Step != tc.step || v.Log != tc.log || v.RefreshSeconds != tc.refresh {
+				t.Errorf("got step=%q log=%q refresh=%d", v.Step, v.Log, v.RefreshSeconds)
+			}
+			if v.Variant != "auth-login" || len(v.Segments) != 1 || v.Segments[0].Text != "LOCKED" {
+				t.Errorf("layout: %+v", v.AuthLayout)
+			}
+		})
+	}
+}
+
+func TestLogoutWithoutSession(t *testing.T) {
+	e := newLoginEnv(t)
+	j, token := loginForm(t, e)
+	v := url.Values{auth.CSRFFormField: {token}}
+	rec := e.post("/logout", withJar(j), withForm(v))
+	if rec.Code != 303 || rec.Header().Get("Location") != "/login" {
+		t.Errorf("%d %q", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
+func TestLoginRedirectsWhenSignedInRendered(t *testing.T) {
+	e := newLoginEnv(t)
+	cookie, _ := e.signIn()
+	rec := e.get("/login", withCookies(cookie))
+	if rec.Code != 303 || rec.Header().Get("Location") != "/" || strings.Contains(rec.Body.String(), "Authenticate") {
+		t.Errorf("%d %q", rec.Code, rec.Header().Get("Location"))
+	}
 }
