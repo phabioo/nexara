@@ -1,0 +1,38 @@
+{{/* Auth shell partials. Data: views.AuthLayout (embedded in the page data). */}}
+
+{{define "auth-topbar"}}<header class="topbar">
+  {{if .MicroLines}}<div class="micro micro-wide" aria-hidden="true">{{range $i, $l := .MicroLines}}{{if $i}}<br>{{end}}{{$l}}{{end}}</div>
+  <div class="micro micro-short" aria-hidden="true">{{index .MicroLines 0}}</div>{{end}}
+  <div class="pill pill-compact" role="group" aria-label="Status">
+    <div class="pill-seg pill-node t-display">{{icon "mark" 18}}<span>{{.PillLabelOrDefault}}</span></div>
+    {{range .Segments}}<div class="pill-seg {{if .Light}}pill-light{{else}}pill-dark{{end}}">{{if .Icon}}{{icon .Icon 14}}{{end}}<span>{{.Text}}</span></div>{{end}}
+  </div>
+  {{if .BuildLines}}<div class="micro micro-build" aria-hidden="true">{{range $i, $l := .BuildLines}}{{if $i}}<br>{{end}}{{$l}}{{end}}</div>{{end}}
+</header>{{end}}
+
+{{define "auth-statusbar"}}<footer class="statusbar">
+  <div class="statusbar-log"><span class="statusbar-prompt" aria-hidden="true">&gt;</span><span id="statusbar-log" role="status">{{.Log}}</span></div>
+  <div class="statusbar-right">
+    <div class="statusbar-live"><i class="live" aria-hidden="true"></i><span>{{.LiveText}}</span></div>
+    <span class="statusbar-sep" aria-hidden="true"></span>
+    {{template "brand"}}
+  </div>
+</footer>{{end}}
+
+{{/* Mark + NEXARA wordmark. Data: dict "Md" true for the smaller setup variant. */}}
+{{define "lockup"}}<div class="lockup{{if .Md}} lockup-md{{end}}">{{icon "mark" 96}}<span class="lockup-word">NEXARA</span></div>{{end}}
+
+{{/* "Nexus - tagline" row under the lockup. Data: dict "Tagline". */}}
+{{define "lockup-sub"}}<div class="lockup-sub"><span class="lockup-product t-display">Nexus</span><span class="lockup-rule"></span><span class="lockup-tagline">{{.Tagline}}</span></div>{{end}}
+
+{{/* Setup step list (left column, desktop). Data: views.SetupSteps. */}}
+{{define "setup-steps"}}<ol class="steps" aria-label="Setup steps">
+  {{range .Items}}<li class="step-item {{.State}}"{{if eq .State "on"}} aria-current="step"{{end}}><span class="step-mark">{{if eq .State "done"}}{{icon "check" 14}}{{else}}{{.Num}}{{end}}</span><span class="step-label">{{.Label}}</span></li>
+  {{end}}
+</ol>{{end}}
+
+{{/* Compact progress row replacing the step list below 1024 px. Data: views.SetupSteps. */}}
+{{define "setup-progress"}}<div class="setup-progress">
+  <div class="setup-progress-bar" aria-hidden="true">{{range .Items}}<i class="{{.State}}"></i>{{end}}</div>
+  <div class="setup-progress-text"><span>STEP {{.Current}}/{{.Total}} · {{upper .CurrentLabel}}</span>{{with .NextLabel}}<span>NEXT: {{upper .}}</span>{{end}}</div>
+</div>{{end}}

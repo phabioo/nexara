@@ -1,0 +1,50 @@
+{{/* Preview only: packages layout (tabs, ticker, tile grid, aside cards). */}}
+{{define "content"}}
+<div class="view layout-split">
+  <div class="layout-split-main">
+    <div class="view-head">
+      <div class="view-heading"><span class="view-heading-title t-display">Packages</span><span class="view-heading-count">7/10</span><span class="t-dim">APT · {{.HostName}}</span></div>
+      <div class="search"><label for="pkgsearch">SEARCH</label><input id="pkgsearch" class="input-search" type="text" placeholder="Package name"></div>
+    </div>
+    <div class="tabs">
+      {{range .Filters}}{{template "tab" (dict "Label" .Label "Count" .Count "Active" .Active "Href" "#")}}{{end}}
+    </div>
+    {{template "ticker" (dict "Variant" "blue" "Text" "3 updates available")}}
+    <div class="grid-tiles phone-order-2">
+      {{range .PkgList}}{{template "tile" (dict "Tone" .Tone "Glyph" .Glyph "Label" .Label "Name" .Name "Desc" .Desc "Meta" .Ver "Badge" .Size "ActionLabel" .Action "ActionClass" .ActionClass)}}{{end}}
+    </div>
+  </div>
+  <div class="layout-split-aside">
+    <div class="card phone-order-3">
+      {{template "card-head" (dict "Title" "Sync sources")}}
+      <div class="card-body">
+        {{template "tag" (dict "Tone" "dark" "Text" "Standard")}}
+        <p class="card-text">Re-read the package lists from all sources on {{.HostName}}.</p>
+        {{template "checker"}}
+        {{template "objective" (dict "Label" "Sources read" "Value" "0/4" "Strong" true "Pct" 0 "BoxIcon" "reboot" "BoxText" "4")}}
+        {{template "btn-card" (dict "Label" "apt update")}}
+      </div>
+    </div>
+    <div class="card phone-order-1">
+      {{template "card-head" (dict "Title" "System upgrade" "Variant" "hot")}}
+      <div class="card-body">
+        {{template "tag" (dict "Tone" "lime" "Text" "Recommended")}}
+        <p class="card-text">3 updates ready, including kernel and OpenSSH.</p>
+        {{template "checker"}}
+        {{template "objective" (dict "Label" "Updates installed" "Value" "0/3" "Strong" true "Pct" 0 "BoxIcon" "arrow-up" "BoxText" "3")}}
+        {{template "btn-card" (dict "Label" "apt upgrade" "Variant" "light")}}
+      </div>
+    </div>
+    <div class="card phone-order-3">
+      {{template "card-head" (dict "Title" "Clean up")}}
+      <div class="card-body">
+        {{template "tag" (dict "Tone" "light" "Text" "Maintenance")}}
+        <p class="card-text">Remove orphaned packages and clear the package cache.</p>
+        {{template "checker"}}
+        {{template "objective" (dict "Label" "Orphans removed" "Value" "0/2" "Strong" true "Pct" 0 "BoxText" "214" "BoxUnit" "MB")}}
+        {{template "btn-card" (dict "Label" "autoremove + clean")}}
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}

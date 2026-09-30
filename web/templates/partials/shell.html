@@ -1,0 +1,86 @@
+{{/* App shell partials. Data: views.Layout (embedded in the page data). */}}
+
+{{define "topbar"}}<header class="topbar">
+  <div class="micro micro-wide" aria-hidden="true">[nexara nexus engaged]<br>grid (mTLS) interface initialized<br>grid nodes 1] 2] . . . . . [secured]</div>
+  {{with .HostIP}}<div class="micro micro-host" aria-hidden="true">nexara grid · remote host · {{.}}</div>
+  <div class="micro micro-short" aria-hidden="true">[nexus link] · {{.}}</div>{{end}}
+  {{with .Latency}}<div class="topbar-latency" id="topbar-latency">{{.}}</div>{{end}}
+  <div class="pill" role="group" aria-label="Status">
+    <div class="pill-seg pill-node t-display">{{icon "mark" 18}}<span>{{.NodeNo}}</span></div>
+    <div class="pill-seg pill-dark pill-online" title="Systems online">{{icon "circle" 18}}<span>{{.Online}}</span></div>
+    {{with .Packages}}<div class="pill-seg pill-light pill-pkg" title="Packages up to date">{{icon "list" 14}}<span>{{.}}</span></div>{{end}}
+    {{with .Temp}}<div class="pill-seg pill-light pill-temp" title="SoC temperature">{{icon "thermometer" 14}}<span>{{.}}°</span></div>{{end}}
+  </div>
+  {{template "hosttabs" .}}
+</header>{{end}}
+
+{{define "hosttabs"}}<nav class="hosttabs" aria-label="Hosts" data-host-tabs>
+  {{if gt (len .Hosts) 1}}<button type="button" class="key" data-host-step="-1" aria-label="Previous system">Q</button>{{end}}
+  {{range .Hosts}}<a class="tab{{if .Active}} on{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}}><span class="tab-label">{{if .Offline}}<i class="offline-dot" title="Offline"></i>{{end}}{{.Name}}{{if .Reboot}}<i class="offline-dot reboot-dot" title="Reboot required"></i>{{end}}</span>{{if .Badge}}<span class="tab-count">{{.Badge}}</span>{{end}}</a>
+  {{end}}
+  {{if gt (len .Hosts) 1}}<button type="button" class="key" data-host-step="1" aria-label="Next system">E</button>{{end}}
+  {{with .AddHostURL}}<button type="button" class="tab tab-add" aria-label="Add host" hx-get="{{.}}" hx-target="#modal-root" hx-swap="innerHTML"><span class="tab-label">{{icon "plus" 11}}Host</span></button>{{end}}
+</nav>{{end}}
+
+{{define "sidebar"}}<aside class="sidebar" aria-label="Sidebar">
+  <div class="node-card">
+    <div class="node-card-head">
+      <div class="node-card-id"><div class="node-card-title t-display">Node {{.NodeNo}}</div>{{with .Uptime}}<div class="node-card-up">{{.}} <span>UP</span></div>{{end}}</div>
+      <div class="node-card-tab"></div>
+    </div>
+    <div class="node-card-body">
+      <span class="plus" aria-hidden="true">+</span><span class="plus" aria-hidden="true">+</span><span class="plus" aria-hidden="true">+</span><span class="plus" aria-hidden="true">+</span>
+      {{icon "mark" 76}}
+    </div>
+  </div>
+  <nav class="nav" aria-label="Views">
+    {{range .NavItems}}<a class="nav-item{{if .Active}} on{{else if .Badge}} hot{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}}><span class="nav-main">{{if .Icon}}<span class="nav-icon">{{icon .Icon 18}}</span>{{end}}<span class="nav-label">{{.Label}}</span></span>{{if .Badge}}<span class="nav-badge">{{.Badge}}</span>{{end}}</a>
+    {{end}}
+  </nav>
+  {{with .HostName}}{{template "host-portrait" .}}{{end}}
+</aside>{{end}}
+
+{{define "host-portrait"}}<div class="host-portrait">
+  <div class="host-portrait-title t-display">{{.}}</div>
+  <div class="host-portrait-art" aria-hidden="true">
+    <svg viewBox="0 0 52 49" preserveAspectRatio="xMidYMid slice" shape-rendering="crispEdges">
+      <defs><pattern id="portrait-dither" width="2" height="2" patternUnits="userSpaceOnUse"><rect width="1" height="1" fill="#2d2af2"/></pattern></defs>
+      <rect width="52" height="49" fill="#1a14d8"/>
+      <rect x="0" y="0" width="30" height="14" fill="url(#portrait-dither)"/>
+      <rect x="34" y="20" width="18" height="29" fill="#0a0a3a"/>
+      <rect x="36" y="22" width="1" height="1" fill="#3f6bff"/><rect x="40" y="25" width="2" height="1" fill="#3f6bff"/><rect x="46" y="23" width="1" height="1" fill="#3f6bff"/><rect x="44" y="30" width="2" height="1" fill="#3f6bff"/><rect x="38" y="33" width="1" height="1" fill="#3f6bff"/><rect x="48" y="36" width="1" height="1" fill="#3f6bff"/>
+      <rect x="8" y="9" width="34" height="24" fill="#13c95e"/>
+      <rect x="8" y="9" width="34" height="1" fill="#6dff9a"/>
+      <rect x="9" y="10" width="1" height="1" fill="#0a3a24"/><rect x="40" y="10" width="1" height="1" fill="#0a3a24"/><rect x="9" y="31" width="1" height="1" fill="#0a3a24"/><rect x="40" y="31" width="1" height="1" fill="#0a3a24"/>
+      <path d="M12 11.5H36M12 13.5H36" stroke="#d6ff3a" stroke-width="1" stroke-dasharray="1 1"/>
+      <rect x="14" y="17" width="10" height="10" fill="#0d1a14"/>
+      <rect x="16" y="19" width="6" height="6" fill="#1f3a2c"/>
+      <rect x="13" y="16" width="12" height="12" fill="none" stroke="#e4ff5a" stroke-width="0.5"/>
+      <rect x="27" y="18" width="6" height="8" fill="#0d1a14"/>
+      <rect x="37" y="15" width="7" height="5" fill="#cfd6dd"/><rect x="37" y="21" width="7" height="5" fill="#cfd6dd"/><rect x="36" y="27" width="8" height="5" fill="#8f99a4"/>
+      <path d="M11 33V49M13 33V47M15 33V49M17 33V45M19 33V49M21 33V48M23 33V49M25 33V46M27 33V49M29 33V47M31 33V49" stroke="#35e87a" stroke-width="1"/>
+      <path d="M12 33V49M16 33V49M20 33V49M24 33V49M28 33V49M32 33V48" stroke="#5fc8ff" stroke-width="1"/>
+    </svg>
+  </div>
+</div>{{end}}
+
+{{define "lostband"}}{{template "ticker" (dict "Variant" "pink" "Class" "ticker-lost" "Text" "connection to hub lost · reconnecting in 3 s")}}{{end}}
+
+{{define "statusbar"}}<footer class="statusbar">
+  <div class="statusbar-log">
+    {{with .Job}}<button type="button" class="btn-tool is-hot" hx-get="{{.Href}}" hx-target="#modal-root" hx-swap="innerHTML">{{.Label}}</button>{{end}}
+    <span class="statusbar-prompt" aria-hidden="true">&gt;</span><span id="statusbar-log" role="status">{{.Log}}</span>
+  </div>
+  <div class="statusbar-right">
+    <div class="statusbar-live"><i class="live" aria-hidden="true"></i><span><span class="live-ok-text">LIVE</span><span class="live-lost-text">RECONNECTING</span>{{with .HostName}} · {{.}}{{end}}{{with .HostIP}} · {{.}}{{end}}</span></div>
+    <span class="statusbar-sep" aria-hidden="true"></span>
+    {{template "brand"}}
+  </div>
+</footer>{{end}}
+
+{{define "brand"}}<div class="statusbar-brand">{{icon "mark" 16}}<span class="wordmark">NEXARA</span><span class="wordmark-product t-display">Nexus</span></div>{{end}}
+
+{{define "bottomnav"}}<nav class="bnav" aria-label="Views">
+  {{range .NavItems}}<a class="bnav-item{{if .Active}} on{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}}>{{if .Icon}}<span class="bnav-icon">{{icon .Icon 18}}{{if .Badge}}<span class="bnav-badge">{{.Badge}}</span>{{end}}</span>{{end}}<span>{{.Label}}</span></a>
+  {{end}}
+</nav>{{end}}
