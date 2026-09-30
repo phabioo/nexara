@@ -9,3 +9,4 @@ Thumbs.db
 /docs/design/screenshots/*.tmp
 /.worktrees/
 /.preview/
+/internal/hub/agentbin/bin/grid-agent_*

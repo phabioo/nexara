@@ -147,6 +147,7 @@ The implementation follows the mockups except for these points:
 - **Shell copy:** the shell does not use SSH, it runs over the Grid Agent. Replace "PROTOCOL: SSH · PORT 22" with "PROTOCOL: GRID · mTLS", the ticker "NEXARA SHELL 1.0 (SSH.SESSION)" with "NEXARA SHELL 1.0 (GRID.SESSION)", and the top micro text "GRID (SSH KEY) INTERFACE INITIALIZED" with "GRID (mTLS) INTERFACE INITIALIZED".
 - **Reset hints:** always `sudo nexus user reset` (login and TOTP step).
 - **CPU card header:** "CPU · 4 CORES" with spaces (desktop mockup renders "CPU ·4CORES").
+- **Enrollment command:** the one-liner in the Add-host dialog carries `--insecure --pinnedpubkey sha256//…` (decision #40), so it is longer than in the mockup; the code block wraps.
 - **Mockup-only controls:** "Simulate agent connect" in the enrollment-code dialog does not exist; the dialog switches to the progress state when the agent connects.
 - **Sample data:** `nexus dev --demo` uses one consistent data set (desktop values win where desktop and mobile differ).
 - **Roadmap gating:** views and controls of later versions are not rendered until that version (e.g. no "Restore from a backup instead" and no backup card before v0.2, no Wake-on-LAN or Reboot/Shut down before v0.3, no Alerts/Containers/History nav before their version). The offline card in v0.1 shows the pink header and text without the WoL row.
