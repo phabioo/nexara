@@ -14,6 +14,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/creack/pty"
 )
@@ -156,7 +157,7 @@ func (s *linuxSpawner) Open(cols, rows int) (Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("shell: start %s: %w", s.shell, err)
 	}
-	sess := &session{ptmx: ptmx, cmd: cmd, done: make(chan struct{})}
+	sess := &session{ptmx: ptmx, pid: cmd.Process.Pid, done: make(chan struct{})}
 	go func() {
 		_ = cmd.Wait()
 		close(sess.done)
@@ -166,7 +167,7 @@ func (s *linuxSpawner) Open(cols, rows int) (Session, error) {
 
 type session struct {
 	ptmx *os.File
-	cmd  *exec.Cmd
+	pid  int
 	done chan struct{} // closed when the process has been reaped
 
 	closeOnce sync.Once
@@ -189,14 +190,29 @@ func (s *session) Resize(cols, rows int) error {
 	if err := ValidateSize(cols, rows); err != nil {
 		return err
 	}
-	return pty.Setsize(s.ptmx, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+	// Use the raw conn instead of File.Fd(): Fd() switches the file to
+	// blocking mode and is not safe against a concurrent Close.
+	rc, err := s.ptmx.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var serr error
+	if err := rc.Control(func(fd uintptr) {
+		ws := pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)}
+		if _, _, e := syscall.Syscall(syscall.SYS_IOCTL, fd, syscall.TIOCSWINSZ, uintptr(unsafe.Pointer(&ws))); e != 0 {
+			serr = e
+		}
+	}); err != nil {
+		return err // file already closed
+	}
+	return serr
 }
 
 // Close hangs up the shell's process group, closes the PTY and reaps the
 // process, killing it if it ignores SIGHUP. It is idempotent.
 func (s *session) Close() error {
 	s.closeOnce.Do(func() {
-		pgid := s.cmd.Process.Pid // Setsid makes the shell its own group leader
+		pgid := s.pid // Setsid makes the shell its own group leader
 		_ = syscall.Kill(-pgid, syscall.SIGHUP)
 		_ = s.ptmx.Close()
 		select {
