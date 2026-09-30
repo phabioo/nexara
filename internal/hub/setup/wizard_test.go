@@ -76,6 +76,13 @@ func TestSubmitHub(t *testing.T) {
 		{"ok", validHub(), ""},
 		{"ip host", mod(func(h *HubInput) { h.AgentHost = "192.168.1.10" }), ""},
 		{"empty name", mod(func(h *HubInput) { h.Name = " " }), "name"},
+		{"name with space", mod(func(h *HubInput) { h.Name = "my hub" }), "name"},
+		{"name starts with dash", mod(func(h *HubInput) { h.Name = "-hub" }), "name"},
+		{"name starts with dot", mod(func(h *HubInput) { h.Name = ".hub" }), "name"},
+		{"name non-ASCII", mod(func(h *HubInput) { h.Name = "hübner" }), "name"},
+		{"name too long", mod(func(h *HubInput) { h.Name = strings.Repeat("a", 64) }), "name"},
+		{"name 63 chars", mod(func(h *HubInput) { h.Name = strings.Repeat("a", 63) }), ""},
+		{"name with dots and dashes", mod(func(h *HubInput) { h.Name = "Hub-1.home_lab" }), ""},
 		{"bad zone", mod(func(h *HubInput) { h.TimeZone = "Mars/Base" }), "timezone"},
 		{"empty zone", mod(func(h *HubInput) { h.TimeZone = "" }), "timezone"},
 		{"empty host", mod(func(h *HubInput) { h.AgentHost = "" }), "agent_host"},
@@ -217,4 +224,34 @@ func wizardAt(target Step, o WizardOptions) *Wizard {
 	}
 	w.cur = target
 	return w
+}
+
+func TestDraft(t *testing.T) {
+	w := NewWizard(WizardOptions{})
+	if d := w.Draft(); d.OperatorID != "" || d.Hub.Name != "" {
+		t.Fatalf("fresh draft = %+v", d)
+	}
+	must(t, w.SubmitTrust())
+	must(t, w.SubmitOperator(validOperator()))
+	d := w.Draft()
+	if d.OperatorID != "fabio" {
+		t.Errorf("operator = %q", d.OperatorID)
+	}
+	if d.Passphrase != "" {
+		t.Error("the draft must never carry the passphrase")
+	}
+	// The wizard itself still has it for the final Result.
+	must(t, w.SubmitTwoFactor(true, ""))
+	must(t, w.SubmitHub(validHub()))
+	must(t, w.SubmitSelfLink(SelfLinkInput{Enabled: true, Capabilities: []string{"shell", "monitoring"}}))
+	res, err := w.Result()
+	if err != nil || res.Passphrase == "" {
+		t.Fatalf("result lost the passphrase: %v", err)
+	}
+	// Mutating the draft must not change the wizard.
+	d = w.Draft()
+	d.SelfLink.Capabilities[0] = "bogus"
+	if got := w.Draft().SelfLink.Capabilities[0]; got == "bogus" {
+		t.Error("draft shares the capability slice with the wizard")
+	}
 }

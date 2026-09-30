@@ -85,8 +85,8 @@ func TestSetupGate(t *testing.T) {
 		{"login redirects", "/login", nil, 303, "/setup", ""},
 		{"host page redirects", "/hosts/alpha", []reqOpt{withCookies(cookie)}, 303, "/setup", ""},
 		{"htmx request", "/", []reqOpt{withHeader("HX-Request", "true")}, 401, "", "/setup"},
-		{"setup served", "/setup", nil, 501, "", ""},
-		{"setup step served", "/setup/trust", nil, 501, "", ""},
+		{"setup served", "/setup", nil, 200, "", ""},
+		{"setup step without session goes to unlock", "/setup/trust", nil, 303, "/setup", ""},
 		{"static served", "/static/css/a.css", nil, 200, "", ""},
 		{"manifest served", "/manifest.webmanifest", nil, 200, "", ""},
 		{"favicon served", "/favicon.svg", nil, 200, "", ""},
@@ -342,8 +342,8 @@ func TestPreSessionCSRFDoubleSubmit(t *testing.T) {
 			t.Errorf("no token: %d, want 403", rec.Code)
 		}
 		v := url.Values{auth.CSRFFormField: {csrf.Value}}
-		if rec := e.post("/setup", withCookies(csrf), withForm(v)); rec.Code != 501 {
-			t.Errorf("with token: %d, want 501 stub", rec.Code)
+		if rec := e.post("/setup", withCookies(csrf), withForm(v)); rec.Code != 400 {
+			t.Errorf("with token: %d, want 400 (passes CSRF, the unlock form rejects the malformed code)", rec.Code)
 		}
 	})
 }

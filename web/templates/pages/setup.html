@@ -1,0 +1,35 @@
+{{/* First-run setup wizard: one page template for all seven steps (internal/hub/httpserver/view_setup.go).
+     Data: httpserver.setupPage. The step bodies live in partials/setup.html. */}}
+{{define "layout"}}auth{{end}}
+{{define "head"}}<script src="{{static "js/setup.js"}}" defer></script>{{end}}
+{{define "auth-top"}}{{template "ticker" (dict "Variant" "blue" "Text" "first run · nexara nexus setup")}}{{end}}
+{{define "content"}}
+<div class="auth-setup-side">
+  <div class="auth-lockup-block">
+    {{template "lockup" (dict "Md" true)}}
+    {{template "lockup-sub" (dict "Tagline" "FIRST-RUN SETUP")}}
+  </div>
+  {{template "setup-steps" .Steps}}
+  {{template "setup-progress" .Steps}}
+  <div class="micro micro-side">setup_gate_{{.Host}}<br>[code expires after 60 min]</div>
+</div>
+<div class="auth-setup-main">
+  <div class="auth-card" role="region" aria-labelledby="stepTitle">
+    {{template "corners"}}
+    {{template "card-head" (dict "ID" "stepTitle" "Title" .Title "Variant" "hot" "Meta" (printf "STEP %d/%d" .No .Total))}}
+    <div class="card-body">
+      <div class="progress" aria-hidden="true">{{range $i := seq .Total}}<i{{if lt $i $.No}} class="on"{{end}}></i>{{end}}</div>
+      {{template "tag" (dict "Tone" "dark" "Text" .Tag)}}
+      {{if .LeadShort}}<p class="card-text"><span class="lead-wide">{{.Lead}}</span><span class="lead-short">{{.LeadShort}}</span></p>{{else}}<p class="card-text">{{.Lead}}</p>{{end}}
+      {{template "checker"}}
+      {{if eq .Key "unlock"}}{{template "setup-unlock" .}}
+      {{else if eq .Key "trust"}}{{template "setup-trust" .}}
+      {{else if eq .Key "operator"}}{{template "setup-operator" .}}
+      {{else if eq .Key "two-factor"}}{{template "setup-two-factor" .}}
+      {{else if eq .Key "hub"}}{{template "setup-hub" .}}
+      {{else if eq .Key "self-link"}}{{template "setup-self-link" .}}
+      {{else}}{{template "setup-ready" .}}{{end}}
+    </div>
+  </div>
+</div>
+{{end}}
