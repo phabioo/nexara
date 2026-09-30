@@ -40,6 +40,9 @@ type SetupDeps struct {
 	Codes    *setup.Codes
 	Sessions *setup.Sessions // creates the wizard on Unlock
 	Mode     *setup.Mode
+	// Commit persists a completed wizard (see SetupCommitFunc). It is nil only
+	// in tests; views reach it through Server.commitSetup.
+	Commit SetupCommitFunc
 }
 
 // Options are the injected dependencies of a Server.
@@ -60,9 +63,14 @@ type Options struct {
 	EnrollHandler http.Handler
 
 	Logger *slog.Logger
+	// SSHPublicKey returns the hub's SSH public key (authorized_keys format)
+	// shown in the Add-host dialog. Nil means no key is available (empty string).
+	SSHPublicKey func() string
+
 	// SecureCookies sets the Secure attribute on the cookies this package sets
-	// itself (the login challenge cookie). Keep it equal to the auth.Service
-	// cookie setting; false only for the plain-HTTP demo mode.
+	// itself (the login challenge cookie). It must equal the auth.Service and
+	// setup.Sessions cookie setting (New rejects a mismatch); false only for
+	// the plain-HTTP dev mode.
 	SecureCookies bool
 	// Now is the clock; defaults to time.Now.
 	Now func() time.Time
@@ -81,6 +89,7 @@ type Server struct {
 	log      *slog.Logger
 	secure   bool
 	now      func() time.Time
+	sshKey   func() string
 
 	// sse is the registry view files add their event renderers to.
 	sse *EventRegistry
@@ -109,11 +118,17 @@ func New(o Options) (*Server, error) {
 	case o.Static == nil:
 		return nil, errors.New("httpserver: Options.Static is required")
 	}
+	// One source for the Secure cookie flag: a mismatch would silently break
+	// sign-in (Secure cookies are dropped on plain HTTP) or weaken it.
+	if authSecure, setupSecure := o.Auth.Cookies().ClearSession().Secure, o.Setup.Sessions.Cookie("").Secure; authSecure != o.SecureCookies || setupSecure != o.SecureCookies {
+		return nil, fmt.Errorf("httpserver: cookie Secure setting differs (Options.SecureCookies=%v, auth=%v, setup=%v)",
+			o.SecureCookies, authSecure, setupSecure)
+	}
 	s := &Server{
 		auth: o.Auth, setup: o.Setup, hub: o.Hub, enroller: o.Enroller,
 		renderer: o.Renderer, static: o.Static,
 		agent: o.AgentHandler, enroll: o.EnrollHandler,
-		log: o.Logger, secure: o.SecureCookies, now: o.Now,
+		log: o.Logger, secure: o.SecureCookies, now: o.Now, sshKey: o.SSHPublicKey,
 		sse:          newEventRegistry(),
 		sseHeartbeat: 15 * time.Second,
 		shellPing:    30 * time.Second,
@@ -145,6 +160,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, tlsConfig *tls.Conf
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    maxHeaderBytes,
 		TLSConfig:         tlsConfig,
+		Protocols:         http1Only(),
 		ErrorLog:          slog.NewLogLogger(s.log.Handler(), slog.LevelWarn),
 	}
 	errc := make(chan error, 1)
@@ -172,4 +188,12 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, tlsConfig *tls.Conf
 		return fmt.Errorf("httpserver: shutdown: %w", err)
 	}
 	return nil
+}
+
+// http1Only restricts the server to HTTP/1.1: the agent and shell WebSockets
+// use the HTTP/1.1 upgrade, which HTTP/2 does not offer.
+func http1Only() *http.Protocols {
+	var p http.Protocols
+	p.SetHTTP1(true)
+	return &p
 }
