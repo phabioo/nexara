@@ -1020,6 +1020,11 @@ svg { flex: none; }
 .ov-cpu.is-procs .ov-when-cores { display: none; }
 .ov-cpu.is-procs .ov-when-procs { display: inline; }
 
+/* resource tiles: as in the mockup the value sits right under the label strip and the cell row grows to
+   fill the rest of the tile, so the free space ends up below the cells */
+.ov-mem .tile-resource .tile-body { justify-content: flex-start; }
+.ov-mem .tile-resource .tile-cells { max-height: none; align-items: flex-start; }
+
 /* informational reboot chip (the reboot action itself is a later version) */
 .ov-reboot { cursor: default; }
 .ov-reboot:hover { background: var(--pink); }
