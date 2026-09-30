@@ -347,17 +347,19 @@ func (h *Hub) script(hst *host, j *job) ([]outLine, func() bool) {
 		if i := hst.pkgIndex(j.Package); i >= 0 {
 			ver = hst.pkgs[i].InstalledVersion
 		}
-		return []outLine{
+		lines := []outLine{
 			out("Reading package lists... Done"), out("Building dependency tree... Done"),
 			out("The following packages will be REMOVED:"), out("  " + j.Package),
 			out(fmt.Sprintf("Removing %s (%s) ...", j.Package, ver)),
 			out("Processing triggers for man-db (2.11.2-2) ..."),
-		}, func() bool {
+		}
+		apply := func() bool {
 			if i := hst.pkgIndex(j.Package); i >= 0 {
 				hst.pkgs = append(hst.pkgs[:i:i], hst.pkgs[i+1:]...)
 			}
 			return hst.reboot
 		}
+		return lines, apply
 	}
 }
 
