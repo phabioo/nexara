@@ -295,7 +295,7 @@ func TestServicesRestart(t *testing.T) {
 	}{
 		{
 			name: "success restarts the failed units", path: "/hosts/alpha/services/restart", csrf: true, status: 200,
-			want:  []string{`hx-swap-oob="beforeend:#toasts"`, "Restored", "alpha | systemctl restart", `role="status"`},
+			want:  []string{`id="toasts"`, `hx-swap-oob="true"`, "Restored", "alpha | systemctl restart", `role="status"`},
 			calls: []string{"a1/smbd.service"},
 		},
 		{
@@ -436,8 +436,8 @@ func TestOverviewSSERenderers(t *testing.T) {
 
 	t.Run("metrics value", func(t *testing.T) {
 		gs := run(grid.Event{Kind: grid.EventMetrics, Host: "a1", Payload: *sampleOvMetrics()})
-		if len(gs) != 3 {
-			t.Fatalf("%d events, want 3: %+v", len(gs), gs)
+		if len(gs) != 4 { // the three overview events plus the shell's nx-live
+			t.Fatalf("%d events, want 4: %+v", len(gs), gs)
 		}
 		if h := byName(gs, "ov-load"); h != "0.42 0.38 0.35" {
 			t.Errorf("load %q", h)
@@ -452,8 +452,8 @@ func TestOverviewSSERenderers(t *testing.T) {
 	})
 
 	t.Run("metrics pointer", func(t *testing.T) {
-		if gs := run(grid.Event{Kind: grid.EventMetrics, Host: "a1", Payload: sampleOvMetrics()}); len(gs) != 3 {
-			t.Errorf("%d events, want 3", len(gs))
+		if gs := run(grid.Event{Kind: grid.EventMetrics, Host: "a1", Payload: sampleOvMetrics()}); len(gs) != 4 {
+			t.Errorf("%d events, want 4", len(gs))
 		}
 	})
 
@@ -523,14 +523,14 @@ func TestOverviewEventStream(t *testing.T) {
 	e.hub.emit(grid.Event{Kind: grid.EventMetrics, Host: "a1", Payload: *sampleOvMetrics()})
 
 	names := map[string][]string{}
-	for range 3 {
+	for range 4 {
 		block := c.nextEvent(t)
 		if !strings.HasPrefix(block[0], "event: ") {
 			t.Fatalf("block %q", block)
 		}
 		names[strings.TrimPrefix(block[0], "event: ")] = block[1:]
 	}
-	for _, n := range []string{"ov-load", "ov-cpu", "ov-mem"} {
+	for _, n := range []string{"ov-load", "ov-cpu", "ov-mem", "nx-live"} {
 		if names[n] == nil {
 			t.Errorf("event %s missing (got %v)", n, names)
 		}
@@ -559,4 +559,18 @@ func TestOverviewEscapesHostData(t *testing.T) {
 	body := e.get("/hosts/alpha", withCookies(cookie)).Body.String()
 	ovLack(t, body, "<script>alert", "<img src=x", "<b>x</b>")
 	ovHave(t, body, "&lt;script&gt;alert(1)&lt;/script&gt;", "&lt;img src=x onerror=alert(1)&gt;", "&lt;b&gt;x&lt;/b&gt;")
+}
+
+// A failed restart answers HTMX with the real status and a toast fragment that nexus.js swaps into #toasts.
+func TestServicesRestartHTMXError(t *testing.T) {
+	e, _ := newOverviewEnv(t)
+	cookie, csrf := e.signIn()
+	rec := e.post("/hosts/beta/services/restart", withCookies(cookie), withHeader("X-CSRF-Token", csrf), withHeader("HX-Request", "true"))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status %d, want 409", rec.Code)
+	}
+	if rec.Header().Get("HX-Retarget") != "#toasts" || rec.Header().Get("HX-Reswap") != "innerHTML" || rec.Header().Get("X-Nexus-Toast") != "1" {
+		t.Errorf("toast headers: %v", rec.Header())
+	}
+	ovHave(t, rec.Body.String(), `class="toast"`, "Failed", "The host is offline.")
 }

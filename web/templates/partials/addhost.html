@@ -46,8 +46,8 @@
   </div>
   {{with .Error}}{{template "form-error" .}}{{end}}
   <div class="modal-actions">
-    <button type="button" class="btn-card btn-card-grey" data-modal-close><span>Cancel</span></button>
-    <button type="submit" class="btn-card"><span>Install agent &amp; link</span>{{icon "plus" 12}}</button>
+    {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "NoIcon" true "Attrs" (attr "data-modal-close"))}}
+    {{template "btn-card" (dict "Label" "Install agent & link" "Type" "submit" "Icon" "plus" "IconSize" 12)}}
   </div>
 </form>{{end}}
 
@@ -65,8 +65,8 @@
     {{end}}
   {{end}}
   <div class="modal-actions">
-    <button type="button" class="btn-card btn-card-grey" hx-post="/hosts/new/code" hx-target="#addhost-pane" hx-swap="outerHTML"><span>New code</span></button>
-    <button type="button" class="btn-card" data-modal-close><span>Close</span>{{icon "close" 12}}</button>
+    {{template "btn-card" (dict "Label" "New code" "Variant" "grey" "NoIcon" true "Attrs" (attr "hx-post" "/hosts/new/code" "hx-target" "#addhost-pane" "hx-swap" "outerHTML"))}}
+    {{template "btn-card" (dict "Label" "Close" "Icon" "close" "IconSize" 12 "Attrs" (attr "data-modal-close"))}}
   </div>
 </div>{{end}}
 
@@ -79,9 +79,9 @@
   </div>
   {{if .HostKeyTip}}<p class="hint">The host key was accepted on first use. Compare the fingerprint with the one on the host (ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub).</p>{{end}}
   {{with .Error}}{{template "form-error" .}}{{end}}
-  {{if .OpenURL}}<a class="btn-card" href="{{.OpenURL}}"><span>Open {{.OpenLabel}}</span>{{icon "arrow-right" 16}}</a>{{end}}
+  {{if .OpenURL}}{{template "btn-card" (dict "Label" (print "Open " .OpenLabel) "Href" .OpenURL "Icon" "arrow-right" "IconSize" 16)}}{{end}}
   {{if .Retry}}<div class="modal-actions">
-    <button type="button" class="btn-card btn-card-grey" data-modal-close><span>Close</span></button>
-    <button type="button" class="btn-card" hx-get="{{.RetryURL}}" hx-target="#addhost-pane" hx-swap="outerHTML"><span>Try again</span>{{icon "plus" 12}}</button>
+    {{template "btn-card" (dict "Label" "Close" "Variant" "grey" "NoIcon" true "Attrs" (attr "data-modal-close"))}}
+    {{template "btn-card" (dict "Label" "Try again" "Icon" "plus" "IconSize" 12 "Attrs" (attr "hx-get" .RetryURL "hx-target" "#addhost-pane" "hx-swap" "outerHTML"))}}
   </div>{{end}}
 </div>{{end}}{{end}}

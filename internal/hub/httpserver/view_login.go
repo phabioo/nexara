@@ -36,6 +36,7 @@ type loginPage struct {
 	Operator     string // prefill / display name; never the passphrase
 	KeepSignedIn bool
 	CSRF         string // double-submit token, also set as cookie
+	SetupDone    bool   // arrived from the setup wizard (/login?setup=done): show the "Hub online" banner
 }
 
 // loginView is the data of pages/login.html.
@@ -120,6 +121,11 @@ func (s *Server) loginViewFor(p loginPage) loginView {
 		}
 	case p.Error != "":
 		v.Log = "Sign-in rejected"
+	case p.SetupDone:
+		v.Log = "Setup complete · awaiting operator credentials"
+	}
+	if p.SetupDone && !p.SecondFactor && !p.Granted {
+		v.Toast = &views.Toast{Title: "Hub online", Sub: "Setup complete | sign in"}
 	}
 	return v
 }
@@ -157,7 +163,7 @@ func (s *Server) handleLoginGet(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, s.clearChallengeCookie())
 	}
 	// The box is checked by default, as in the design.
-	s.renderLogin(w, r, loginPage{CSRF: tok, KeepSignedIn: true})
+	s.renderLogin(w, r, loginPage{CSRF: tok, KeepSignedIn: true, SetupDone: r.URL.Query().Get("setup") == "done"})
 }
 
 func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {

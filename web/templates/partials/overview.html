@@ -65,7 +65,3 @@
     </div>
   </div>
 </div>{{end}}
-
-{{/* Toast appended to #toasts by an out-of-band swap. Replacing #toasts itself (the "toasts" partial) would
-     detach the observer nexus.js uses to arm the auto-hide timer. Data: views.Toast. */}}
-{{define "overview-toast"}}<div hx-swap-oob="beforeend:#toasts">{{template "toast" .}}</div>{{end}}

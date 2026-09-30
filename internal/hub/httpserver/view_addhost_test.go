@@ -304,10 +304,10 @@ func TestAddHostSubmitValidationErrors(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// htmx: 200 so the fragment is swapped in.
+			// The status is the real one for HTMX too; nexus.js swaps the HTML fragment of an error response.
 			rec := a.hx(http.MethodPost, "/hosts/new", tc.form)
-			if rec.Code != http.StatusOK {
-				t.Fatalf("htmx status %d", rec.Code)
+			if rec.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("htmx status %d, want 422", rec.Code)
 			}
 			body := rec.Body.String()
 			if !strings.Contains(body, `class="form-error"`) || !strings.Contains(body, tc.want) {
@@ -320,7 +320,7 @@ func TestAddHostSubmitValidationErrors(t *testing.T) {
 			if !strings.Contains(body, `name="user"`) || !strings.Contains(body, `id="addhost-name" name="display_name"`) {
 				t.Error("form lost")
 			}
-			// a plain request gets the real status
+			// a plain request gets the same status
 			rec = a.do(a.srv.Handler(), http.MethodPost, "/hosts/new",
 				withCookies(a.cookie), withHeader(auth.CSRFHeader, a.csrf), withForm(tc.form))
 			if rec.Code != http.StatusUnprocessableEntity {
@@ -543,8 +543,8 @@ func TestAddHostTooManyLinks(t *testing.T) {
 		}
 	}
 	rec := a.hx(http.MethodPost, "/hosts/new", sshForm())
-	if !strings.Contains(rec.Body.String(), "Another host is being linked right now") {
-		t.Errorf("4th attempt: %s", rec.Body.String())
+	if rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), "Another host is being linked right now") {
+		t.Errorf("4th attempt: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = a.do(a.srv.Handler(), http.MethodPost, "/hosts/new",
 		withCookies(a.cookie), withHeader(auth.CSRFHeader, a.csrf), withForm(sshForm()))
@@ -564,7 +564,7 @@ func TestAddHostAttemptsBelongToTheOperator(t *testing.T) {
 	poll := pollURL(t, rec.Body.String())
 	<-done
 	id := strings.TrimPrefix(strings.SplitN(poll, "?", 2)[0], "/hosts/new/link/")
-	reg := a.srv.links()
+	reg := a.srv.addHost
 	if reg.get(id, testOperator) == nil {
 		t.Fatal("own attempt not found")
 	}
@@ -674,7 +674,7 @@ func TestAddHostCodeErrors(t *testing.T) {
 	a := newAddHostEnv(t)
 	a.enr.codeErr = grid.ErrUnsupported
 	rec := a.hx(http.MethodPost, "/hosts/new/code", nil)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Could not create an enrollment code.") || strings.Contains(rec.Body.String(), "GRID-ABCD-EFGH") {
+	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "Could not create an enrollment code.") || strings.Contains(rec.Body.String(), "GRID-ABCD-EFGH") {
 		t.Errorf("htmx: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = a.do(a.srv.Handler(), http.MethodPost, "/hosts/new/code", withCookies(a.cookie), withHeader(auth.CSRFHeader, a.csrf))
@@ -688,15 +688,6 @@ func TestValidFor(t *testing.T) {
 		if got := validFor(d); got != want {
 			t.Errorf("validFor(%v) = %q, want %q", d, got, want)
 		}
-	}
-}
-
-func TestAddHostStatus(t *testing.T) {
-	plain := httptest.NewRequest(http.MethodPost, "/hosts/new", nil)
-	hx := httptest.NewRequest(http.MethodPost, "/hosts/new", nil)
-	hx.Header.Set("HX-Request", "true")
-	if addHostStatus(plain, 422) != 422 || addHostStatus(hx, 422) != 200 {
-		t.Error("status mapping")
 	}
 }
 

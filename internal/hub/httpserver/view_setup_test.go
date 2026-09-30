@@ -348,7 +348,7 @@ func TestSetupCSRF(t *testing.T) {
 			b.get("/setup")
 			cases := map[string]url.Values{
 				"no token":    {},
-				"wrong token": {auth.CSRFFormField: {"x" + good(b).Get(auth.CSRFFormField)[1:]}},
+				"wrong token": {auth.CSRFFormField: {flipFirst(good(b).Get(auth.CSRFFormField))}},
 			}
 			for name, v := range cases {
 				if rec := b.do(http.MethodPost, path, v); rec.Code != 403 {
@@ -1014,4 +1014,13 @@ func TestSetupOperatorMessages(t *testing.T) {
 			}
 		})
 	}
+}
+
+// flipFirst changes the first character, so the result never equals the input (a fixed replacement
+// would equal it for one token in 64).
+func flipFirst(tok string) string {
+	if strings.HasPrefix(tok, "x") {
+		return "y" + tok[1:]
+	}
+	return "x" + tok[1:]
 }

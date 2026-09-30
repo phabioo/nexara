@@ -14,7 +14,7 @@
   {{template "field" (dict "ID" "f-pass" "Label" "Password" "Type" "password")}}
   {{template "form-error" "Could not reach 192.168.10.30 on port 22."}}
   <div class="modal-actions">
-    {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "Icon" "close" "Attrs" "data-modal-close")}}
+    {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}
     {{template "btn-card" (dict "Label" "Install agent & link" "Icon" "plus")}}
   </div>
 {{template "modal-close"}}

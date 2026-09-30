@@ -1,9 +1,6 @@
 {{/* Packages view. Page data: Layout + P (views.PackagesModel). */}}
-{{define "scripts"}}<script src="{{static "js/packages.js"}}" defer></script>{{end}}
-
 {{define "content"}}{{with .P}}
-<div class="layout-split" sse-connect="{{.EventsURL}}">
-  <span class="pkg-sink" hidden sse-swap="pkg-job" hx-swap="none"></span>
+<div class="layout-split">
   <div class="layout-split-main">
     <div class="view-head">
       <div class="view-heading"><span class="view-heading-title t-display">Packages</span>{{with .Count}}<span class="view-heading-count">{{.}}</span>{{end}}<span class="t-dim">APT · {{.HostLabel}}</span></div>

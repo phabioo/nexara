@@ -97,3 +97,51 @@ func TestGridError(t *testing.T) {
 		}
 	}
 }
+
+func TestToastError(t *testing.T) {
+	tests := []struct {
+		name       string
+		htmx       bool
+		noRenderer bool
+		status     int
+		wantType   string
+		wantBody   []string
+		retarget   bool
+	}{
+		{"htmx gets a toast fragment with the real status", true, false, http.StatusConflict, "text/html",
+			[]string{`class="toast"`, "Not started", "The host is offline."}, true},
+		{"plain request gets text", false, false, http.StatusConflict, "text/plain", []string{"The host is offline."}, false},
+		{"htmx without a renderer falls back to text", true, true, http.StatusConflict, "text/plain", []string{"The host is offline."}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newLoginEnv(t)
+			srv := e.srv
+			if tc.noRenderer {
+				srv.renderer = nil
+			}
+			rec := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPost, "/hosts/alpha/x", nil)
+			if tc.htmx {
+				r.Header.Set("HX-Request", "true")
+			}
+			srv.gridErrorTitled(rec, r, grid.ErrHostOffline, "Not started")
+			if rec.Code != tc.status || !strings.HasPrefix(rec.Header().Get("Content-Type"), tc.wantType) {
+				t.Fatalf("%d %q", rec.Code, rec.Header().Get("Content-Type"))
+			}
+			mustContain(t, rec.Body.String(), tc.wantBody...)
+			if got := rec.Header().Get("HX-Retarget") == "#toasts" && rec.Header().Get("HX-Reswap") == "innerHTML" && rec.Header().Get("X-Nexus-Toast") == "1"; got != tc.retarget {
+				t.Errorf("toast headers = %v, want %v (%v)", got, tc.retarget, rec.Header())
+			}
+		})
+	}
+}
+
+func TestToastErrorEscapes(t *testing.T) {
+	e := newLoginEnv(t)
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/x", nil)
+	r.Header.Set("HX-Request", "true")
+	e.srv.toastError(rec, r, http.StatusBadRequest, "<b>t</b>", "<script>alert(1)</script>")
+	mustNotContain(t, rec.Body.String(), "<script>", "<b>t</b>")
+}

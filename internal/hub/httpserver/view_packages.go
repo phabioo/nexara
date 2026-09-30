@@ -1,7 +1,6 @@
 package httpserver
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -31,11 +30,10 @@ type packagesPage struct {
 	P views.PackagesModel
 }
 
-// packagesJobEvent is the data of the "packages-job-state" partial.
+// packagesJobEvent is the data of the "packages-job-state" partial. The status-bar chip and log line
+// are not part of it: the shell's own "nx-live" event updates them on every page (layout_live.go).
 type packagesJobEvent struct {
 	Job   views.JobView
-	Chip  *views.JobChip
-	Log   string
 	Toast *views.Toast
 }
 
@@ -75,7 +73,7 @@ func (s *Server) handlePackages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	model, jobs := s.packagesModel(r, host, q.Get("filter"), q.Get("q"))
+	model := s.packagesModel(r, host, q.Get("filter"), q.Get("q"))
 
 	w.Header().Add("Vary", "HX-Request")
 	if isHTMXFragment(r) {
@@ -86,11 +84,7 @@ func (s *Server) handlePackages(w http.ResponseWriter, r *http.Request) {
 	}
 	l := s.layout(r, "packages", &host)
 	l.Title = "Packages"
-	if l.Log == "" {
-		// s.layout only knows the last job; without one show the usual connection line.
-		l.Log = "Connected to " + hostLabel(host)
-	}
-	l.Job = views.JobChipFor(hostURL(host.Name), jobs)
+	l.EventsURL = model.EventsURL // the same stream, plus the events of the job dialog
 	s.packagesWrite(w, r, http.StatusOK, func(rd *views.Renderer, w http.ResponseWriter) error {
 		return rd.Render(w, "packages", packagesPage{Layout: l, P: model})
 	})
@@ -102,9 +96,8 @@ func isHTMXFragment(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true"
 }
 
-// packagesModel reads the host state and builds the view model. It also
-// returns the host's jobs (newest first) for the status-bar chip.
-func (s *Server) packagesModel(r *http.Request, host grid.HostInfo, filter, query string) (views.PackagesModel, []grid.Job) {
+// packagesModel reads the host state and builds the view model.
+func (s *Server) packagesModel(r *http.Request, host grid.HostInfo, filter, query string) views.PackagesModel {
 	capable := host.HasCapability(protocol.CapPackages)
 	snap, _ := s.hub.Snapshot(host.ID)
 	if snap.Packages == nil && host.Online && capable {
@@ -149,7 +142,7 @@ func (s *Server) packagesModel(r *http.Request, host grid.HostInfo, filter, quer
 		Found:     found,
 		Note:      note,
 		Jobs:      jobs,
-	}), jobs
+	})
 }
 
 // clampQuery trims the search term and cuts it to packagesQueryMax characters.
@@ -175,7 +168,7 @@ func (s *Server) handlePackagesConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	pkg := strings.TrimSpace(r.URL.Query().Get("package"))
 	if action.NeedsPkg && (pkg == "" || len(pkg) > packageNameMax) {
-		s.packagesError(w, r, grid.ErrInvalidArgument, "Not started")
+		s.gridErrorTitled(w, r, grid.ErrInvalidArgument, "Not started")
 		return
 	}
 	snap, _ := s.hub.Snapshot(host.ID)
@@ -211,13 +204,13 @@ func (s *Server) handlePackagesAction(w http.ResponseWriter, r *http.Request) {
 	if action.NeedsPkg {
 		spec.Package = strings.TrimSpace(r.PostFormValue("package"))
 		if spec.Package == "" || len(spec.Package) > packageNameMax {
-			s.packagesError(w, r, grid.ErrInvalidArgument, "Not started")
+			s.gridErrorTitled(w, r, grid.ErrInvalidArgument, "Not started")
 			return
 		}
 	}
 	job, err := s.hub.StartJob(r.Context(), ActorFrom(r), host.ID, spec)
 	if err != nil {
-		s.packagesError(w, r, err, "Not started")
+		s.gridErrorTitled(w, r, err, "Not started")
 		return
 	}
 	s.writeJobDialog(w, r, host, job)
@@ -230,7 +223,7 @@ func (s *Server) handleJobDialog(w http.ResponseWriter, r *http.Request) {
 	}
 	job, ok := s.jobOf(host, r.PathValue("job"))
 	if !ok {
-		s.packagesError(w, r, grid.ErrJobNotFound, "Job not found")
+		s.gridErrorTitled(w, r, grid.ErrJobNotFound, "Job not found")
 		return
 	}
 	s.writeJobDialog(w, r, host, job)
@@ -243,11 +236,11 @@ func (s *Server) handleJobCancel(w http.ResponseWriter, r *http.Request) {
 	}
 	job, ok := s.jobOf(host, r.PathValue("job"))
 	if !ok {
-		s.packagesError(w, r, grid.ErrJobNotFound, "Not canceled")
+		s.gridErrorTitled(w, r, grid.ErrJobNotFound, "Not canceled")
 		return
 	}
 	if err := s.hub.CancelJob(r.Context(), ActorFrom(r), job.ID); err != nil {
-		s.packagesError(w, r, err, "Not canceled")
+		s.gridErrorTitled(w, r, err, "Not canceled")
 		return
 	}
 	// The new state arrives through the event stream.
@@ -281,61 +274,18 @@ func (s *Server) writeJobDialog(w http.ResponseWriter, r *http.Request, host gri
 	})
 }
 
-// packagesError answers a failed call. HTMX requests get a toast fragment that
-// packages.js lets htmx swap into #toasts despite the error status; everything
-// else gets the plain mapping of gridError.
-func (s *Server) packagesError(w http.ResponseWriter, r *http.Request, err error, title string) {
-	if r.Header.Get("HX-Request") != "true" || s.renderer == nil {
-		s.gridError(w, r, err)
-		return
-	}
-	status := gridStatus(err)
-	if status == http.StatusInternalServerError {
-		s.log.Error("hub call failed", "method", r.Method, "path", logPath(r), "err", err)
-	}
-	body, rerr := s.packagesPartial("toast", views.Toast{Title: title, Sub: gridMessage(err)})
-	if rerr != nil {
-		s.gridError(w, r, err)
-		return
-	}
-	h := w.Header()
-	h.Set("Content-Type", "text/html; charset=utf-8")
-	h.Set("HX-Retarget", "#toasts")
-	h.Set("HX-Reswap", "innerHTML")
-	h.Set("X-Nexus-Toast", "1")
-	w.WriteHeader(status)
-	_, _ = w.Write([]byte(body))
-}
-
 // --- rendering helpers -------------------------------------------------------
-
-// bufResponse captures what a Renderer writes.
-type bufResponse struct {
-	h http.Header
-	b bytes.Buffer
-}
-
-func (p *bufResponse) Header() http.Header         { return p.h }
-func (p *bufResponse) Write(b []byte) (int, error) { return p.b.Write(b) }
-func (p *bufResponse) WriteHeader(int)             {}
 
 // packagesExec runs fn against the renderer and returns the HTML it wrote.
 func (s *Server) packagesExec(fn func(*views.Renderer, http.ResponseWriter) error) (string, error) {
 	if s.renderer == nil {
 		return "", errors.New("packages: no renderer configured")
 	}
-	buf := &bufResponse{h: http.Header{}}
+	buf := &fragmentBuffer{}
 	if err := fn(s.renderer, buf); err != nil {
 		return "", err
 	}
-	return buf.b.String(), nil
-}
-
-// packagesPartial renders one named partial to a string.
-func (s *Server) packagesPartial(name string, data any) (string, error) {
-	return s.packagesExec(func(rd *views.Renderer, w http.ResponseWriter) error {
-		return rd.RenderPartial(w, name, data)
-	})
+	return buf.body.String(), nil
 }
 
 // packagesWrite renders into a buffer first so a template error becomes a 500
@@ -354,34 +304,31 @@ func (s *Server) packagesWrite(w http.ResponseWriter, r *http.Request, status in
 // --- event stream --------------------------------------------------------------
 
 // onPackagesStream reports whether the event stream belongs to the packages
-// page (its URL carries view=packages); other pages do not get these events.
+// page (its URL carries view=packages). Only that page reloads its fragment on
+// "pkg-changed"; the job events go to every page, because the status-bar chip
+// opens the job dialog from anywhere.
 func onPackagesStream(r *http.Request) bool {
 	return r != nil && r.URL.Query().Get("view") == "packages"
 }
 
 // renderPackagesJob turns job_queued, job_started and job_done into one "pkg-job"
 // event whose payload is a set of hx-swap-oob elements: the dialog regions (if
-// the dialog is open), the status-bar chip and log line and, after a
-// maintenance job, the banner. Elements without a target are ignored by htmx.
-func (s *Server) renderPackagesJob(r *http.Request, ev grid.Event) (string, string, bool) {
+// the dialog is open) and, after a maintenance job, the banner. Elements without
+// a target are dropped by nexus.js.
+func (s *Server) renderPackagesJob(_ *http.Request, ev grid.Event) (string, string, bool) {
 	j, ok := ev.Payload.(grid.Job)
-	if !onPackagesStream(r) || !ok || !views.SafeDOMID(j.ID) {
+	if !ok || !views.SafeDOMID(j.ID) {
 		return "", "", false
 	}
 	host, ok := s.hub.Host(ev.Host)
 	if !ok {
 		return "", "", false
 	}
-	path := hostURL(host.Name)
-	data := packagesJobEvent{
-		Job:  views.NewJobView(hostLabel(host), path, j).AsOOB(),
-		Chip: views.JobChipFor(path, s.hub.Jobs(ev.Host)),
-		Log:  jobLogLine(j),
-	}
+	data := packagesJobEvent{Job: views.NewJobView(hostLabel(host), hostURL(host.Name), j).AsOOB()}
 	if j.State == grid.JobDone && j.OK {
 		data.Toast = maintenanceToast(hostLabel(host), j.Kind)
 	}
-	html, err := s.packagesPartial("packages-job-state", data)
+	html, err := s.partialString("packages-job-state", data)
 	if err != nil {
 		s.log.Error("render job event", "err", err)
 		return "", "", false
@@ -402,12 +349,12 @@ func maintenanceToast(host string, kind protocol.JobKind) *views.Toast {
 }
 
 // renderPackagesJobOutput appends one output line to the open job dialog.
-func (s *Server) renderPackagesJobOutput(r *http.Request, ev grid.Event) (string, string, bool) {
+func (s *Server) renderPackagesJobOutput(_ *http.Request, ev grid.Event) (string, string, bool) {
 	out, ok := ev.Payload.(grid.JobOutputEvent)
-	if !onPackagesStream(r) || !ok || !views.SafeDOMID(out.JobID) {
+	if !ok || !views.SafeDOMID(out.JobID) {
 		return "", "", false
 	}
-	html, err := s.packagesPartial("packages-job-output", struct {
+	html, err := s.partialString("packages-job-output", struct {
 		ID   string
 		Line views.JobLineView
 	}{out.JobID, views.NewJobLine(out.Line)})

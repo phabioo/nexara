@@ -60,7 +60,7 @@
         {{template "checker"}}
         {{template "btn-card" (dict "Label" "Back to overview" "Href" .BackURL "Icon" "arrow-right")}}
       </div>
-      <div class="visually-hidden" hidden data-shell-watch hx-ext="sse" sse-connect="{{.EventsURL}}" sse-swap="shell-host-state"></div>
+      <div class="visually-hidden" hidden data-shell-watch sse-swap="shell-host-state"></div>
       {{else}}
       {{template "card-head" (dict "Title" "Shell disabled")}}
       <div class="card-body">

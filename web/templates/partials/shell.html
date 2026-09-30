@@ -8,11 +8,25 @@
   <div class="pill" role="group" aria-label="Status">
     <div class="pill-seg pill-node t-display">{{icon "mark" 18}}<span>{{.NodeNo}}</span></div>
     <div class="pill-seg pill-dark pill-online" title="Systems online">{{icon "circle" 18}}<span>{{.Online}}</span></div>
-    {{with .Packages}}<div class="pill-seg pill-light pill-pkg" title="Packages up to date">{{icon "list" 14}}<span>{{.}}</span></div>{{end}}
-    {{with .Temp}}<div class="pill-seg pill-light pill-temp" title="SoC temperature">{{icon "thermometer" 14}}<span>{{.}}°</span></div>{{end}}
+    {{with .Packages}}<div id="pill-pkg" class="pill-seg pill-light pill-pkg" title="Packages up to date">{{template "pill-pkg-body" .}}</div>{{end}}
+    {{with .Temp}}<div id="pill-temp" class="pill-seg pill-light pill-temp" title="SoC temperature">{{template "pill-temp-body" .}}</div>{{end}}
   </div>
   {{template "hosttabs" .}}
 </header>{{end}}
+
+{{/* Live values of the top bar and the sidebar. The *-body templates are the inner HTML of #pill-pkg,
+     #pill-temp and #node-card-up; the live-* templates are their out-of-band updates, sent on the page's
+     event stream as "nx-live" (httpserver/layout_live.go). */}}
+{{define "pill-pkg-body"}}{{icon "list" 14}}<span>{{.}}</span>{{end}}
+{{define "pill-temp-body"}}{{icon "thermometer" 14}}<span>{{.}}°</span>{{end}}
+{{define "node-up-body"}}{{.}} <span>UP</span>{{end}}
+{{define "live-pkg"}}<div hx-swap-oob="innerHTML:#pill-pkg">{{template "pill-pkg-body" .}}</div>{{end}}
+{{define "live-temp"}}<div hx-swap-oob="innerHTML:#pill-temp">{{template "pill-temp-body" .}}</div>{{end}}
+{{define "live-uptime"}}<div hx-swap-oob="innerHTML:#node-card-up">{{template "node-up-body" .}}</div>{{end}}
+{{/* Data: httpserver liveJob (Chip *views.JobChip, Log string). */}}
+{{define "live-job"}}<span id="job-chip-slot" class="job-chip-slot" hx-swap-oob="true">{{with .Chip}}{{template "job-chip" .}}{{end}}</span>
+<span id="statusbar-log" role="status" hx-swap-oob="true">{{.Log}}</span>{{end}}
+{{define "job-chip"}}<button type="button" class="btn-tool is-hot" hx-get="{{.Href}}" hx-target="#modal-root" hx-swap="innerHTML">{{.Label}}</button>{{end}}
 
 {{define "hosttabs"}}<nav class="hosttabs" aria-label="Hosts" data-host-tabs>
   {{if gt (len .Hosts) 1}}<button type="button" class="key" data-host-step="-1" aria-label="Previous system">Q</button>{{end}}
@@ -25,7 +39,7 @@
 {{define "sidebar"}}<aside class="sidebar" aria-label="Sidebar">
   <div class="node-card">
     <div class="node-card-head">
-      <div class="node-card-id"><div class="node-card-title t-display">Node {{.NodeNo}}</div>{{with .Uptime}}<div class="node-card-up">{{.}} <span>UP</span></div>{{end}}</div>
+      <div class="node-card-id"><div class="node-card-title t-display">Node {{.NodeNo}}</div>{{with .Uptime}}<div id="node-card-up" class="node-card-up">{{template "node-up-body" .}}</div>{{end}}</div>
       <div class="node-card-tab"></div>
     </div>
     <div class="node-card-body">
@@ -37,8 +51,18 @@
     {{range .NavItems}}<a class="nav-item{{if .Active}} on{{else if .Badge}} hot{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}}><span class="nav-main">{{if .Icon}}<span class="nav-icon">{{icon .Icon 18}}</span>{{end}}<span class="nav-label">{{.Label}}</span></span>{{if .Badge}}<span class="nav-badge">{{.Badge}}</span>{{end}}</a>
     {{end}}
   </nav>
+  {{with .Operator}}<div class="account">
+    <div class="account-id"><span class="account-label">Operator</span><b class="account-name" title="{{.}}">{{.}}</b></div>
+    {{template "signout-form" $}}
+  </div>{{end}}
   {{with .HostName}}{{template "host-portrait" .}}{{end}}
 </aside>{{end}}
+
+{{/* POST /logout with the CSRF token in the form (works without JavaScript). Data: views.Layout. */}}
+{{define "signout-form"}}<form class="signout" method="post" action="/logout">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <button type="submit" class="account-out" title="Sign out"><span>Sign out</span>{{icon "sign-out" 14}}</button>
+</form>{{end}}
 
 {{define "host-portrait"}}<div class="host-portrait">
   <div class="host-portrait-title t-display">{{.}}</div>
@@ -68,7 +92,7 @@
 
 {{define "statusbar"}}<footer class="statusbar">
   <div class="statusbar-log">
-    {{with .Job}}<button type="button" class="btn-tool is-hot" hx-get="{{.Href}}" hx-target="#modal-root" hx-swap="innerHTML">{{.Label}}</button>{{end}}
+    <span id="job-chip-slot" class="job-chip-slot">{{with .Job}}{{template "job-chip" .}}{{end}}</span>
     <span class="statusbar-prompt" aria-hidden="true">&gt;</span><span id="statusbar-log" role="status">{{.Log}}</span>
   </div>
   <div class="statusbar-right">
@@ -83,4 +107,22 @@
 {{define "bottomnav"}}<nav class="bnav" aria-label="Views">
   {{range .NavItems}}<a class="bnav-item{{if .Active}} on{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}}>{{if .Icon}}<span class="bnav-icon">{{icon .Icon 18}}{{if .Badge}}<span class="bnav-badge">{{.Badge}}</span>{{end}}</span>{{end}}<span>{{.Label}}</span></a>
   {{end}}
+  {{if .Operator}}<button type="button" class="bnav-item" data-sheet-open="more-sheet" aria-haspopup="dialog" aria-expanded="false" aria-controls="more-sheet"><span class="bnav-icon">{{icon "dots" 18}}</span><span>More</span></button>{{end}}
 </nav>{{end}}
+
+{{/* "More" sheet of the phone layout (mobile/more.dc.html): operator and Sign out. The entries of later
+     versions (History, Containers, Settings) are not shown yet (decision #31). Opened by nexus.js. */}}
+{{define "more-sheet"}}{{if .Operator}}<div class="sheet" id="more-sheet" role="dialog" aria-modal="true" aria-labelledby="more-title" hidden>
+  <div class="sheet-backdrop" data-sheet-close></div>
+  <div class="sheet-panel">
+    <div class="card-head is-hot"><span id="more-title">More</span><button type="button" class="modal-close" data-sheet-close aria-label="Close">{{icon "close" 14}}</button></div>
+    <div class="card-body">
+      {{template "checker"}}
+      <div class="sheet-row"><span>Operator</span><b>{{.Operator}}</b></div>
+      <form class="sheet-signout" method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+        {{template "btn-card" (dict "Label" "Sign out" "Type" "submit" "Icon" "arrow-right" "IconSize" 16)}}
+      </form>
+    </div>
+  </div>
+</div>{{end}}{{end}}

@@ -378,6 +378,11 @@ func (e *env) do(h http.Handler, method, target string, opts ...reqOpt) *httptes
 	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, r)
+	// html/template replaces a value it does not trust with ZgotmplZ; that silently drops an attribute or
+	// URL, so no response of any test may contain it.
+	if strings.Contains(rec.Body.String(), "ZgotmplZ") {
+		e.t.Errorf("%s %s: response contains a filtered template value (ZgotmplZ)", method, target)
+	}
 	return rec
 }
 

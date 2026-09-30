@@ -1,7 +1,6 @@
 package httpserver
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -64,41 +63,20 @@ func (s *Server) addHostBase(r *http.Request, mode string) views.AddHostDialog {
 	return d
 }
 
-// addHostStatus is the status for a failed step of the dialog. htmx does not
-// swap 4xx responses, and the dialog must show its error row, so HTMX requests
-// get 200 and the fragment carries the error.
-func addHostStatus(r *http.Request, status int) int {
-	if r.Header.Get("HX-Request") == "true" {
-		return http.StatusOK
-	}
-	return status
-}
-
-// addHostBuffer collects a rendered fragment so the status can be chosen
-// before anything is written.
-type addHostBuffer struct {
-	header http.Header
-	body   bytes.Buffer
-}
-
-func (b *addHostBuffer) Header() http.Header         { return b.header }
-func (b *addHostBuffer) Write(p []byte) (int, error) { return b.body.Write(p) }
-func (b *addHostBuffer) WriteHeader(int)             {}
-
 // renderAddHost writes the named add-host partial with the given status.
 func (s *Server) renderAddHost(w http.ResponseWriter, r *http.Request, status int, name string, d views.AddHostDialog) {
 	if s.renderer == nil {
 		s.serverError(w, r, errors.New("add host: no renderer configured"))
 		return
 	}
-	buf := &addHostBuffer{header: http.Header{}}
-	if err := s.renderer.RenderPartial(buf, name, d); err != nil {
+	body, err := s.partialString(name, d)
+	if err != nil {
 		s.serverError(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_, _ = w.Write(buf.body.Bytes())
+	_, _ = w.Write([]byte(body))
 }
 
 func (s *Server) handleAddHostDialog(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +92,7 @@ func (s *Server) handleAddHostDialog(w http.ResponseWriter, r *http.Request) {
 // for "Try again" (?retry=<attempt id>; the password is never kept).
 func (s *Server) handleAddHostPane(w http.ResponseWriter, r *http.Request) {
 	d := s.addHostBase(r, views.AddHostModeSSH)
-	if a := s.links().get(r.URL.Query().Get("retry"), operatorName(r)); a != nil {
+	if a := s.addHost.get(r.URL.Query().Get("retry"), operatorName(r)); a != nil {
 		d.Form = a.form
 	}
 	s.renderAddHost(w, r, http.StatusOK, "addhost-pane", d)
@@ -197,13 +175,13 @@ func (s *Server) handleAddHostSubmit(w http.ResponseWriter, r *http.Request) {
 	req, msg := validateAddHost(form, r.PostFormValue(addHostFieldPass), d.HubKey != "")
 	if msg != "" {
 		d.Error = msg
-		s.renderAddHost(w, r, addHostStatus(r, http.StatusUnprocessableEntity), "addhost-pane", d)
+		s.renderAddHost(w, r, http.StatusUnprocessableEntity, "addhost-pane", d)
 		return
 	}
-	a, err := s.links().start(s, r, req, form)
+	a, err := s.addHost.start(s, r, req, form)
 	if err != nil {
 		d.Error = linkStartMessage(err)
-		s.renderAddHost(w, r, addHostStatus(r, http.StatusTooManyRequests), "addhost-pane", d)
+		s.renderAddHost(w, r, http.StatusTooManyRequests, "addhost-pane", d)
 		return
 	}
 	d.Progress = a.progress(true)
@@ -211,7 +189,7 @@ func (s *Server) handleAddHostSubmit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAddHostLink(w http.ResponseWriter, r *http.Request) {
-	a := s.links().get(r.PathValue("id"), operatorName(r))
+	a := s.addHost.get(r.PathValue("id"), operatorName(r))
 	if a == nil {
 		s.notFound(w, r)
 		return
@@ -238,10 +216,10 @@ func (s *Server) handleAddHostCode(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.log.Warn("enrollment code failed", "err", err)
 		d.Error = "Could not create an enrollment code. " + gridMessage(err)
-		s.renderAddHost(w, r, addHostStatus(r, gridStatus(err)), "addhost-pane", d)
+		s.renderAddHost(w, r, gridStatus(err), "addhost-pane", d)
 		return
 	}
-	id := s.links().addCode(operatorName(r), known, code.Expires, s.now())
+	id := s.addHost.addCode(operatorName(r), known, code.Expires, s.now())
 	d.Code = &views.AddHostCode{
 		Code:     code.Code,
 		Command:  code.Command,
@@ -272,7 +250,7 @@ func (s *Server) knownHostIDs() map[grid.HostID]bool {
 // until something changes: a new host appeared (progress list), the host came
 // online (done) or the code expired.
 func (s *Server) handleAddHostCodeStatus(w http.ResponseWriter, r *http.Request) {
-	c := s.links().getCode(r.PathValue("id"), operatorName(r))
+	c := s.addHost.getCode(r.PathValue("id"), operatorName(r))
 	if c == nil {
 		s.notFound(w, r)
 		return

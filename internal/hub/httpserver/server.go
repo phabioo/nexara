@@ -96,6 +96,8 @@ type Server struct {
 
 	// sse is the registry view files add their event renderers to.
 	sse *EventRegistry
+	// addHost keeps the in-memory state of Add-host attempts (view_addhost_link.go).
+	addHost *linkRegistry
 
 	// Intervals, shortened in tests.
 	sseHeartbeat time.Duration
@@ -133,6 +135,7 @@ func New(o Options) (*Server, error) {
 		agent: o.AgentHandler, enroll: o.EnrollHandler,
 		log: o.Logger, secure: o.SecureCookies, now: o.Now, sshKey: o.SSHPublicKey,
 		sse:          newEventRegistry(),
+		addHost:      newLinkRegistry(),
 		sseHeartbeat: 15 * time.Second,
 		shellPing:    30 * time.Second,
 		streamsDone:  make(chan struct{}),
