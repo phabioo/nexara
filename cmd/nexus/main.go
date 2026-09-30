@@ -7,12 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/phabioo/nexara/internal/buildinfo"
-	"github.com/phabioo/nexara/internal/config"
-	"github.com/phabioo/nexara/internal/hub/store"
 )
 
 // Exit codes.
@@ -24,21 +23,30 @@ const (
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	code := runContext(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	stop()
+	os.Exit(code)
 }
 
 const usage = `Usage: nexus <command> [flags]
 
 Commands:
-  serve --config <file>          run the hub
-  dev --demo [--addr <addr>]     run the hub with simulated agents (development)
-  setup code                     print a new one-time setup code (run locally on the hub)
-  user reset                     reset the operator account (run locally on the hub)
-  uninstall                      remove the hub from this device
-  version                        print version information
+  serve --config <file>               run the hub [--admin-socket <path>]
+  dev --demo [--addr <addr>] [--seed] run the hub with simulated agents (development)
+  setup code                          print a new one-time setup code (run locally on the hub)
+  user reset                          reset the operator account (run locally on the hub)
+  uninstall                           remove the hub from this device
+  version                             print version information
 `
 
+// run executes a command that does not wait for a signal (tests, version, help).
 func run(args []string, stdout, stderr io.Writer) int {
+	return runContext(context.Background(), args, os.Stdin, stdout, stderr)
+}
+
+// runContext executes one command; serve and dev run until ctx is cancelled.
+func runContext(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
 		return exitUsageOrStub
@@ -46,13 +54,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	cmd, rest := args[0], args[1:]
 	switch cmd {
 	case "serve":
-		return cmdServe(rest, stderr)
+		return cmdServe(ctx, rest, stderr)
 	case "dev":
-		return cmdDev(rest, stderr)
+		return cmdDev(ctx, rest, stdout, stderr)
 	case "setup":
-		return cmdSub("setup", []string{"code"}, rest, stderr)
+		return cmdSetup(rest, stdout, stderr)
 	case "user":
-		return cmdSub("user", []string{"reset"}, rest, stderr)
+		return cmdUser(rest, stdin, stdout, stderr)
 	case "uninstall":
 		fmt.Fprintf(stderr, "nexus uninstall: %s\n", notImplementedMs)
 		return exitUsageOrStub
@@ -83,59 +91,4 @@ func parse(fs *flag.FlagSet, args []string) (int, bool) {
 		return exitUsageOrStub, true
 	}
 	return 0, false
-}
-
-func cmdServe(args []string, stderr io.Writer) int {
-	fs := newFlagSet("serve", stderr)
-	cfgPath := fs.String("config", config.DefaultHubConfigPath, "path to nexus.yaml")
-	if code, done := parse(fs, args); done {
-		return code
-	}
-	log := slog.New(slog.NewTextHandler(stderr, nil))
-
-	cfg, err := config.LoadHub(*cfgPath)
-	if err != nil {
-		log.Error("cannot load configuration", "err", err)
-		return exitFailure
-	}
-	st, err := store.Open(cfg.Storage.Database)
-	if err != nil {
-		log.Error("cannot open database", "path", cfg.Storage.Database, "err", err)
-		return exitFailure
-	}
-	defer st.Close()
-	version, err := st.SchemaVersion(context.Background())
-	if err != nil {
-		log.Error("cannot read schema version", "err", err)
-		return exitFailure
-	}
-	log.Info("nexus ready", "version", buildinfo.Version, "hub", cfg.Hub.Name,
-		"database", cfg.Storage.Database, "schema_version", version)
-	log.Info("HTTP server is not implemented yet, exiting")
-	return exitOK
-}
-
-func cmdDev(args []string, stderr io.Writer) int {
-	fs := newFlagSet("dev", stderr)
-	demo := fs.Bool("demo", false, "run with simulated agents and the design's sample data")
-	fs.String("addr", "127.0.0.1:8080", "listen address")
-	if code, done := parse(fs, args); done {
-		return code
-	}
-	if !*demo {
-		fmt.Fprintln(stderr, "nexus dev: --demo is required")
-		return exitUsageOrStub
-	}
-	fmt.Fprintf(stderr, "nexus dev --demo: %s\n", notImplementedMs)
-	return exitUsageOrStub
-}
-
-// cmdSub handles commands that only have fixed sub-commands (setup code, user reset).
-func cmdSub(name string, subs []string, args []string, stderr io.Writer) int {
-	if len(args) == 0 || args[0] != subs[0] {
-		fmt.Fprintf(stderr, "Usage: nexus %s %s\n", name, subs[0])
-		return exitUsageOrStub
-	}
-	fmt.Fprintf(stderr, "nexus %s %s: %s\n", name, subs[0], notImplementedMs)
-	return exitUsageOrStub
 }

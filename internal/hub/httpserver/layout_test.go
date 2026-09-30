@@ -48,6 +48,9 @@ func TestLayoutModel(t *testing.T) {
 	if got.CSRF != token {
 		t.Errorf("CSRF = %q, want the session token", got.CSRF)
 	}
+	if got.Operator != testOperator || none.Operator != testOperator {
+		t.Errorf("Operator = %q / %q, want %q", got.Operator, none.Operator, testOperator)
+	}
 	if got.Online != 2 {
 		t.Errorf("Online = %d, want 2", got.Online)
 	}

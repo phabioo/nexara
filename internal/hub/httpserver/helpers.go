@@ -83,6 +83,15 @@ func operatorName(r *http.Request) string {
 	return ""
 }
 
+// sshPublicKey is the hub's SSH public key for the Add-host dialog; empty if
+// the server was built without one (demo mode shows a sample).
+func (s *Server) sshPublicKey() string {
+	if s.sshKey == nil {
+		return ""
+	}
+	return s.sshKey()
+}
+
 // contextWithDone derives a context that is also cancelled when done closes
 // (used to end streams on server shutdown).
 func contextWithDone(parent context.Context, done <-chan struct{}) (context.Context, context.CancelFunc) {

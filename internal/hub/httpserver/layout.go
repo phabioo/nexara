@@ -22,6 +22,7 @@ func (s *Server) layout(r *http.Request, active string, host *grid.HostInfo) vie
 	l := views.Layout{
 		ActiveNav:  active,
 		AddHostURL: "/hosts/new",
+		Operator:   operatorName(r),
 	}
 	if sess, ok := SessionFrom(r); ok {
 		l.CSRF = s.auth.CSRFToken(sess)
