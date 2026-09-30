@@ -1,0 +1,28 @@
+{{/* Preview only: setup stage (lockup, step list, progress row, card). */}}
+{{define "layout"}}auth{{end}}
+{{define "auth-top"}}{{template "ticker" (dict "Variant" "blue" "Text" "first run · nexara nexus setup")}}{{end}}
+{{define "content"}}
+<div class="auth-setup-side">
+  <div class="auth-lockup-block">
+    {{template "lockup" (dict "Md" true)}}
+    {{template "lockup-sub" (dict "Tagline" "FIRST-RUN SETUP")}}
+  </div>
+  {{template "setup-steps" .Steps}}
+  {{template "setup-progress" .Steps}}
+  <div class="micro micro-side">setup_gate_frpi5<br>[code expires after 60 min]</div>
+</div>
+<div class="auth-setup-main">
+  <div class="auth-card" role="region" aria-labelledby="stepTitle">
+    {{template "corners"}}
+    {{template "card-head" (dict "ID" "stepTitle" "Title" "Claim this hub" "Variant" "hot" "Meta" "STEP 1/7")}}
+    <div class="card-body">
+      <div class="progress" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      {{template "tag" (dict "Tone" "dark" "Text" "First run")}}
+      <p class="card-text">Enter the one-time setup code the installer printed, so nobody else in the network can take over this hub.</p>
+      {{template "checker"}}
+      {{template "field" (dict "ID" "f-code" "Label" "Setup code" "Placeholder" "XXXX-XXXX")}}
+      <div class="modal-actions">{{template "btn-card" (dict "Label" "Unlock" "Icon" "arrow-right")}}</div>
+    </div>
+  </div>
+</div>
+{{end}}

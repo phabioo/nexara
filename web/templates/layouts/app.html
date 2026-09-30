@@ -1,0 +1,45 @@
+{{/* App shell: top bar, sidebar, main, status bar, bottom nav (phones).
+     Page templates define "content" and optionally "title", "modals", "head", "scripts".
+     Page data must embed views.Layout. */}}
+{{define "app"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="csrf-token" content="{{.CSRF}}">
+<meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false,"selfRequestsOnly":true}'>
+<meta name="theme-color" content="#111214">
+<meta name="color-scheme" content="dark">
+<title>{{block "title" .}}{{with .Title}}{{.}} · {{end}}Nexara Nexus{{end}}</title>
+<link rel="manifest" href="{{static "img/manifest.webmanifest"}}">
+<link rel="icon" href="{{static "img/favicon.svg"}}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{static "img/icon-180.png"}}">
+<link rel="stylesheet" href="{{static "css/fonts.css"}}">
+<link rel="stylesheet" href="{{static "css/nexus.css"}}">
+{{block "head" .}}{{end}}
+<script src="{{static "js/vendor/htmx-2.0.11.min.js"}}" defer></script>
+<script src="{{static "js/vendor/htmx-ext-sse-2.2.4.min.js"}}" defer></script>
+<script src="{{static "js/nexus.js"}}" defer></script>
+{{block "scripts" .}}{{end}}
+</head>
+<body class="{{.BodyClass}}{{if .ConnectionLost}} is-lost{{end}}" hx-ext="sse">
+{{sprite}}
+<div class="app">
+<span class="crosshair crosshair-a" aria-hidden="true"></span>
+<span class="crosshair crosshair-b" aria-hidden="true"></span>
+{{template "topbar" .}}
+<div class="app-body">
+{{template "sidebar" .}}
+<main class="main" id="main">
+{{template "lostband"}}
+{{block "content" .}}{{end}}
+</main>
+</div>
+{{template "statusbar" .}}
+{{template "bottomnav" .}}
+</div>
+<div id="toasts" class="toast-host" aria-live="polite">{{with .Toast}}{{template "toast" .}}{{end}}</div>
+<div id="modal-root">{{block "modals" .}}{{end}}</div>
+</body>
+</html>
+{{end}}

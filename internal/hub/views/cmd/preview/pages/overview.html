@@ -1,0 +1,69 @@
+{{/* Preview only: the overview layout built from the shared components (pi5-media sample data). */}}
+{{define "content"}}
+<div class="view">
+  <div class="view-head">
+    <span class="view-title">Overview: {{.HostName}}</span>
+    <div class="view-actions">
+      <button type="button" class="btn-power">{{icon "reboot" 12}}<span>Reboot</span></button>
+      <button type="button" class="btn-power is-danger">{{icon "power" 12}}<span>Shut down</span></button>
+      {{template "stat-chip" (dict "Label" "LOAD" "Value" "0.42 0.38 0.35")}}
+    </div>
+  </div>
+  <div class="grid-cards">
+    <div class="card">
+      {{template "card-head" (dict "Title" "CPU · 4 Cores" "Variant" "hot")}}
+      <div class="card-body">
+        {{template "tag" (dict "Tone" "light" "Text" "Live")}}
+        <p class="card-text">Quad-core Cortex-A76 at 2.4 GHz. Currently at 24% utilisation, SoC temperature {{.Temp}} °C. Throttling starts at 80 °C.</p>
+        {{template "checker"}}
+        <div class="card-foot">
+          <div class="t-label">Per core:</div>
+          {{range .Cores}}{{template "objective" (dict "Label" .Label "Pct" .Pct "BoxText" .Pct "BoxUnit" "%" "Small" true)}}{{end}}
+          {{template "objective" (dict "Label" "SoC temperature" "Pct" 56 "BoxText" "47" "BoxUnit" "°C" "Small" true)}}
+          {{template "btn-card" (dict "Label" "Show processes")}}
+        </div>
+      </div>
+    </div>
+
+    <div class="card card-dark">
+      {{template "card-head" (dict "Title" "Memory & storage")}}
+      <div class="card-body">
+        {{template "tag" (dict "Tone" "lime" "Text" "Healthy")}}
+        <div class="chart">
+          <svg viewBox="0 0 300 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="{{.CurveArea}}" fill="#22e06a" fill-opacity="0.22"/><polyline points="{{.CurveLine}}" fill="none" stroke="#35e36a" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+          <span class="chart-label chart-label-l">CPU · LAST 77 S</span><span class="chart-label chart-label-r">24%</span>
+        </div>
+        <p class="card-text">3.4 of 8 GB RAM in use. Network: ↓ 1.2 MB/s · ↑ 8.6 MB/s on eth0.</p>
+        <div class="card-divider">{{icon "database" 10}}<span>RESOURCES</span></div>
+        <div class="card-foot is-roomy">
+          <div class="tile-grid">
+            {{template "tile-resource" (dict "Tone" "blue" "Label" "RAM" "Value" "3.4 / 8 GB" "On" 7)}}
+            {{template "tile-resource" (dict "Tone" "purple" "Label" "Swap" "Value" "0 / 2 GB" "On" 0)}}
+            {{template "tile-resource" (dict "Tone" "grey" "Label" "Disk /" "Value" "41 / 117 GB" "On" 6)}}
+            {{template "tile-resource" (dict "Tone" "grey" "Label" "Disk /mnt/data" "Value" "2.9 / 4 TB" "On" 12)}}
+          </div>
+          {{template "btn-card" (dict "Label" "Open shell" "Variant" "light")}}
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      {{template "card-head" (dict "Title" "Services")}}
+      <div class="card-body">
+        {{template "tag" (dict "Tone" "dark" "Text" "5/6 running")}}
+        <p class="card-text">systemd units on {{.HostName}}. Listening on 22, 445, 32400 and 5353/udp.</p>
+        {{template "checker"}}
+        <div class="card-foot is-tight">
+          {{range .Services}}{{if .Bad}}{{template "objective" (dict "Label" .Name "Value" .State "Pct" 100 "Bad" true "BoxIcon" "close")}}{{else}}{{template "objective" (dict "Label" .Name "Value" .State "Pct" 100 "BoxIcon" "check")}}{{end}}{{end}}
+          {{template "btn-card" (dict "Label" "Restart failed units (1)")}}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="micro-row" aria-hidden="true">
+    <span class="micro">grid_node_01<br>[live feed]</span>
+    <span class="micro">res_map_pi5-media<br>[sampled 1.6 s]</span>
+    <span class="micro">svc_unit_scan<br>[systemd]</span>
+  </div>
+</div>
+{{end}}

@@ -1,0 +1,86 @@
+{{/* Reusable components. Parameters are passed as {{template "name" (dict "Key" value ...)}}.
+     Missing keys are empty. Attrs parameters take template.HTMLAttr built on the server (hx-*, data-*). */}}
+
+{{/* Card header. Title; Variant: "", "hot" (lime) or "bad" (pink); Meta: optional right-hand text. */}}
+{{define "card-head"}}<div class="card-head{{with .Variant}} is-{{.}}{{end}}"><span{{with .ID}} id="{{.}}"{{end}}>{{.Title}}</span>{{with .Meta}}<span class="card-head-meta">{{.}}</span>{{end}}</div>{{end}}
+
+{{/* Tag chip. Tone: "light", "dark" or "lime"; Text. */}}
+{{define "tag"}}<span class="tag tag-{{.Tone}}">{{.Text}}</span>{{end}}
+
+{{define "checker"}}<div class="checker" aria-hidden="true"></div>{{end}}
+
+{{/* Objective row: Label, Value (right of the label), Strong (bold value), Pct (0-100), Bad,
+     box content: BoxIcon and/or BoxText + BoxUnit; Small for the 38px box. */}}
+{{define "objective"}}<div class="objective">
+  <div class="objective-label">
+    <div class="objective-line"><span>{{.Label}}</span>{{with .Value}}{{if $.Strong}}<b>{{.}}</b>{{else}}<span>{{.}}</span>{{end}}{{end}}</div>
+    <div class="bar"><i class="{{pct .Pct}}{{if .Bad}} bad{{end}}"></i></div>
+  </div>
+  <div class="value-box{{if .Small}} sm{{end}}{{if .Bad}} bad{{end}}">{{with .BoxIcon}}{{icon . 14}}{{end}}{{with .BoxText}}<b>{{.}}</b>{{end}}{{with .BoxUnit}}<span>{{.}}</span>{{end}}</div>
+</div>{{end}}
+
+{{/* Full-width card button. Label, Icon (default "info"), Variant: "", "light", "grey", "lime",
+     Href (renders a link), Type, Attrs. */}}
+{{define "btn-card"}}{{if .Href}}<a class="btn-card{{with .Variant}} btn-card-{{.}}{{end}}" href="{{.Href}}" {{.Attrs}}><span>{{.Label}}</span>{{if .Icon}}{{icon .Icon 14}}{{else}}{{icon "info" 14}}{{end}}</a>{{else}}<button type="{{if .Type}}{{.Type}}{{else}}button{{end}}" class="btn-card{{with .Variant}} btn-card-{{.}}{{end}}" {{.Attrs}}><span>{{.Label}}</span>{{if .Icon}}{{icon .Icon 14}}{{else}}{{icon "info" 14}}{{end}}</button>{{end}}{{end}}
+
+{{/* Item tile: Tone ("lime", "green", "blue", "purple", "pink", "grey"), Glyph (icon name), Label,
+     Name, Desc, Meta, Badge, ActionLabel, ActionClass ("btn-tool" or "btn-tool is-hot"), ActionAttrs. */}}
+{{define "tile"}}<div class="tile t-{{.Tone}}">
+  <div class="tile-strip"><b>{{with .Glyph}}{{icon . 9}}{{end}}<span>{{.Label}}</span></b><span class="tile-pixels" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
+  <div class="tile-body">
+    <div class="tile-name">{{.Name}}</div>
+    {{with .Desc}}<div class="tile-desc">{{.}}</div>{{end}}
+    {{with .Meta}}<div class="tile-meta">{{.}}</div>{{end}}
+    <div class="tile-foot">
+      {{if .ActionLabel}}<button type="button" class="{{if .ActionClass}}{{.ActionClass}}{{else}}btn-tool{{end}}" {{.ActionAttrs}}>{{.ActionLabel}}</button>{{else}}<span></span>{{end}}
+      {{with .Badge}}<span class="tile-badge">{{.}}</span>{{end}}
+    </div>
+  </div>
+</div>{{end}}
+
+{{/* Resource tile with pixel cells: Tone, Label, Value, On (filled cells), Total (default 16). */}}
+{{define "tile-resource"}}<div class="tile tile-resource t-{{.Tone}}">
+  <div class="tile-strip"><b><span>{{.Label}}</span></b><span class="tile-pixels" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
+  <div class="tile-body">
+    <div class="tile-name">{{.Value}}</div>
+    <div class="tile-cells" aria-hidden="true">{{$on := .On}}{{range $i := seq (or .Total 16)}}<i class="cell{{if lt $i $on}} on{{end}}"></i>{{end}}</div>
+  </div>
+</div>{{end}}
+
+{{/* Tab / chip with optional count box: Label, Count, Active, Href (link) or Attrs (button), Variant. */}}
+{{define "tab"}}{{if .Href}}<a class="tab{{if .Active}} on{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}} {{.Attrs}}><span class="tab-label">{{.Label}}</span>{{if has .Count}}<span class="tab-count">{{.Count}}</span>{{end}}</a>{{else}}<button type="button" class="tab{{if .Active}} on{{end}}" aria-pressed="{{if .Active}}true{{else}}false{{end}}" {{.Attrs}}><span class="tab-label">{{.Label}}</span>{{if has .Count}}<span class="tab-count">{{.Count}}</span>{{end}}</button>{{end}}{{end}}
+
+{{/* CSS-only scrolling ticker band. Variant: "blue", "green" or "pink"; Text; Class (optional). */}}
+{{define "ticker"}}<div class="ticker ticker-{{.Variant}}{{with .Class}} {{.}}{{end}}" aria-hidden="true"><div class="ticker-run">{{range $i := seq 40}}<span>{{if odd $i}}+{{else}}{{$.Text}}{{end}}</span>{{end}}</div></div>{{end}}
+
+{{/* Toast / banner. Data: Title, Sub (views.Toast or dict). nexus.js hides it after 2.6 s. */}}
+{{define "toast"}}<div class="toast" role="status">{{template "corners"}}
+  <div class="toast-main"><span class="crosshair-mark" aria-hidden="true"></span><span class="toast-title t-serif">{{.Title}}</span><span class="crosshair-mark" aria-hidden="true"></span></div>
+  {{with .Sub}}<div class="toast-sub t-display">{{.}}</div>{{end}}
+</div>{{end}}
+
+{{/* Toast container, for pages that need to re-render it (HTMX out-of-band swap target). */}}
+{{define "toasts"}}<div id="toasts" class="toast-host" aria-live="polite" hx-swap-oob="true">{{with .}}{{template "toast" .}}{{end}}</div>{{end}}
+
+{{define "corners"}}<span class="corner corner-tl" aria-hidden="true"></span><span class="corner corner-tr" aria-hidden="true"></span><span class="corner corner-bl" aria-hidden="true"></span><span class="corner corner-br" aria-hidden="true"></span>{{end}}
+
+{{/* Modal frame, used as a pair around the body:
+       {{template "modal-open" (dict "ID" "x-title" "Title" "Link new host" "Variant" "hot" "Size" "lg")}} ... {{template "modal-close"}}
+     Size: "", "sm", "lg", "xl". Variant: "", "hot", "bad". Put it into the "modals" block of a page or return it
+     as an HTMX fragment for #modal-root. */}}
+{{define "modal-open"}}<div class="modal-backdrop" data-modal>
+<div class="modal{{with .Size}} modal-{{.}}{{end}}" role="dialog" aria-modal="true" aria-labelledby="{{.ID}}">
+{{template "corners"}}
+<div class="card-head{{with .Variant}} is-{{.}}{{end}}"><span id="{{.ID}}">{{.Title}}</span><button type="button" class="modal-close" data-modal-close aria-label="Close">{{icon "close" 14}}</button></div>
+<div class="card-body">{{end}}
+{{define "modal-close"}}</div>
+</div>
+</div>{{end}}
+
+{{/* Form field: ID, Label, Type (default text), Placeholder, Value, Autocomplete, Attrs. */}}
+{{define "field"}}<div class="field"><label for="{{.ID}}" class="t-label">{{.Label}}</label><input id="{{.ID}}" name="{{.ID}}" class="input" type="{{if .Type}}{{.Type}}{{else}}text{{end}}"{{with .Placeholder}} placeholder="{{.}}"{{end}}{{with .Value}} value="{{.}}"{{end}}{{with .Autocomplete}} autocomplete="{{.}}"{{end}} {{.Attrs}}></div>{{end}}
+
+{{define "form-error"}}<div class="form-error" role="alert"><span aria-hidden="true">!</span><span>{{.}}</span></div>{{end}}
+
+{{/* Stat chip (LOAD 0.42 0.38 0.35): Label, Value. */}}
+{{define "stat-chip"}}<div class="stat-chip"><span>{{.Label}}</span><span>{{.Value}}</span></div>{{end}}
