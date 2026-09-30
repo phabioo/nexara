@@ -341,23 +341,24 @@ func TestEnrollTokens(t *testing.T) {
 	ctx := context.Background()
 	s := openTest(t)
 
-	if err := s.CreateEnrollToken(ctx, "tok", t0.Add(15*time.Minute)); err != nil {
+	if err := s.CreateEnrollToken(ctx, "tok", t0.Add(15*time.Minute), []string{"shell", "packages"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CreateEnrollToken(ctx, "tok", t0.Add(time.Hour)); !errors.Is(err, ErrExists) {
+	if err := s.CreateEnrollToken(ctx, "tok", t0.Add(time.Hour), nil); !errors.Is(err, ErrExists) {
 		t.Fatal(err)
 	}
-	if err := s.ConsumeEnrollToken(ctx, "tok", t0.Add(time.Minute)); err != nil {
-		t.Fatal(err)
+	caps, err := s.ConsumeEnrollToken(ctx, "tok", t0.Add(time.Minute))
+	if err != nil || !reflect.DeepEqual(caps, []string{"shell", "packages"}) {
+		t.Fatalf("consume: %v %v", caps, err)
 	}
-	if err := s.ConsumeEnrollToken(ctx, "tok", t0.Add(2*time.Minute)); !errors.Is(err, ErrTokenInvalid) {
+	if _, err := s.ConsumeEnrollToken(ctx, "tok", t0.Add(2*time.Minute)); !errors.Is(err, ErrTokenInvalid) {
 		t.Fatalf("second consume: %v", err)
 	}
-	if err := s.ConsumeEnrollToken(ctx, "unknown", t0); !errors.Is(err, ErrTokenInvalid) {
+	if _, err := s.ConsumeEnrollToken(ctx, "unknown", t0); !errors.Is(err, ErrTokenInvalid) {
 		t.Fatalf("unknown: %v", err)
 	}
-	_ = s.CreateEnrollToken(ctx, "old", t0.Add(time.Minute))
-	if err := s.ConsumeEnrollToken(ctx, "old", t0.Add(time.Minute)); !errors.Is(err, ErrTokenInvalid) {
+	_ = s.CreateEnrollToken(ctx, "old", t0.Add(time.Minute), nil)
+	if _, err := s.ConsumeEnrollToken(ctx, "old", t0.Add(time.Minute)); !errors.Is(err, ErrTokenInvalid) {
 		t.Fatalf("expired (boundary): %v", err)
 	}
 
@@ -366,7 +367,8 @@ func TestEnrollTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 	tok, err := s.GetEnrollToken(ctx, "tok")
-	if err != nil || tok.HostID != host.ID || !tok.UsedAt.Equal(t0.Add(time.Minute)) || !tok.ExpiresAt.Equal(t0.Add(15*time.Minute)) {
+	if err != nil || tok.HostID != host.ID || !tok.UsedAt.Equal(t0.Add(time.Minute)) || !tok.ExpiresAt.Equal(t0.Add(15*time.Minute)) ||
+		!reflect.DeepEqual(tok.Capabilities, []string{"shell", "packages"}) {
 		t.Fatalf("token: %+v %v", tok, err)
 	}
 	if _, err := s.GetEnrollToken(ctx, "zzz"); !errors.Is(err, ErrNotFound) {
@@ -380,20 +382,36 @@ func TestEnrollTokens(t *testing.T) {
 		t.Fatalf("host_id must be cleared: %+v", tok)
 	}
 
-	_ = s.CreateEnrollToken(ctx, "later", t0.Add(24*time.Hour))
+	_ = s.CreateEnrollToken(ctx, "later", t0.Add(24*time.Hour), []string{})
 	n, err := s.DeleteExpiredEnrollTokens(ctx, t0.Add(time.Hour))
 	if err != nil || n != 2 { // "tok" and "old"
 		t.Fatalf("deleted %d, %v", n, err)
 	}
-	if _, err := s.GetEnrollToken(ctx, "later"); err != nil {
-		t.Fatal("unexpired token must survive")
+	if tok, err := s.GetEnrollToken(ctx, "later"); err != nil || tok.Capabilities == nil || len(tok.Capabilities) != 0 {
+		t.Fatalf("unexpired token must survive with empty, non-nil capabilities: %+v %v", tok, err)
+	}
+}
+
+func TestEnrollTokenNilCapabilitiesMeansDefaults(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	_ = s.CreateEnrollToken(ctx, "d", t0.Add(time.Hour), nil)
+	_ = s.CreateEnrollToken(ctx, "e", t0.Add(time.Hour), []string{})
+	if tok, _ := s.GetEnrollToken(ctx, "d"); tok.Capabilities != nil {
+		t.Fatalf("nil must stay nil: %#v", tok.Capabilities)
+	}
+	if caps, err := s.ConsumeEnrollToken(ctx, "d", t0); err != nil || caps != nil {
+		t.Fatalf("nil caps: %#v %v", caps, err)
+	}
+	if caps, err := s.ConsumeEnrollToken(ctx, "e", t0); err != nil || caps == nil || len(caps) != 0 {
+		t.Fatalf("empty caps must be non-nil: %#v %v", caps, err)
 	}
 }
 
 func TestEnrollTokenConsumedOnceConcurrently(t *testing.T) {
 	ctx := context.Background()
 	s := openTest(t)
-	if err := s.CreateEnrollToken(ctx, "race", t0.Add(time.Hour)); err != nil {
+	if err := s.CreateEnrollToken(ctx, "race", t0.Add(time.Hour), nil); err != nil {
 		t.Fatal(err)
 	}
 	var wins atomic.Int32
@@ -402,7 +420,7 @@ func TestEnrollTokenConsumedOnceConcurrently(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if s.ConsumeEnrollToken(ctx, "race", t0) == nil {
+			if _, err := s.ConsumeEnrollToken(ctx, "race", t0); err == nil {
 				wins.Add(1)
 			}
 		}()

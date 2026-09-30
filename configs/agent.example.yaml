@@ -22,3 +22,7 @@ capabilities:
   shell: true
   power: true
   docker: false
+
+# Hub device only: the installer sets this so the agent enrolls itself (self-link).
+# enroll:
+#   token_file: /var/lib/nexus/self-enroll.token

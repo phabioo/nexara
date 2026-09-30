@@ -56,7 +56,8 @@ CREATE TABLE enroll_tokens (
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL,
     used_at    INTEGER,                             -- NULL = unused
-    host_id    TEXT    REFERENCES hosts(id) ON DELETE SET NULL
+    host_id    TEXT    REFERENCES hosts(id) ON DELETE SET NULL,
+    capabilities TEXT                               -- JSON array chosen by the operator; NULL = agent defaults
 );
 CREATE INDEX enroll_tokens_expires_at ON enroll_tokens(expires_at);
 

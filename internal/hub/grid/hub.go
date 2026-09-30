@@ -53,7 +53,10 @@ type HostInfo struct {
 	Kernel       string // from hello, same caveat
 	Online       bool
 	LastSeen     time.Time // zero if never seen
-	Capabilities []string  // enabled capability names (protocol.Cap*)
+	// Latency is the round-trip time of the last hub<->agent ping (shown in
+	// the top bar, e.g. "4 MS"); 0 means unknown (offline or not measured yet).
+	Latency      time.Duration
+	Capabilities []string // enabled capability names (protocol.Cap*)
 	// UpdateRequired is true when the agent is too old to be accepted and needs
 	// the manual "Update required" action.
 	UpdateRequired bool
@@ -218,6 +221,12 @@ type Hub interface {
 	// finished, bounded), newest first. Unknown host yields nil.
 	Jobs(id HostID) []Job
 
+	// UpdateAgent pushes the embedded agent binary to the host (the manual
+	// "Update required" button; audited). The agent restarts and reconnects.
+	// Errors: ErrHostNotFound, ErrHostOffline, ErrUnsupported (no embedded
+	// binary for the host's os/arch).
+	UpdateAgent(ctx context.Context, actor Actor, id HostID) error
+
 	// OpenShell opens an interactive shell on the host (audited). The caller
 	// owns the session and must Close it.
 	// Errors: ErrHostNotFound, ErrHostOffline, ErrCapabilityDisabled.
@@ -351,7 +360,14 @@ type Enroller interface {
 	// through progress), ErrHostExists, ErrInvalidArgument.
 	LinkViaSSH(ctx context.Context, actor Actor, req SSHLinkRequest, progress func(LinkStep)) (HostInfo, error)
 	// NewEnrollCode creates a one-time enrollment code (valid 15 minutes).
-	NewEnrollCode(ctx context.Context, actor Actor) (EnrollCode, error)
+	NewEnrollCode(ctx context.Context, actor Actor, opts EnrollOptions) (EnrollCode, error)
+}
+
+// EnrollOptions are the operator's choices for a new agent, applied when it enrolls.
+type EnrollOptions struct {
+	// Capabilities are the capability names (protocol.Cap*) to enable; nil
+	// means the agent defaults.
+	Capabilities []string
 }
 
 // Sentinel errors returned by Hub and Enroller implementations (use errors.Is).

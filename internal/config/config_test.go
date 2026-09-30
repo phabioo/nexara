@@ -279,3 +279,20 @@ func TestAgentSaveLoadRoundtrip(t *testing.T) {
 		t.Fatalf("roundtrip: %+v %v", got, err)
 	}
 }
+
+func TestAgentEnrollTokenFile(t *testing.T) {
+	p := writeTemp(t, "hub:\n  url: wss://h:1/grid/connect\nshell:\n  user: pi\nenroll:\n  token_file: /var/lib/nexus/self-enroll.token\n")
+	c, err := LoadAgent(p)
+	if err != nil || c.Enroll.TokenFile != "/var/lib/nexus/self-enroll.token" {
+		t.Fatalf("%+v %v", c, err)
+	}
+	out := filepath.Join(t.TempDir(), "a.yaml")
+	plain := DefaultAgent()
+	plain.Hub.URL, plain.Shell.User = "wss://h:1/grid/connect", "pi"
+	if err := plain.Save(out); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(out); strings.Contains(string(b), "token_file") {
+		t.Fatalf("empty enroll section must be omitted:\n%s", b)
+	}
+}

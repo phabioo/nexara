@@ -17,6 +17,16 @@ type AgentConfig struct {
 	Metrics      AgentMetricsSection `yaml:"metrics"`
 	Shell        AgentShellSection   `yaml:"shell"`
 	Capabilities Capabilities        `yaml:"capabilities"`
+	Enroll       AgentEnrollSection  `yaml:"enroll,omitempty"`
+}
+
+// AgentEnrollSection is optional and used for self-link on the hub device.
+type AgentEnrollSection struct {
+	// TokenFile is a file containing a one-time enrollment token. On the hub
+	// device the installer sets it to /var/lib/nexus/self-enroll.token;
+	// `grid-agent run` without a certificate then enrolls with that token
+	// against the local hub (self-link). Empty (default) disables this.
+	TokenFile string `yaml:"token_file,omitempty"`
 }
 
 // AgentHubSection tells the agent where the hub is.
