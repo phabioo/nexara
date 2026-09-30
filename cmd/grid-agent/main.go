@@ -44,18 +44,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fs.String("config", config.DefaultAgentConfigPath, "path to agent.yaml")
 		return stub(fs, rest, "run", stderr)
 	case "enroll":
-		fs := newFlagSet("enroll", stderr)
-		hub := fs.String("hub", "", "hub address, e.g. frpi5.local:8443")
-		token := fs.String("token", "", "one-time enrollment token")
-		if code, done := parse(fs, rest); done {
-			return code
-		}
-		if *hub == "" || *token == "" {
-			fmt.Fprintln(stderr, "grid-agent enroll: --hub and --token are required")
-			return exitUsageOrStub
-		}
-		fmt.Fprintf(stderr, "grid-agent enroll: %s\n", notImplemented)
-		return exitUsageOrStub
+		return runEnroll(rest, stdout, stderr)
 	case "version", "--version", "-v":
 		fmt.Fprintln(stdout, buildinfo.String("grid-agent"))
 		return exitOK
