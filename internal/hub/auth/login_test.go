@@ -670,7 +670,7 @@ func TestResetOperators(t *testing.T) {
 			t.Fatal(err)
 		}
 		if svc2.deleteAllUsers == nil {
-			t.Skip("store.Store has no DeleteAllUsers yet (open question for the orchestrator)")
+			t.Fatal("store.Store must provide DeleteAllUsers")
 		}
 		if _, err := svc2.ResetOperators(e.ctx); err != nil {
 			t.Fatal(err)
