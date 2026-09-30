@@ -435,3 +435,25 @@ func TestStartJobValidationAndErrors(t *testing.T) {
 		t.Errorf("capability: %v", err)
 	}
 }
+
+func TestJobStartedEventWhenQueuedJobRuns(t *testing.T) {
+	e := newEnv(t)
+	ja := newJobAgent(t)
+	id, a := e.jobHost(ja)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	events := e.g.Subscribe(ctx)
+
+	jA, _ := e.g.StartJob(ctx, Actor{Operator: "op"}, id, JobSpec{Kind: protocol.JobAptUpdate})
+	jB, _ := e.g.StartJob(ctx, Actor{Operator: "op"}, id, JobSpec{Kind: protocol.JobAptClean})
+	ev := waitEvent(t, events, EventJobStarted)
+	if got := ev.Payload.(Job); got.ID != jA.ID || got.State != JobRunning || got.StartedAt.IsZero() || ev.Host != id {
+		t.Fatalf("first job_started = %+v", ev)
+	}
+	ja.nextStart()
+	a.send(protocol.TypeJobDone, "", protocol.JobDone{JobID: jA.ID, OK: true})
+	ev = waitEvent(t, events, EventJobStarted)
+	if got := ev.Payload.(Job); got.ID != jB.ID || got.State != JobRunning {
+		t.Fatalf("second job_started = %+v", ev)
+	}
+}

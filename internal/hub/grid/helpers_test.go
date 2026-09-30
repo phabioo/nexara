@@ -167,6 +167,7 @@ type fakeAgent struct {
 // handler may be nil; messages it does not handle land in the inbox.
 func (e *testEnv) connect(name string, hello protocol.Hello, handler func(*fakeAgent, protocol.Envelope) bool) *fakeAgent {
 	e.t.Helper()
+	before := e.connOf(name)
 	ctx, cancel := context.WithCancel(context.Background())
 	ws, _, err := websocket.Dial(ctx, e.wsURL(), &websocket.DialOptions{HTTPHeader: http.Header{"X-Test-Host": {name}}})
 	if err != nil {
@@ -193,7 +194,22 @@ func (e *testEnv) connect(name string, hello protocol.Hello, handler func(*fakeA
 		e.t.Fatal(err)
 	}
 	go a.run()
+	if a.ack.Accepted {
+		// The ack is sent before the grid installs the connection; wait for it.
+		eventually(e.t, func() bool { return e.connOf(name) != before && e.connOf(name) != nil })
+	}
 	return a
+}
+
+func (e *testEnv) connOf(name string) *agentConn {
+	e.g.mu.Lock()
+	defer e.g.mu.Unlock()
+	for _, st := range e.g.hosts {
+		if st.name == name {
+			return st.conn
+		}
+	}
+	return nil
 }
 
 func (a *fakeAgent) close() {

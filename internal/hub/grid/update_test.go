@@ -2,12 +2,15 @@ package grid
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 
 	"github.com/phabioo/nexara/internal/hub/agentbin"
 	"github.com/phabioo/nexara/internal/hub/store"
@@ -209,5 +212,73 @@ func TestAgentDownloadHandler(t *testing.T) {
 		if tc.want == http.StatusUnauthorized && string(body) == string(fakeAgentData) {
 			t.Errorf("%s: binary leaked", tc.name)
 		}
+	}
+}
+
+// rawIncompatibleHello dials as host and sends a hello with an unsupported protocol version.
+func rawIncompatibleHello(t *testing.T, e *testEnv, host string) (*websocket.Conn, protocol.HelloAck) {
+	t.Helper()
+	ctx := context.Background()
+	ws, _, err := websocket.Dial(ctx, e.wsURL(), &websocket.DialOptions{HTTPHeader: http.Header{"X-Test-Host": {host}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ws.CloseNow() })
+	hello, _ := json.Marshal(protocol.Hello{AgentVersion: "0.0.1", ProtocolVersion: 99, OS: "linux", Arch: "arm64"})
+	raw, _ := json.Marshal(protocol.Envelope{V: 99, Type: protocol.TypeHello, ID: "h1", Data: hello})
+	if err := ws.Write(ctx, websocket.MessageText, raw); err != nil {
+		t.Fatal(err)
+	}
+	rctx, cancel := context.WithTimeout(ctx, waitFor)
+	defer cancel()
+	_, data, err := ws.Read(rctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := protocol.Decode(data)
+	if err != nil || env.Type != protocol.TypeHelloAck {
+		t.Fatalf("env = %+v, %v", env, err)
+	}
+	return ws, decode[protocol.HelloAck](t, env)
+}
+
+func TestRejectedAgentReceivesUpdateOnSameConnection(t *testing.T) {
+	e := newEnv(t, withHubVersion("0.2.0"))
+	e.addHost("alpha")
+	ws, ack := rawIncompatibleHello(t, e, "alpha")
+	if ack.Accepted || !ack.UpdateRequired {
+		t.Fatalf("ack = %+v", ack)
+	}
+	rctx, cancel := context.WithTimeout(context.Background(), waitFor)
+	defer cancel()
+	_, data, err := ws.Read(rctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := protocol.Decode(data)
+	if err != nil || env.Type != protocol.TypeAgentUpdate || env.ID == "" {
+		t.Fatalf("env = %+v, %v", env, err)
+	}
+	if msg := decode[protocol.AgentUpdate](t, env); msg.Version != "0.2.0" || msg.SHA256 != fakeSHA || msg.Path != "/grid/agent/linux/arm64" {
+		t.Fatalf("agent.update = %+v", msg)
+	}
+	res, _ := protocol.Encode(protocol.TypeResult, env.ID, protocol.Result{OK: true})
+	if err := ws.Write(rctx, websocket.MessageText, res); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ws.Read(rctx); err == nil || rctx.Err() != nil {
+		t.Fatalf("connection should be closed after the result, err = %v", err)
+	}
+	if au := e.waitAudit("agent.update"); au.User != "system" || au.Result != store.AuditOK {
+		t.Fatalf("audit = %+v", au)
+	}
+
+	// The guard blocks an immediate second push: the connection is just closed.
+	ws2, ack2 := rawIncompatibleHello(t, e, "alpha")
+	if ack2.Accepted {
+		t.Fatal("accepted")
+	}
+	if _, _, err := ws2.Read(rctx); err == nil || rctx.Err() != nil {
+		t.Fatalf("expected close without update, err = %v", err)
 	}
 }

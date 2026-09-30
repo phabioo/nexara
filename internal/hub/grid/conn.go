@@ -264,9 +264,53 @@ func (g *Grid) rejectIncompatible(st *hostState, c *agentConn, env protocol.Enve
 		st.host.OS, st.host.Arch = hello.OS, hello.Arch
 	}
 	status := g.statusLocked(st)
+	push := false
+	if herr == nil && hello.OS != "" && hello.Arch != "" && time.Since(st.lastAutoUpdate) >= autoUpdateBackoff {
+		if _, ok := g.opts.AgentBinary(hello.OS, hello.Arch); ok {
+			st.lastAutoUpdate = time.Now()
+			push = true
+		}
+	}
 	g.mu.Unlock()
 	g.saveStatus(st.id, status)
+	if push {
+		g.pushUpdateOnRejected(st, c, hello)
+	}
 	_ = c.ws.Close(websocket.StatusPolicyViolation, "update required")
+}
+
+// pushUpdateOnRejected sends agent.update on the connection of a rejected
+// agent (which stays open for a short window for exactly this) and waits for
+// its result. There is no read loop yet, so it reads the answer itself.
+func (g *Grid) pushUpdateOnRejected(st *hostState, c *agentConn, hello protocol.Hello) {
+	bin, ok := g.opts.AgentBinary(hello.OS, hello.Arch)
+	if !ok {
+		return
+	}
+	msg := protocol.AgentUpdate{Version: g.opts.HubVersion, SHA256: bin.SHA256, Path: "/grid/agent/" + bin.OS + "/" + bin.Arch}
+	id := store.NewID()
+	err := c.send(protocol.TypeAgentUpdate, id, msg)
+	if err == nil {
+		ctx, cancel := context.WithTimeout(c.ctx, g.to.update)
+		defer cancel()
+		for {
+			_, data, rerr := c.ws.Read(ctx)
+			if rerr != nil {
+				err = fmt.Errorf("grid: no answer to agent.update: %w", rerr)
+				break
+			}
+			env, derr := protocol.Decode(data)
+			if derr != nil || env.ID != id {
+				continue
+			}
+			err = resultErr(env, "agent update")
+			break
+		}
+	}
+	g.audit(store.AuditEntry{User: SystemActor.Operator, Host: st.name, Action: "agent.update", Detail: msg.Version, Result: auditResult(err)})
+	if err != nil {
+		g.log.Warn("grid: update of rejected agent failed", "host", st.name, "err", err)
+	}
 }
 
 func (g *Grid) statusLocked(st *hostState) store.HostStatus {

@@ -94,6 +94,7 @@ func (g *Grid) pumpLocked(st *hostState) {
 	rec.State = JobRunning
 	rec.StartedAt = g.now()
 	rec.conn = st.conn
+	g.emitLocked(Event{Kind: EventJobStarted, Host: st.id, Payload: rec.snapshot()})
 	go g.startOnAgent(st, rec, rec.conn)
 }
 

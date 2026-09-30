@@ -691,3 +691,59 @@ func TestNeedsUpdate(t *testing.T) {
 		}
 	}
 }
+
+func TestRegisterKnownHostClosesConnectionWithoutHostAdded(t *testing.T) {
+	e := newEnv(t)
+	id := e.addHost("alpha")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	events := e.g.Subscribe(ctx)
+	a := e.connect("alpha", helloFor("0.1.0"), nil)
+	waitEvent(t, events, EventHostOnline)
+
+	// Re-install: new certificate and display name in the store.
+	if err := e.st.SetHostCert(ctx, string(id), "fp-alpha-new", "serial2", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.st.SetHostDisplayName(ctx, string(id), "Renamed"); err != nil {
+		t.Fatal(err)
+	}
+	h, err := e.st.GetHost(ctx, string(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.g.Register(ctx, h); err != nil {
+		t.Fatal(err)
+	}
+	a.waitDone()
+	for {
+		ev := nextEvent(t, events)
+		if ev.Kind == EventHostAdded {
+			t.Fatal("host_added emitted for a known host")
+		}
+		if ev.Kind == EventHostOffline {
+			break
+		}
+	}
+	info, _ := e.g.Host(id)
+	if info.Online || info.DisplayName != "Renamed" {
+		t.Fatalf("info = %+v", info)
+	}
+	if !e.g.IsRevoked("fp-alpha") || e.g.IsRevoked("fp-alpha-new") {
+		t.Fatal("fingerprints not refreshed")
+	}
+}
+
+func nextEvent(t *testing.T, ch <-chan Event) Event {
+	t.Helper()
+	select {
+	case ev, ok := <-ch:
+		if !ok {
+			t.Fatal("event channel closed")
+		}
+		return ev
+	case <-timeAfterWait():
+		t.Fatal("no event in time")
+	}
+	return Event{}
+}

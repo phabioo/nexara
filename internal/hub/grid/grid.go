@@ -177,7 +177,7 @@ func NewGrid(opts Options) (*Grid, error) {
 		if h.Revoked {
 			continue
 		}
-		g.addLocked(h)
+		_, _ = g.addLocked(h)
 	}
 	return g, nil
 }
@@ -186,7 +186,7 @@ func NewGrid(opts Options) (*Grid, error) {
 // not be used afterwards.
 func (g *Grid) Close() { g.cancel() }
 
-func (g *Grid) addLocked(h store.Host) *hostState {
+func (g *Grid) addLocked(h store.Host) (*hostState, bool) {
 	id := HostID(h.ID)
 	h.Capabilities = slices.Clone(h.Capabilities)
 	st, ok := g.hosts[id]
@@ -208,11 +208,13 @@ func (g *Grid) addLocked(h store.Host) *hostState {
 	if h.CertFingerprint != "" {
 		g.byFP[h.CertFingerprint] = id
 	}
-	return st
+	return st, !ok
 }
 
 // Register announces a new or re-enrolled host (called by the enrollment
-// package) and emits EventHostAdded.
+// package). EventHostAdded is emitted for new hosts only. For a known host
+// (re-installed device, new certificate) the host facts are refreshed and a
+// live connection is closed: it used the old certificate.
 func (g *Grid) Register(_ context.Context, h store.Host) error {
 	if h.ID == "" || h.Name == "" {
 		return fmt.Errorf("%w: host needs id and name", ErrInvalidArgument)
@@ -221,9 +223,15 @@ func (g *Grid) Register(_ context.Context, h store.Host) error {
 		return fmt.Errorf("%w: host is revoked", ErrInvalidArgument)
 	}
 	g.mu.Lock()
-	defer g.mu.Unlock()
-	st := g.addLocked(h)
-	g.emitLocked(Event{Kind: EventHostAdded, Host: st.id, Payload: st.infoLocked()})
+	st, isNew := g.addLocked(h)
+	old := st.conn
+	if isNew {
+		g.emitLocked(Event{Kind: EventHostAdded, Host: st.id, Payload: st.infoLocked()})
+	}
+	g.mu.Unlock()
+	if old != nil {
+		old.close()
+	}
 	return nil
 }
 
