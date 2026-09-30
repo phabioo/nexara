@@ -1,0 +1,48 @@
+{{/* Overview. Data: views.OverviewPage. One template for every width; the layout only changes through CSS. */}}
+{{define "content"}}{{if .Empty}}<div class="view ov-empty">
+  <div class="ov-offline">
+    <div class="card ov-offline-card">
+      {{template "corners"}}
+      {{template "card-head" (dict "Title" "No hosts yet" "Variant" "hot")}}
+      <div class="card-body">
+        {{template "tag" (dict "Tone" "dark" "Text" "Nexara Grid")}}
+        <p class="card-text">No device is linked to this hub. Link a Raspberry Pi to see its live values here.</p>
+        {{template "checker"}}
+        {{with .AddHostURL}}<button type="button" class="btn-card" hx-get="{{.}}" hx-target="#modal-root" hx-swap="innerHTML"><span>Link a host</span>{{icon "arrow-right" 14}}</button>{{end}}
+      </div>
+    </div>
+  </div>
+</div>{{else if .Offline}}<div class="view" sse-connect="{{.SSEURL}}">
+  <span hidden sse-swap="ov-state" data-ov-state></span>
+  {{template "overview-offline" .Offline}}
+</div>{{else}}<div class="view" sse-connect="{{.SSEURL}}">
+  <span hidden sse-swap="ov-state" data-ov-state></span>
+  <div class="view-head">
+    <span class="view-title">Overview: {{.Label}}</span>
+    <div class="view-actions">
+      {{if .RebootRequired}}<span class="btn-alert ov-reboot" role="status">{{icon "reboot" 12}}<span>Reboot required</span></span>{{end}}
+      <div class="stat-chip"><span>LOAD</span><span id="ov-load" sse-swap="ov-load">{{.Load}}</span></div>
+    </div>
+  </div>
+  <div class="grid-cards">
+    <div class="card ov-cpu">
+      {{template "card-head" (dict "Title" .CPUTitle "Variant" "hot")}}
+      <div class="card-body" sse-swap="ov-cpu">{{template "overview-cpu-body" .CPU}}</div>
+    </div>
+    <div class="card card-dark ov-mem">
+      {{template "card-head" (dict "Title" "Memory & storage")}}
+      <div class="card-body" sse-swap="ov-mem">{{template "overview-mem-body" .Mem}}</div>
+    </div>
+    <div class="card ov-svc">
+      {{template "card-head" (dict "Title" "Services")}}
+      <div class="card-body" sse-swap="ov-svc">{{template "overview-svc-body" .Svc}}</div>
+    </div>
+  </div>
+  <div class="micro-row" aria-hidden="true">
+    <span class="micro">{{.MicroNode}}<br>[live feed]</span>
+    <span class="micro">{{.MicroRes}}<br>[sampled 2 s]</span>
+    <span class="micro">svc_unit_scan<br>[systemd]</span>
+  </div>
+</div>{{end}}{{end}}
+
+{{define "scripts"}}<script src="{{static "js/overview.js"}}" defer></script>{{end}}
