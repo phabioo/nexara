@@ -423,6 +423,9 @@ func TestJobUpgradeLifecycle(t *testing.T) {
 	if seen[0].Kind != grid.EventJobQueued {
 		t.Errorf("first event = %s", seen[0].Kind)
 	}
+	if st, ok := seen[1].Payload.(grid.Job); seen[1].Kind != grid.EventJobStarted || !ok || st.ID != j.ID || st.State != grid.JobRunning || st.StartedAt.IsZero() {
+		t.Errorf("second event = %+v", seen[1])
+	}
 
 	var lines []grid.JobLine
 	for _, e := range seen {
@@ -586,6 +589,11 @@ func TestJobQueueBusyAndCancel(t *testing.T) {
 	if j := ev.Payload.(grid.Job); j.State != grid.JobCanceled || j.OK || j.Error == "" {
 		t.Errorf("running job after cancel = %+v", j)
 	}
+	// A queued job only announces itself as started once its predecessor ended.
+	waitFor(t, ch, func(e grid.Event) bool {
+		j, ok := e.Payload.(grid.Job)
+		return e.Kind == grid.EventJobStarted && ok && j.ID == third.ID && j.State == grid.JobRunning
+	})
 	ev, _ = waitFor(t, ch, jobDone(third.ID))
 	if j := ev.Payload.(grid.Job); j.State != grid.JobDone {
 		t.Errorf("third = %+v", j)

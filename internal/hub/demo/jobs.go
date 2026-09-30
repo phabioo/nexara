@@ -71,6 +71,7 @@ func (h *Hub) begin(j *job) {
 	j.State = grid.JobRunning
 	j.StartedAt = h.now().UTC()
 	j.ctx, j.cancel = context.WithCancel(h.ctx)
+	h.emit(grid.Event{Kind: grid.EventJobStarted, Host: j.Host, Payload: j.copy()})
 }
 
 // CancelJob implements grid.Hub.
