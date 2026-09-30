@@ -1014,4 +1014,96 @@ svg { flex: none; }
 /* --- end view: packages --- */
 
 /* === view: shell + add host === */
+/* Nexara Shell */
+.shell-view { flex: 1 1 0; min-height: 380px; }
+.shell-clear {
+  height: 26px; padding: 0 10px; background: var(--ink); color: var(--paper);
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: .02em;
+}
+.shell-clear:hover { background: var(--paper); color: var(--ink); }
+.shell-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg-deep); border: 1px solid #23262a; }
+.shell-body { flex: 1; min-height: 0; display: flex; gap: 26px; padding: 20px 12px 14px 24px; }
+.shell-side {
+  width: 250px; flex: none; display: flex; flex-direction: column; gap: 18px;
+  color: var(--green-term); font-size: 12px; line-height: 1.6; overflow: hidden;
+}
+.shell-board { display: block; max-width: 100%; height: auto; }
+.shell-main { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 13px; line-height: 1.5; color: var(--green-term); overflow: hidden; }
+.shell-line { display: flex; justify-content: space-between; gap: 12px; padding-right: 16px; }
+.shell-ver { display: none; }
+.shell-summary { display: none; font-size: 11px; color: #1f8f45; }
+.shell-rule { white-space: nowrap; overflow: hidden; padding-right: 16px; }
+.shell-term { flex: 1; min-height: 0; margin-top: 4px; overflow: hidden; }
+.shell-term .xterm { height: 100%; }
+.shell-term .xterm-viewport { background-color: transparent !important; }
+.shell-status {
+  flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 8px; padding: 6px 0 0; border-top: 1px solid #23262a; font-size: 12px; color: var(--pink-soft);
+}
+.shell-keys {
+  display: none; flex: none; align-items: center; gap: 4px; height: 46px; padding: 0 8px;
+  background: var(--ink); overflow-x: auto; scrollbar-width: none;
+}
+.shell-keys::-webkit-scrollbar { display: none; }
+.shell-key {
+  flex: none; height: 36px; min-width: 44px; padding: 0 8px;
+  background: var(--panel); color: var(--green-term); font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+}
+.shell-key.is-narrow { min-width: 36px; }
+.shell-key:active, .shell-key[aria-pressed="true"] { background: var(--lime); color: var(--ink); }
+.shell-state { flex: 1; display: flex; align-items: center; justify-content: center; padding: 12px 0; }
+.shell-state-card { flex: none; position: relative; width: min(540px, 100%); box-shadow: 0 0 0 12px rgba(17,18,20,.55); }
+
+/* Add host dialog */
+.addhost-pane, .addhost-form, .addhost-code-pane, .addhost-progress { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.addhost-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 12px 14px; }
+.addhost-auth { position: relative; }
+.addhost-auth-tabs label.tab { cursor: pointer; }
+.addhost-auth-password, .addhost-auth-key { display: none; }
+#addhost-auth-password:checked ~ .addhost-auth-password, #addhost-auth-key:checked ~ .addhost-auth-key { display: flex; }
+#addhost-auth-password:checked ~ .addhost-auth-tabs label[for="addhost-auth-password"],
+#addhost-auth-key:checked ~ .addhost-auth-tabs label[for="addhost-auth-key"] { background: var(--lime); color: var(--ink); }
+#addhost-auth-password:focus-visible ~ .addhost-auth-tabs label[for="addhost-auth-password"],
+#addhost-auth-key:focus-visible ~ .addhost-auth-tabs label[for="addhost-auth-key"] { outline: 2px solid var(--ink); outline-offset: 2px; }
+.addhost-code { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; background: var(--lime); color: var(--ink); }
+.addhost-code-value { font-size: 24px; font-weight: 900; letter-spacing: .06em; overflow-wrap: anywhere; }
+.addhost-code-meta { font-size: 12px; font-weight: 600; text-align: right; }
+.addhost-wait { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.addhost-target { display: flex; align-items: center; gap: 8px; }
+.addhost-state { background: var(--chip-light); color: var(--panel-2); }
+.addhost-state.is-online { background: var(--lime); color: var(--ink); }
+.addhost-state.is-failed { background: var(--pink); color: var(--ink); }
+.addhost-steps { display: flex; flex-direction: column; }
+.addhost-step-label { flex: 1; min-width: 0; }
+.addhost-step-detail { color: var(--card-note); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.step-row.fail .step-box { background: var(--pink); color: var(--ink); }
+.step-row.fail .addhost-step-detail { color: var(--pink-deep); font-weight: 600; }
+.step-sub { padding: 0 0 8px 34px; font-size: 11px; color: var(--card-note); overflow-wrap: anywhere; }
+.step-sub b { font-weight: 600; color: var(--card-text); }
+
+/* tablet and phone: the board and its info move into one line above the terminal */
+@media (max-width: 1023.98px) {
+  .shell-side, .shell-deco, .shell-session { display: none; }
+  .shell-ver, .shell-summary { display: block; }
+  .shell-body { padding: 12px 12px 10px; }
+}
+@media (max-width: 767.98px) {
+  .shell-view { gap: 6px; }
+  .shell-view .view-head { min-height: 30px; flex-wrap: nowrap; }
+  .shell-view .view-title { flex: 1 1 auto; font-size: 12px; }
+  .shell-clear { height: 30px; font-size: 12px; }
+  .shell-body { padding: 10px 10px 8px; }
+  .shell-main { font-size: 12px; }
+  .shell-panel, .shell-keys { margin: 0 -10px; }
+  .shell-panel { border-left: 0; border-right: 0; }
+  .shell-line { padding-right: 0; }
+  .addhost-grid { grid-template-columns: minmax(0, 1fr); }
+  .addhost-code { flex-direction: column; align-items: flex-start; }
+  .addhost-code-meta { text-align: left; }
+  .addhost-steps .step-row { flex-wrap: wrap; row-gap: 2px; padding: 6px 0; }
+  .addhost-step-detail { flex: 1 1 100%; text-align: left; padding-left: 34px; }
+}
+@media (max-width: 767.98px), (pointer: coarse) {
+  .shell-keys { display: flex; }
+}
 /* --- end view: shell + add host --- */

@@ -1,0 +1,76 @@
+{{/* Nexara Shell. Data: views.ShellPage. The terminal is xterm.js (js/shell.js) on the WebSocket in data-ws. */}}
+{{define "head"}}<link rel="stylesheet" href="{{static "css/xterm-6.0.0.css"}}">{{end}}
+
+{{define "scripts"}}{{if eq .State "ready"}}<script src="{{static "js/vendor/xterm-6.0.0.js"}}" defer></script>
+<script src="{{static "js/vendor/xterm-addon-fit-0.11.0.js"}}" defer></script>{{end}}
+<script src="{{static "js/shell.js"}}" defer></script>{{end}}
+
+{{define "content"}}<section class="view shell-view" data-shell data-state="{{.State}}" data-host="{{.Host}}" data-label="{{.Label}}"{{with .WSURL}} data-ws="{{.}}"{{end}}>
+  <div class="view-head">
+    <span class="view-title">Nexara Shell: Session 1</span>
+    {{if eq .State "ready"}}<button type="button" class="shell-clear" data-shell-clear>Clear</button>{{end}}
+  </div>
+
+  {{if eq .State "ready"}}
+  <div class="shell-panel">
+    {{template "ticker" (dict "Variant" "green" "Text" "nexara shell 1.0 (grid.session)")}}
+    <div class="shell-body">
+      <div class="shell-side">
+        <svg class="shell-board" width="250" height="190" viewBox="0 0 50 38" shape-rendering="crispEdges" aria-hidden="true">
+          <defs><pattern id="shell-board-dither" width="2" height="2" patternUnits="userSpaceOnUse"><rect width="1" height="1" fill="#1a6a36"/></pattern></defs>
+          <rect x="2" y="6" width="40" height="26" fill="url(#shell-board-dither)"/>
+          <rect x="6" y="9" width="34" height="22" fill="#1fbf5a"/>
+          <rect x="6" y="9" width="34" height="1" fill="#7dff9e"/>
+          <path d="M10 11.5H34" stroke="#0b0c0d" stroke-width="1" stroke-dasharray="1 1"/>
+          <rect x="12" y="15" width="10" height="10" fill="#0b0c0d"/>
+          <rect x="14" y="17" width="6" height="6" fill="#1a6a36"/>
+          <rect x="25" y="16" width="6" height="8" fill="#0b0c0d"/>
+          <rect x="35" y="13" width="7" height="5" fill="#7dff9e"/><rect x="35" y="19" width="7" height="5" fill="#7dff9e"/><rect x="34" y="25" width="8" height="5" fill="#35e36a"/>
+          <path d="M9 31V38M11 31V36M13 31V38M15 31V35M17 31V38M19 31V37M21 31V38M23 31V36M25 31V38M27 31V37M29 31V38" stroke="#35e36a" stroke-width="1"/>
+        </svg>
+        <div class="shell-info">HOST: {{.Label}}<br>ADDRESS: {{.Address}}<br>PROTOCOL: GRID · mTLS<br>USER: enrolled user<br>SHELL: login shell</div>
+      </div>
+      <div class="shell-main">
+        <div class="shell-line"><span>nexara.shell.access</span><span class="shell-deco" aria-hidden="true">- -:- -.- -:- -.- -</span>{{with .Version}}<span class="shell-ver">{{.}}</span>{{end}}</div>
+        <div class="shell-line shell-session"><span>SESSION: {{.Label}}</span>{{with .Version}}<span>{{.}}</span>{{end}}</div>
+        <div class="shell-summary">{{.Label}} · {{.Address}} · GRID mTLS</div>
+        <div class="shell-rule" aria-hidden="true">==========================================================================================================================</div>
+        <div class="shell-term" id="shell-term" data-shell-term></div>
+        <div class="shell-status" data-shell-status role="status" hidden>
+          <span class="shell-status-text" data-shell-status-text></span>
+          <button type="button" class="btn-tool is-hot" data-shell-reconnect>Reconnect</button>
+        </div>
+      </div>
+    </div>
+    {{template "ticker" (dict "Variant" "green" "Text" "nexara shell 1.0 (grid.session)")}}
+  </div>
+  <div class="shell-keys scroll-x" role="toolbar" aria-label="Terminal keys" data-shell-keys>
+    {{range .Keys}}<button type="button" class="shell-key{{if .Arrow}} is-narrow{{end}}" data-key="{{.Name}}"{{with .Text}} data-text="{{.}}"{{end}}{{if .Mod}} data-mod aria-pressed="false"{{end}}>{{.Label}}</button>{{end}}
+  </div>
+
+  {{else}}
+  <div class="shell-state">
+    <div class="card shell-state-card">
+      {{template "corners"}}
+      {{if eq .State "offline"}}
+      {{template "card-head" (dict "Title" (print .Label " · Offline") "Variant" "bad")}}
+      <div class="card-body">
+        {{template "tag" (dict "Tone" "dark" "Text" "Offline")}}
+        <p class="card-text">The Grid Agent on {{.Label}} is not connected, so no shell session can be opened. This page returns to the terminal as soon as the agent reconnects.</p>
+        {{template "checker"}}
+        {{template "btn-card" (dict "Label" "Back to overview" "Href" .BackURL "Icon" "arrow-right")}}
+      </div>
+      <div class="visually-hidden" hidden data-shell-watch hx-ext="sse" sse-connect="{{.EventsURL}}" sse-swap="shell-host-state"></div>
+      {{else}}
+      {{template "card-head" (dict "Title" "Shell disabled")}}
+      <div class="card-body">
+        {{template "tag" (dict "Tone" "light" "Text" "Disabled")}}
+        <p class="card-text">Nexara Shell is turned off for {{.Label}}. Enable the shell capability in the Grid Agent configuration on the host to use it.</p>
+        {{template "checker"}}
+        {{template "btn-card" (dict "Label" "Back to overview" "Href" .BackURL "Icon" "arrow-right")}}
+      </div>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+</section>{{end}}
