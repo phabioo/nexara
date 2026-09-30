@@ -27,7 +27,18 @@ jobs:
       - name: vet
         run: go vet ./...
       - name: test
-        run: go test -race -count=1 ./...
+        # Failures are also emitted as annotations (readable without signing in).
+        run: |
+          set -o pipefail
+          if ! go test -race -count=1 ./... 2>&1 | tee test.log; then
+            grep -E -- '--- FAIL|^FAIL|panic:|_test\.go:[0-9]+|\.go:[0-9]+:' test.log | head -120 > fail.log || true
+            split -l 12 fail.log chunk.
+            for f in chunk.*; do
+              msg="$(sed -e 's/%/%25/g' "$f" | awk '{printf "%s%%0A", $0}')"
+              echo "::error title=go test::${msg}"
+            done
+            exit 1
+          fi
       - name: build (CGO_ENABLED=0)
         env:
           CGO_ENABLED: "0"
