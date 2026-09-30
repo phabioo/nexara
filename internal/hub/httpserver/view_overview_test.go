@@ -472,7 +472,12 @@ func TestOverviewSSERenderers(t *testing.T) {
 			want string
 		}{{grid.EventHostOnline, "a1 online"}, {grid.EventHostOffline, "b2 offline"}} {
 			id := grid.HostID(strings.Fields(tc.want)[0])
-			gs := run(grid.Event{Kind: tc.kind, Host: id, Payload: grid.HostInfo{ID: id}})
+			var gs []got
+			for _, g := range run(grid.Event{Kind: tc.kind, Host: id, Payload: grid.HostInfo{ID: id}}) {
+				if strings.HasPrefix(g.name, "ov-") { // other views register their own renderers
+					gs = append(gs, g)
+				}
+			}
 			if len(gs) != 1 || gs[0].name != "ov-state" || gs[0].html != tc.want {
 				t.Errorf("%s: %+v", tc.kind, gs)
 			}

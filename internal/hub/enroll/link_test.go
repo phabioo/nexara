@@ -330,7 +330,7 @@ func TestLinkViaSSHWithHubKey(t *testing.T) {
 	for i, c := range r.conn.cmds {
 		if strings.HasPrefix(c, "sudo ") {
 			n++
-			if !strings.HasPrefix(c, "sudo -n ") || strings.Contains(c, "-S") {
+			if !strings.HasPrefix(c, "sudo -n ") || strings.Contains(c, " -S ") {
 				t.Errorf("hub key must use sudo -n: %q", c)
 			}
 			if len(r.conn.stdins[i]) != 0 {
