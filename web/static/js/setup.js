@@ -5,15 +5,27 @@
 
   var LABELS = ['Too weak', 'Weak', 'Fair', 'Good', 'Strong', 'Very strong'];
 
-  // Same scoring as the design mockup; the server enforces the real policy.
+  // Port of auth.Strength (internal/hub/auth/password.go): the same 0-5 score the server documents
+  // for this meter. Advisory only; the server enforces the length policy.
   function score(pw) {
-    var s = 0;
-    if (pw.length >= 8) { s++; }
-    if (pw.length >= 12) { s++; }
-    if (pw.length >= 16) { s++; }
-    if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) { s++; }
-    if (/[0-9]/.test(pw) && /[^A-Za-z0-9]/.test(pw)) { s++; }
-    return s;
+    var chars = Array.from(pw);
+    var n = chars.length;
+    if (n === 0) { return 0; }
+    var s = n >= 24 ? 4 : n >= 16 ? 3 : n >= 12 ? 2 : n >= 8 ? 1 : 0;
+    var lower = false, upper = false, digit = false, other = false;
+    var distinct = {};
+    var distinctCount = 0;
+    chars.forEach(function (c) {
+      if (!distinct[c]) { distinct[c] = true; distinctCount++; }
+      if (c >= 'a' && c <= 'z') { lower = true; }
+      else if (c >= 'A' && c <= 'Z') { upper = true; }
+      else if (c >= '0' && c <= '9') { digit = true; }
+      else if (!/\p{Cc}/u.test(c)) { other = true; }
+    });
+    var classes = (lower ? 1 : 0) + (upper ? 1 : 0) + (digit ? 1 : 0) + (other ? 1 : 0);
+    if (classes >= 3) { s++; }
+    if (distinctCount < 5 && s > 1) { s = 1; }
+    return Math.min(s, 5);
   }
 
   function showStrength(input) {
@@ -30,7 +42,14 @@
 
   document.addEventListener('input', function (e) {
     var t = e.target;
-    if (t instanceof HTMLInputElement && t.hasAttribute('data-strength-input')) { showStrength(t); }
+    if (!(t instanceof HTMLInputElement)) { return; }
+    if (t.hasAttribute('data-strength-input')) { showStrength(t); }
+    // Like the mockup: editing a field withdraws the messages of the previous submit.
+    var form = t.form;
+    if (form) {
+      Array.prototype.forEach.call(form.querySelectorAll('.form-error'), function (el) { el.remove(); });
+      Array.prototype.forEach.call(form.querySelectorAll('[aria-invalid]'), function (el) { el.removeAttribute('aria-invalid'); });
+    }
   });
 
   // The download itself is a normal link; mark it so the operator sees what was fetched.

@@ -924,3 +924,94 @@ func TestSetupHelpers(t *testing.T) {
 		}
 	})
 }
+
+// TestSetupOperatorMessages pins the message for every cause on the Operator
+// step, including the injected passphrase policy (the wiring passes the auth
+// rules). Each cause must produce exactly its own message, never another's.
+func TestSetupOperatorMessages(t *testing.T) {
+	policy := func(p string) error {
+		switch {
+		case len([]rune(p)) > 40:
+			return errors.New("Use at most 40 characters.")
+		case strings.Contains(p, "password"):
+			return errors.New("That passphrase is too common.")
+		}
+		return nil
+	}
+	long := strings.Repeat("x", 41)
+	all := []string{
+		"Use 3 to 32 characters.",
+		"Use only letters, digits, dot, dash and underscore.",
+		"Use at least 12 characters.",
+		"Use at most 40 characters.",
+		"That passphrase is too common.",
+		"The passphrases do not match.",
+	}
+	form := func(id, pass, confirm string) url.Values {
+		return url.Values{"id": {id}, "passphrase": {pass}, "confirm": {confirm}}
+	}
+	tests := []struct {
+		name string
+		form url.Values
+		want []string // exactly these messages, in this order
+	}{
+		{"too short", form("fabio", "short", "short"), []string{"Use at least 12 characters."}},
+		{"eleven characters", form("fabio", "elevenchars", "elevenchars"), []string{"Use at least 12 characters."}},
+		{"twelve characters are fine", form("fabio", "twelve chars", "twelve chars"), nil},
+		{"long but repeat differs", form("fabio", setupTestPass, setupTestPass+"x"), []string{"The passphrases do not match."}},
+		{"repeat empty", form("fabio", setupTestPass, ""), []string{"The passphrases do not match."}},
+		{"policy: too common", form("fabio", "my password is long", "my password is long"), []string{"That passphrase is too common."}},
+		{"policy: too long", form("fabio", long, long), []string{"Use at most 40 characters."}},
+		{"id too short", form("ab", setupTestPass, setupTestPass), []string{"Use 3 to 32 characters."}},
+		{"id too long", form(strings.Repeat("a", 33), setupTestPass, setupTestPass), []string{"Use 3 to 32 characters."}},
+		{"id with space", form("fa bio", setupTestPass, setupTestPass), []string{"Use only letters, digits, dot, dash and underscore."}},
+		{"id with umlaut", form("fäbio", setupTestPass, setupTestPass), []string{"Use only letters, digits, dot, dash and underscore."}},
+		{"id empty", form("", setupTestPass, setupTestPass), []string{"Use 3 to 32 characters."}},
+		{"id and passphrase wrong", form("x", "short", "short"), []string{"Use 3 to 32 characters.", "Use at least 12 characters."}},
+		{"three problems", form("x y", "short", "other"), []string{"Use only letters, digits, dot, dash and underscore.", "Use at least 12 characters.", "The passphrases do not match."}},
+		{"long passphrase is accepted with the matching repeat", form("fabio", setupTestPass, setupTestPass), nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newSetupEnv(t)
+			e.srv.setup.Sessions = setup.NewSessions(setup.SessionOptions{
+				Now: e.clock.Now, Wizard: setup.WizardOptions{CheckPassphrase: policy},
+			})
+			b := e.browser(t)
+			b.walkTo(setup.StepOperator)
+			rec := b.post("/setup/operator", tt.form)
+			if tt.want == nil {
+				wantRedirect(t, rec, "/setup/two-factor")
+				return
+			}
+			if rec.Code != 422 {
+				t.Fatalf("status %d", rec.Code)
+			}
+			body := rec.Body.String()
+			var got []string
+			for _, m := range all {
+				if strings.Contains(body, m) {
+					got = append(got, m)
+				}
+			}
+			// Compare as sets, and check the order of the rows in the page.
+			if len(got) != len(tt.want) {
+				t.Fatalf("messages = %q, want %q", got, tt.want)
+			}
+			last := -1
+			for _, w := range tt.want {
+				i := strings.Index(body, w)
+				if i < 0 || i < last {
+					t.Fatalf("message %q missing or out of order (messages = %q)", w, got)
+				}
+				last = i
+			}
+			if strings.Contains(body, "auth:") || strings.Contains(body, "does not meet the policy") {
+				t.Error("internal error text reaches the form")
+			}
+			if n := strings.Count(body, `role="alert"`); n != len(tt.want) {
+				t.Errorf("error rows = %d, want %d", n, len(tt.want))
+			}
+		})
+	}
+}

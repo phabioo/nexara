@@ -12,17 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/phabioo/nexara/internal/hub/grid"
 	"github.com/phabioo/nexara/internal/hub/setup"
 	"github.com/phabioo/nexara/internal/pki"
 )
-
-// setupAnchor gives the server a CA the way the wiring does: through the
-// injected enroller.
-type setupAnchor struct {
-	grid.Enroller
-	*pki.CA
-}
 
 func withCA(t *testing.T, e *setupEnv) *pki.CA {
 	t.Helper()
@@ -30,7 +22,7 @@ func withCA(t *testing.T, e *setupEnv) *pki.CA {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.srv.enroller = setupAnchor{CA: ca}
+	e.srv.setup.CA = ca
 	return ca
 }
 

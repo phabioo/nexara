@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -171,6 +172,26 @@ func TestDevWithoutSeedStartsSetup(t *testing.T) {
 	}
 	if err := d.stop(); err != nil {
 		t.Fatalf("RunDev = %v", err)
+	}
+}
+
+// The demo gets an ephemeral CA so the Trust step (QR code, downloads) is visible.
+func TestDevSetupServesTheCA(t *testing.T) {
+	d := startDev(t, false)
+	resp := d.get("/setup/trust/nexara-ca.crt")
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(string(body), "-----BEGIN CERTIFICATE-----") {
+		t.Fatalf("GET CA = %d %.40q", resp.StatusCode, body)
+	}
+	if strings.Contains(string(body), "PRIVATE KEY") {
+		t.Fatal("the CA key is served")
+	}
+	if err := d.stop(); err != nil {
+		t.Fatalf("RunDev = %v", err)
+	}
+	if entries, err := os.ReadDir(d.tmp); err != nil || len(entries) != 0 {
+		t.Errorf("temporary data left behind: %v %v", entries, err)
 	}
 }
 

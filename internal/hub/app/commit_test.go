@@ -304,10 +304,12 @@ func TestCommitRejections(t *testing.T) {
 		name string
 		res  setup.Result
 		key  string // expected field of the setup.ValidationError
+		msg  string // expected message of that field, if set
 	}{
-		{"weak passphrase", bad(func(r *setup.Result) { r.Passphrase = "short" }), "passphrase"},
-		{"retention out of range", bad(func(r *setup.Result) { r.Hub.RetentionDays = 0 }), "hub"},
-		{"bad time zone", bad(func(r *setup.Result) { r.Hub.TimeZone = "Mars/Base" }), "hub"},
+		{"weak passphrase", bad(func(r *setup.Result) { r.Passphrase = "short" }), "passphrase", "Use at least 12 characters."},
+		{"over-long passphrase", bad(func(r *setup.Result) { r.Passphrase = strings.Repeat("a", auth.MaxPassphraseLength+1) }), "passphrase", "Use at most 1024 characters."},
+		{"retention out of range", bad(func(r *setup.Result) { r.Hub.RetentionDays = 0 }), "hub", ""},
+		{"bad time zone", bad(func(r *setup.Result) { r.Hub.TimeZone = "Mars/Base" }), "hub", ""},
 	}
 	for _, tt := range tests {
 		e := newCommitEnv(t, true)
@@ -316,6 +318,9 @@ func TestCommitRejections(t *testing.T) {
 		var verr setup.ValidationError
 		if !errors.As(err, &verr) || verr[tt.key] == "" {
 			t.Errorf("%s: err = %v, want a ValidationError for %q", tt.name, err, tt.key)
+		}
+		if tt.msg != "" && verr[tt.key] != tt.msg {
+			t.Errorf("%s: message = %q, want %q", tt.name, verr[tt.key], tt.msg)
 		}
 		after, _ := os.ReadFile(e.cfgPath)
 		if string(before) != string(after) {

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/phabioo/nexara/internal/config"
 	"github.com/phabioo/nexara/internal/hub/auth"
@@ -71,7 +72,7 @@ func (c *committer) Commit(ctx context.Context, res setup.Result, clientIP strin
 	hash, err := c.auth.HashPassphrase(ctx, res.Passphrase)
 	if err != nil {
 		if errors.Is(err, auth.ErrWeakPassphrase) {
-			return httpserver.SetupOutcome{}, setup.ValidationError{"passphrase": auth.UserMessage(err)}
+			return httpserver.SetupOutcome{}, setup.ValidationError{"passphrase": passphraseProblem(res.Passphrase)}
 		}
 		return httpserver.SetupOutcome{}, fmt.Errorf("app: hash passphrase: %w", err)
 	}
@@ -170,6 +171,29 @@ func (c *committer) Commit(ctx context.Context, res setup.Result, clientIP strin
 	}
 	c.log.Info("setup complete", "operator", user.OperatorID, "two_factor", twoFactor, "self_link", selfLink)
 	return out, nil
+}
+
+// passphraseProblem is the wizard's message for a passphrase that violates the
+// length policy, worded for the actual cause (auth.UserMessage only knows the
+// minimum). It never contains the passphrase.
+func passphraseProblem(pass string) string {
+	switch n := utf8.RuneCountInString(pass); {
+	case !utf8.ValidString(pass):
+		return "Use valid text characters only."
+	case n > auth.MaxPassphraseLength:
+		return fmt.Sprintf("Use at most %d characters.", auth.MaxPassphraseLength)
+	default:
+		return fmt.Sprintf("Use at least %d characters.", auth.MinPassphraseLength)
+	}
+}
+
+// checkWizardPassphrase is setup.WizardOptions.CheckPassphrase: the auth policy
+// with a message that is safe and correct to show in the form.
+func checkWizardPassphrase(pass string) error {
+	if auth.ValidatePassphrase(pass) == nil {
+		return nil
+	}
+	return errors.New(passphraseProblem(pass))
 }
 
 var hubNameInvalid = regexp.MustCompile(`[^A-Za-z0-9._-]+`)

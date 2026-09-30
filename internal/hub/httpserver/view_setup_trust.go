@@ -22,21 +22,8 @@ type TrustAnchor interface {
 	Fingerprint() string
 }
 
-// trustAnchor returns the hub CA, or nil when this server was built without
-// one (plain-HTTP dev mode).
-//
-// There is no dedicated field in Options yet, so it is looked up on the
-// injected enroller handlers, which live next to the CA in the wiring. A
-// SetupDeps.CA field would replace this body (see the report of the Setup view).
-func (s *Server) trustAnchor() TrustAnchor {
-	if a, ok := s.enroller.(TrustAnchor); ok && a != nil {
-		return a
-	}
-	if a, ok := s.enroll.(TrustAnchor); ok && a != nil {
-		return a
-	}
-	return nil
-}
+// trustAnchor returns the hub CA, or nil when the server was built without one.
+func (s *Server) trustAnchor() TrustAnchor { return s.setup.CA }
 
 // trustCookie remembers that this browser downloaded the CA, so the Trust step
 // offers "Continue" instead of "Skip for now" and the summary can say so.

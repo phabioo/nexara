@@ -18,6 +18,7 @@ import (
 	"github.com/phabioo/nexara/internal/hub/setup"
 	"github.com/phabioo/nexara/internal/hub/store"
 	"github.com/phabioo/nexara/internal/hub/views"
+	"github.com/phabioo/nexara/internal/pki"
 	"github.com/phabioo/nexara/web"
 )
 
@@ -141,6 +142,17 @@ func RunDev(ctx context.Context, o DevOptions) error {
 		setupCode = setup.FormatCode(code)
 	}
 
+	// An ephemeral CA (removed with the temporary directory) makes the Trust
+	// step with its QR code and downloads visible in the demo.
+	tlsDir := filepath.Join(dir, "tls")
+	if err := os.MkdirAll(tlsDir, 0o700); err != nil {
+		return fmt.Errorf("cannot create the demo CA directory: %w", err)
+	}
+	ca, err := pki.LoadOrCreateCA(tlsDir)
+	if err != nil {
+		return fmt.Errorf("cannot create the demo CA: %w", err)
+	}
+
 	hub := demo.New(o.Demo)
 	defer hub.Close()
 
@@ -156,7 +168,7 @@ func RunDev(ctx context.Context, o DevOptions) error {
 	}
 	srv, err := httpserver.New(httpserver.Options{
 		Auth:          authSvc,
-		Setup:         httpserver.SetupDeps{Codes: codes, Sessions: sessions, Mode: mode, Commit: cm.Commit},
+		Setup:         httpserver.SetupDeps{Codes: codes, Sessions: sessions, Mode: mode, Commit: cm.Commit, CA: ca},
 		Hub:           hub,
 		Enroller:      hub,
 		Renderer:      renderer,

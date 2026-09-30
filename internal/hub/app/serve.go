@@ -199,7 +199,7 @@ func Serve(ctx context.Context, o ServeOptions) error {
 
 	srv, err := httpserver.New(httpserver.Options{
 		Auth:          authSvc,
-		Setup:         httpserver.SetupDeps{Codes: codes, Sessions: sessions, Mode: mode, Commit: cm.Commit},
+		Setup:         httpserver.SetupDeps{Codes: codes, Sessions: sessions, Mode: mode, Commit: cm.Commit, CA: ca},
 		Hub:           g,
 		Enroller:      enrollers,
 		Renderer:      renderer,
@@ -332,7 +332,7 @@ func newSetupParts(users setup.UserCounter, log *slog.Logger, now func() time.Ti
 	sessions := setup.NewSessions(setup.SessionOptions{
 		Now:            now,
 		InsecureCookie: !secure,
-		Wizard:         setup.WizardOptions{CheckPassphrase: auth.ValidatePassphrase},
+		Wizard:         setup.WizardOptions{CheckPassphrase: checkWizardPassphrase},
 	})
 	return codes, setup.NewMode(users), sessions
 }
