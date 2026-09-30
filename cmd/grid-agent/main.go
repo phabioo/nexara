@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"github.com/phabioo/nexara/internal/buildinfo"
-	"github.com/phabioo/nexara/internal/config"
 )
 
 // Exit codes.
@@ -40,9 +39,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	cmd, rest := args[0], args[1:]
 	switch cmd {
 	case "run":
-		fs := newFlagSet("run", stderr)
-		fs.String("config", config.DefaultAgentConfigPath, "path to agent.yaml")
-		return stub(fs, rest, "run", stderr)
+		return runAgent(rest, stderr)
 	case "enroll":
 		fs := newFlagSet("enroll", stderr)
 		hub := fs.String("hub", "", "hub address, e.g. frpi5.local:8443")
