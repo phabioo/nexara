@@ -131,6 +131,16 @@ type Packages struct {
 	RebootRequired bool      `json:"reboot_required"` // /var/run/reboot-required exists
 }
 
+// PackagesSearch looks up packages by name (hub->agent, type "packages.search").
+// Answered by Packages (same ID) with at most MaxSearchResults items, installed
+// or available; RebootRequired is not meaningful in the answer.
+type PackagesSearch struct {
+	Query string `json:"query"`
+}
+
+// MaxSearchResults caps the answer to PackagesSearch.
+const MaxSearchResults = 50
+
 // JobKind is the operation of a job.
 type JobKind string
 

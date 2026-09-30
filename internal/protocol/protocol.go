@@ -50,7 +50,9 @@ const (
 	TypeServiceRestart = "service.restart" // hub->agent, request; answered by TypeResult (same ID)
 
 	TypePackagesList = "packages.list" // hub->agent, request; answered by TypePackages (same ID)
-	TypePackages     = "packages"      // agent->hub, answers packages.list
+	TypePackages     = "packages"      // agent->hub, answers packages.list and packages.search
+
+	TypePackagesSearch = "packages.search" // hub->agent, request; answered by TypePackages (same ID), only matching items
 
 	TypeJobStart  = "job.start"  // hub->agent, request; answered by TypeResult (accepted/rejected), then job.output and job.done
 	TypeJobOutput = "job.output" // agent->hub, unsolicited, streamed while a job runs
@@ -71,7 +73,7 @@ const (
 var knownTypes = map[string]struct{}{
 	TypeHello: {}, TypeHelloAck: {}, TypeMetrics: {},
 	TypeServicesList: {}, TypeServices: {}, TypeServiceRestart: {},
-	TypePackagesList: {}, TypePackages: {},
+	TypePackagesList: {}, TypePackages: {}, TypePackagesSearch: {},
 	TypeJobStart: {}, TypeJobOutput: {}, TypeJobDone: {}, TypeJobCancel: {},
 	TypeShellOpen: {}, TypeShellData: {}, TypeShellResize: {}, TypeShellClose: {},
 	TypeAgentUpdate: {}, TypeResult: {}, TypeError: {},

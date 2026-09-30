@@ -40,6 +40,7 @@ func roundtripCases() []struct {
 		{TypeServiceRestart, ServiceRestart{Unit: "ssh.service"}, func() any { return new(ServiceRestart) }},
 		{TypePackages, Packages{Items: []Package{{Name: "curl", Summary: "tool", InstalledVersion: "1", CandidateVersion: "2", SizeBytes: 42, State: PackageUpdate}},
 			RebootRequired: true}, func() any { return new(Packages) }},
+		{TypePackagesSearch, PackagesSearch{Query: "htop"}, func() any { return new(PackagesSearch) }},
 		{TypeJobStart, JobStart{JobID: "j1", Kind: JobPkgInstall, Package: "htop"}, func() any { return new(JobStart) }},
 		{TypeJobOutput, JobOutput{JobID: "j1", Stream: StreamStderr, Line: "E: oops"}, func() any { return new(JobOutput) }},
 		{TypeJobDone, JobDone{JobID: "j1", OK: false, ExitCode: 100, Error: "failed", RebootRequired: true}, func() any { return new(JobDone) }},

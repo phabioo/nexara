@@ -206,6 +206,11 @@ type Hub interface {
 	// Errors: ErrHostNotFound, ErrHostOffline, ErrCapabilityDisabled.
 	RefreshPackages(ctx context.Context, id HostID) error
 
+	// SearchPackages asks the agent for packages matching query (for installing
+	// packages that are not in the list yet). Not audited (read-only).
+	// Errors: ErrHostNotFound, ErrHostOffline, ErrCapabilityDisabled, ErrInvalidArgument.
+	SearchPackages(ctx context.Context, id HostID, query string) ([]protocol.Package, error)
+
 	// RestartService restarts a service unit (audited).
 	// Errors: ErrHostNotFound, ErrHostOffline, ErrCapabilityDisabled, ErrInvalidArgument.
 	RestartService(ctx context.Context, actor Actor, id HostID, unit string) error

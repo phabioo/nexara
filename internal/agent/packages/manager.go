@@ -13,6 +13,11 @@ type Manager interface {
 	// List returns installed and available packages and the reboot-required flag.
 	List(ctx context.Context) (protocol.Packages, error)
 
+	// Search returns packages whose name matches query (installed or
+	// available), at most protocol.MaxSearchResults. query is validated
+	// against the package name pattern before use.
+	Search(ctx context.Context, query string) ([]protocol.Package, error)
+
 	// Run executes one job to completion and returns its result. Output lines
 	// are passed to out as they appear (out is called from one goroutine at a
 	// time and must not block for long). The implementation validates the job
