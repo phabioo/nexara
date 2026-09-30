@@ -35,3 +35,11 @@ Settled decisions. Change them only deliberately and record the change here.
 | 29 | "Keep me signed in": unchecked = browser-session cookie, checked = persistent cookie; both keep the 12 h idle timeout and a 30-day absolute limit; never skips TOTP | Survives phone/browser restarts without weakening the session rules |
 | 30 | Grid Agent unit is not sandboxed (root, no `NoNewPrivileges`/`ProtectSystem`); safety comes from the fixed action list | apt, services, power and `sudo` in the shell need it |
 | 31 | Views of later versions are hidden until that version ships | No dead buttons in the UI |
+| 32 | YAML library `go.yaml.in/yaml/v3`; QR codes with `rsc.io/qr`, rendered as inline SVG | Maintained YAML fork; tiny QR encoder, CSP-friendly output |
+| 33 | Jobs live in memory only (no table); `audit_log` is the record. Minute/hour history tables come with the History view in v0.2 | No new tables in v0.1; the live ring buffer covers the overview |
+| 34 | `nexus dev --demo` serves plain HTTP on 127.0.0.1 only | Browsers treat localhost as secure; no certificates needed for UI work |
+| 35 | `sudo nexus setup code` / `sudo nexus user reset` talk to the running service over a local admin Unix socket (`/run/nexus/admin.sock`, 0660 root:nexus) | No network surface, works while the service runs |
+| 36 | Release signature: ed25519 over `SHA256SUMS`; verified with `crypto/ed25519` in the hub and `openssl` in `install.sh` | No extra tooling on the Pi or in Go |
+| 37 | Hub code stays platform-neutral (develop on Windows); Linux-only code sits behind build tags | Fast local UI iteration |
+| 38 | Enrollment runs over HTTPS `POST /grid/enroll` (token + CSR, agent pins the CA fingerprint); the response carries cert, CA, hub URL and the capabilities chosen in the UI. Self-link: the installer sets up the agent with `enroll.token_file`, the setup wizard writes that token | One enrollment path for SSH, code and self-link |
+| 39 | Go directive 1.26 (required by `modernc.org/sqlite`) | Current SQLite driver |

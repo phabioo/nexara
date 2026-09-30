@@ -35,6 +35,7 @@ type EnrollResponse struct {
 type AgentSettings struct {
 	// Capabilities lists the enabled capability names (Cap* constants), chosen
 	// in the UI (setup step "Self-link", Add host) before the agent exists.
-	// The agent writes them into agent.yaml. Empty means "agent defaults".
+	// The agent writes them into agent.yaml. null (nil) means "agent defaults",
+	// an empty array means "all capabilities off".
 	Capabilities []string `json:"capabilities"`
 }
