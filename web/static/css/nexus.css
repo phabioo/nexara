@@ -995,3 +995,23 @@ svg { flex: none; }
 .p-98 { --pct: 98%; }
 .p-99 { --pct: 99%; }
 .p-100 { --pct: 100%; }
+
+/* ===================================================================
+   View sections (wave 3). Each view owns exactly one section below,
+   including its own media queries. Shared components stay above.
+   =================================================================== */
+
+/* === view: login === */
+/* --- end view: login --- */
+
+/* === view: setup === */
+/* --- end view: setup --- */
+
+/* === view: overview === */
+/* --- end view: overview --- */
+
+/* === view: packages === */
+/* --- end view: packages --- */
+
+/* === view: shell + add host === */
+/* --- end view: shell + add host --- */
