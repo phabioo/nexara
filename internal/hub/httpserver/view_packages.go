@@ -86,6 +86,10 @@ func (s *Server) handlePackages(w http.ResponseWriter, r *http.Request) {
 	}
 	l := s.layout(r, "packages", &host)
 	l.Title = "Packages"
+	if l.Log == "" {
+		// s.layout only knows the last job; without one show the usual connection line.
+		l.Log = "Connected to " + hostLabel(host)
+	}
 	l.Job = views.JobChipFor(hostURL(host.Name), jobs)
 	s.packagesWrite(w, r, http.StatusOK, func(rd *views.Renderer, w http.ResponseWriter) error {
 		return rd.Render(w, "packages", packagesPage{Layout: l, P: model})

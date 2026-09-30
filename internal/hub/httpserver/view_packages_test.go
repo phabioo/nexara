@@ -219,6 +219,18 @@ func TestPackagesPage(t *testing.T) {
 			contains: []string{"A reboot is required on alpha to finish the update."},
 		},
 		{
+			name: "status bar log without jobs", target: "/hosts/alpha/packages", code: 200,
+			contains: []string{`<span id="statusbar-log" role="status">Connected to alpha</span>`},
+		},
+		{
+			name: "status bar log shows the last job", target: "/hosts/alpha/packages", code: 200,
+			setup: func(p *pkgEnv) {
+				p.hub.jobs["a1"] = []grid.Job{{ID: "job-8", Host: "a1", Kind: protocol.JobAptUpdate, State: grid.JobDone, OK: true}}
+			},
+			contains: []string{`<span id="statusbar-log" role="status">apt update · done</span>`},
+			absent:   []string{"Connected to alpha"},
+		},
+		{
 			name: "job chip while a job runs", target: "/hosts/alpha/packages", code: 200,
 			setup: func(p *pkgEnv) {
 				p.hub.jobs["a1"] = []grid.Job{{ID: "job-7", Host: "a1", Kind: protocol.JobAptUpgrade, State: grid.JobRunning}}
