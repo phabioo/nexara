@@ -1011,6 +1011,42 @@ svg { flex: none; }
 /* --- end view: overview --- */
 
 /* === view: packages === */
+/* The fragments swap these wrappers; they must not take part in the layout so the phone order
+   (System upgrade card first, tiles, then the other cards) still applies to their children. */
+.pkg-results, .pkg-cards { display: contents; }
+.pkg-note { margin: 0; font-size: 12px; color: var(--muted); }
+.pkg-empty { grid-column: 1 / -1; }
+.tag-bad { background: var(--pink); color: var(--ink); }
+.btn-card:disabled, .btn-tool:disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
+
+/* confirm dialog */
+.pkg-confirm { display: flex; flex-direction: column; gap: 12px; }
+
+/* job dialog */
+.job-live, .job-head { display: flex; flex-direction: column; gap: 12px; }
+.job-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.job-bar i { transition: width .2s; }
+.job-bar.is-busy i { width: 30%; animation: pkg-busy 1.4s ease-in-out infinite alternate; }
+@keyframes pkg-busy { from { left: 0; } to { left: 70%; } }
+.job-terminal::before { content: ""; margin-top: auto; }
+.job-lines { display: block; }
+.job-line { white-space: pre-wrap; word-break: break-all; }
+.job-line.is-cmd { color: #c9f7d4; }
+.job-line.is-wait { color: var(--lime); }
+.job-line.is-bad { color: var(--pink); }
+.job-foot.modal-actions { flex-wrap: wrap; }
+/* header: grey while the job is pending, lime when it is done, pink when it failed */
+.modal:has([data-job-state="done"]) > .card-head { background: var(--lime); border-color: var(--lime); }
+.modal:has([data-job-state="failed"]) > .card-head { background: var(--pink); border-color: var(--pink); }
+/* status-bar chip that reopens the dialog: one line, never squeezed by the log text */
+.statusbar-log > .btn-tool.is-hot { flex: none; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+  .job-bar.is-busy i { animation: none; left: 0; width: 40%; }
+}
+@media (max-width: 767.98px) {
+  .job-terminal { height: min(300px, 46dvh); font-size: 11px; }
+  .statusbar-log > .btn-tool.is-hot { height: 20px; min-height: 0; padding: 0 6px; font-size: 10px; }
+}
 /* --- end view: packages --- */
 
 /* === view: shell + add host === */
