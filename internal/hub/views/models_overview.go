@@ -36,7 +36,6 @@ type OverviewPage struct {
 
 	Host           string // unique short name (URL segment)
 	Label          string // display name
-	SSEURL         string // /events?host=<name>
 	RebootRequired bool   // informational chip; the reboot action itself ships with the Power view
 	Load           string // "0.42 0.38 0.35"
 	Offline        *OverviewOffline

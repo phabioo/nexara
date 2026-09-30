@@ -61,11 +61,8 @@ func (s *Server) handleShellPage(w http.ResponseWriter, r *http.Request) {
 		BackURL: hostURL(host.Name),
 		Keys:    views.ShellKeys(),
 	}
-	switch page.State {
-	case views.ShellReady:
+	if page.State == views.ShellReady {
 		page.WSURL = shellWSURL(host.Name, l.CSRF)
-	case views.ShellOffline:
-		page.EventsURL = "/events?host=" + url.QueryEscape(host.Name)
 	}
 	if s.renderer == nil {
 		s.serverError(w, r, errors.New("shell page: no renderer configured"))

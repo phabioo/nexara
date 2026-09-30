@@ -63,6 +63,12 @@ func TestLayoutModel(t *testing.T) {
 	if got.Log != "apt upgrade · done" {
 		t.Errorf("Log = %q", got.Log)
 	}
+	if got.EventsURL != "/events?host=alpha" || none.EventsURL != "" {
+		t.Errorf("EventsURL = %q / %q", got.EventsURL, none.EventsURL)
+	}
+	if got.Job != nil {
+		t.Errorf("Job = %+v, want none (both jobs are done)", got.Job)
+	}
 	if got.AddHostURL != "/hosts/new" || got.ActiveNav != "packages" {
 		t.Errorf("AddHostURL=%q ActiveNav=%q", got.AddHostURL, got.ActiveNav)
 	}
@@ -86,7 +92,7 @@ func TestLayoutModel(t *testing.T) {
 		nav[n.Key] = n
 	}
 	if nav["packages"].Href != "/hosts/alpha/packages" || nav["packages"].Badge != 1 ||
-		nav["shell"].Href != "/hosts/alpha/shell" || nav["overview"].Href != "/" {
+		nav["shell"].Href != "/hosts/alpha/shell" || nav["overview"].Href != "/hosts/alpha" {
 		t.Errorf("nav = %+v", got.Nav)
 	}
 
@@ -101,6 +107,53 @@ func TestLayoutModel(t *testing.T) {
 	}
 	if none.Online != 2 || len(none.Hosts) != 3 {
 		t.Errorf("tabs still expected: online=%d tabs=%d", none.Online, len(none.Hosts))
+	}
+	for _, n := range none.Nav {
+		if n.Href != "/" {
+			t.Errorf("nav %s = %q without a host, want /", n.Key, n.Href)
+		}
+	}
+	if none.Log != "" || none.Job != nil {
+		t.Errorf("status bar without host: log=%q job=%+v", none.Log, none.Job)
+	}
+}
+
+func TestLayoutStatusBar(t *testing.T) {
+	running := grid.Job{ID: "j7", Kind: protocol.JobAptUpgrade, State: grid.JobRunning}
+	tests := []struct {
+		name     string
+		host     string
+		jobs     []grid.Job
+		wantLog  string
+		wantChip string // href of the chip, empty for none
+	}{
+		{"online without jobs", "alpha", nil, "Connected to alpha", ""},
+		{"offline host", "beta", nil, "Beta Pi is offline", ""},
+		{"running job", "alpha", []grid.Job{running}, "apt upgrade · running", "/hosts/alpha/jobs/j7"},
+		{"finished job keeps the log, no chip", "alpha", []grid.Job{{ID: "j8", Kind: protocol.JobAptClean, State: grid.JobDone}}, "apt clean · done", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			h, _ := e.srv.hostByName(tc.host)
+			e.hub.mu.Lock()
+			e.hub.jobs[h.ID] = tc.jobs
+			e.hub.mu.Unlock()
+			cookie, _ := e.signIn()
+			var got views.Layout
+			mux := http.NewServeMux()
+			mux.HandleFunc("/probe", func(w http.ResponseWriter, r *http.Request) { got = e.srv.layout(r, "overview", &h) })
+			e.do(e.srv.chain(mux), "GET", "/probe", withCookies(cookie))
+			if got.Log != tc.wantLog {
+				t.Errorf("Log = %q, want %q", got.Log, tc.wantLog)
+			}
+			switch {
+			case tc.wantChip == "" && got.Job != nil:
+				t.Errorf("Job = %+v, want none", got.Job)
+			case tc.wantChip != "" && (got.Job == nil || got.Job.Href != tc.wantChip):
+				t.Errorf("Job = %+v, want href %s", got.Job, tc.wantChip)
+			}
+		})
 	}
 }
 

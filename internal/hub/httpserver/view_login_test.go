@@ -265,6 +265,20 @@ func TestLogout(t *testing.T) {
 		}
 	})
 
+	t.Run("the sign-out form of the app shell works without JavaScript", func(t *testing.T) {
+		cookie, token := e.signIn()
+		// The form posts the token as a field; it is the same token the page renders.
+		page := e.get("/", withCookies(cookie)).Body.String()
+		mustContain(t, page, `<form class="signout" method="post" action="/logout">`, `name="csrf_token" value="`+token+`"`)
+		rec := e.post("/logout", withCookies(cookie), withForm(url.Values{auth.CSRFFormField: {token}}))
+		if rec.Code != 303 || rec.Header().Get("Location") != "/login" {
+			t.Fatalf("%d %q", rec.Code, rec.Header().Get("Location"))
+		}
+		if _, _, err := e.svc.Sessions().Validate(context.Background(), cookie.Value); err == nil {
+			t.Error("session still valid after logout")
+		}
+	})
+
 	t.Run("clears cookie and deletes session", func(t *testing.T) {
 		cookie, token := e.signIn()
 		rec := e.post("/logout", withCookies(cookie), withHeader(auth.CSRFHeader, token))
@@ -324,6 +338,30 @@ func TestLoginPageContent(t *testing.T) {
 	}
 	if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'") {
 		t.Errorf("CSP %q", csp)
+	}
+}
+
+func TestLoginAfterSetupShowsHubOnline(t *testing.T) {
+	e := newLoginEnv(t)
+	tests := []struct {
+		target string
+		want   bool
+	}{
+		{"/login?setup=done", true},
+		{"/login?setup=other", false},
+		{"/login", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.target, func(t *testing.T) {
+			rec := e.get(tc.target)
+			body := rec.Body.String()
+			if rec.Code != 200 || strings.Contains(body, `class="toast"`) != tc.want {
+				t.Fatalf("status %d, toast present %v, want %v", rec.Code, strings.Contains(body, `class="toast"`), tc.want)
+			}
+			if tc.want {
+				mustContain(t, body, "Hub online", "Setup complete | sign in", `id="toasts"`)
+			}
+		})
 	}
 }
 
@@ -516,6 +554,7 @@ func TestLoginViewFor(t *testing.T) {
 		{"totp", loginPage{SecondFactor: true}, loginStepTOTP, "Passphrase accepted · waiting for second factor", 0},
 		{"totp error", loginPage{SecondFactor: true, Error: "x"}, loginStepTOTP, "Second factor rejected", 0},
 		{"granted", loginPage{Granted: true, Operator: "frank"}, loginStepGranted, "Operator frank authenticated", grantedDelaySeconds},
+		{"after setup", loginPage{SetupDone: true}, loginStepCreds, "Setup complete · awaiting operator credentials", 0},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

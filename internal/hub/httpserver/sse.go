@@ -53,6 +53,14 @@ func hostLevel(k grid.EventKind) bool {
 
 func (s *Server) routeEvents(mux *http.ServeMux) {
 	mux.HandleFunc("GET /events", s.handleEvents)
+	mux.HandleFunc("GET /events/ping", s.handleEventsPing)
+	s.registerLive()
+}
+
+// handleEventsPing answers 204 for a valid session. nexus.js asks it after the event stream broke: an
+// expired session shows up as a redirect to /login (the middleware), which EventSource cannot see by itself.
+func (s *Server) handleEventsPing(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleEvents streams hub events as server-sent events. ?host=<name> limits

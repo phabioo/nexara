@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/phabioo/nexara/internal/hub/grid"
+	"github.com/phabioo/nexara/internal/hub/views"
 )
 
 // renderStub writes a plain-text page. It stands in for template rendering
@@ -108,11 +109,40 @@ func gridMessage(err error) string {
 
 // gridError answers a failed hub call with gridStatus and gridMessage. Server
 // errors (5xx other than a gateway timeout, which is routine) are logged with
-// the cause; the cause is never sent to the browser.
+// the cause; the cause is never sent to the browser. HTMX requests get the
+// message as a toast (see toastError), everything else plain text.
 func (s *Server) gridError(w http.ResponseWriter, r *http.Request, err error) {
+	s.gridErrorTitled(w, r, err, "Failed")
+}
+
+// gridErrorTitled is gridError with the toast title of the failed action ("Not started").
+func (s *Server) gridErrorTitled(w http.ResponseWriter, r *http.Request, err error, title string) {
 	status := gridStatus(err)
 	if status == http.StatusInternalServerError {
 		s.log.Error("hub call failed", "method", r.Method, "path", logPath(r), "err", err)
 	}
-	s.renderStub(w, status, gridMessage(err))
+	s.toastError(w, r, status, title, gridMessage(err))
+}
+
+// toastError answers a failed request with status. For HTMX requests the body is a toast fragment that
+// nexus.js swaps into #toasts even though the status is an error (it swaps 4xx/5xx responses that are HTML);
+// the real status stays visible to tests, logs and scripts. Other requests get sub as plain text.
+func (s *Server) toastError(w http.ResponseWriter, r *http.Request, status int, title, sub string) {
+	if r.Header.Get("HX-Request") != "true" || s.renderer == nil {
+		s.renderStub(w, status, sub)
+		return
+	}
+	body, err := s.partialString("toast", views.Toast{Title: title, Sub: sub})
+	if err != nil {
+		s.log.Error("render error toast", "err", err)
+		s.renderStub(w, status, sub)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	h.Set("HX-Retarget", "#toasts")
+	h.Set("HX-Reswap", "innerHTML")
+	h.Set("X-Nexus-Toast", "1")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(body))
 }

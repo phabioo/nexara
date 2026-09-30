@@ -157,13 +157,13 @@ func TestPackagesPage(t *testing.T) {
 		{
 			name: "default page", target: "/hosts/alpha/packages", code: 200,
 			contains: []string{
-				"<title>Packages", `sse-connect="/events?host=alpha&amp;view=packages"`, `sse-swap="pkg-job"`,
+				"<title>Packages", `sse-connect="/events?host=alpha&amp;view=packages"`, `sse-swap="nx-live,pkg-job"`,
 				"openssh-server", "linux-image-rpi-v8", "curl", "old-lib",
 				"1.4 MB", "315 KB", "Sync sources", "System upgrade", "Clean up", "apt update", "apt upgrade", "autoremove &#43; clean",
 				"2 updates available", "2 updates ready, including kernel and OpenSSH.", `aria-current="page"`, `name="filter" value="all"`,
 				`hx-post="/hosts/alpha/packages/pkg-upgrade"`, `hx-get="/hosts/alpha/packages/confirm/pkg-remove"`,
 				`hx-get="/hosts/alpha/packages/confirm/apt-upgrade"`, `hx-post="/hosts/alpha/packages/apt-update"`,
-				"packages.js", "APT", "SEARCH",
+				"APT", "SEARCH",
 			},
 			absent: []string{"is offline", "A reboot is required"},
 		},
@@ -638,26 +638,22 @@ func TestPackagesJobEvents(t *testing.T) {
 		absent   []string
 	}{
 		{"queued", grid.EventJobQueued, func() grid.Job { j := running; j.State = grid.JobQueued; return j }(), []grid.Job{running},
-			[]string{`id="job-head-job-9"`, `hx-swap-oob="true"`, "Queued", `hx-swap-oob="afterbegin:.statusbar-log"`, "JOB · apt upgrade · running",
-				`hx-get="/hosts/alpha/jobs/job-9"`, `id="statusbar-log"`, "apt upgrade · queued"},
-			[]string{`id="job-term-job-9"`, "toast"}},
+			[]string{`id="job-head-job-9"`, `hx-swap-oob="true"`, "Queued"},
+			[]string{`id="job-term-job-9"`, "toast", "job-chip-slot", "statusbar-log"}},
 		{"started", grid.EventJobStarted, running, []grid.Job{running},
-			[]string{`id="job-head-job-9"`, "Running", `id="job-foot-job-9"`, "Cancel job", `hx-swap-oob="delete:.statusbar-log > .btn-tool.is-hot"`, "JOB · apt upgrade · running", "apt upgrade · running"},
+			[]string{`id="job-head-job-9"`, "Running", `id="job-foot-job-9"`, "Cancel job"},
 			[]string{`id="job-term-job-9"`, `class="toast"`}},
 		{"done upgrade", grid.EventJobDone, done, nil,
 			[]string{`id="job-head-job-9"`, `data-job-state="done"`, "Reboot required", `id="job-term-job-9"`, "Setting up openssh-server",
-				`id="job-foot-job-9"`, "Close", `hx-swap-oob="delete:`, `id="toasts"`, "Updated", "alpha | apt upgrade", "apt upgrade · done"},
-			[]string{"afterbegin", "Cancel job"}},
+				`id="job-foot-job-9"`, "Close", `id="toasts"`, "Updated", "alpha | apt upgrade"},
+			[]string{"afterbegin", "Cancel job", "job-chip-slot"}},
 		{"done update", grid.EventJobDone, updated, nil, []string{"Synced", "alpha | apt update"}, nil},
 		{"done clean", grid.EventJobDone, cleaned, nil, []string{"Cleaned", "alpha | autoremove &#43; clean"}, nil},
-		{"done package job has no banner", grid.EventJobDone, removed, nil, []string{"remove curl · done"}, []string{`class="toast"`}},
+		{"done package job has no banner", grid.EventJobDone, removed, nil, []string{`data-job-state="done"`}, []string{`class="toast"`}},
 		{"failed", grid.EventJobDone, failed, nil,
-			[]string{`data-job-state="failed"`, "Failed", "Failed: apt-get exited with code 100", "tag-bad", "apt upgrade · failed"},
+			[]string{`data-job-state="failed"`, "Failed", "Failed: apt-get exited with code 100", "tag-bad"},
 			[]string{`class="toast"`}},
 		{"canceled", grid.EventJobDone, canceled, nil, []string{"Canceled", `data-job-state="canceled"`}, []string{`class="toast"`}},
-		{"next queued job takes over the chip", grid.EventJobDone, done, []grid.Job{
-			{ID: "job-10", Host: "a1", Kind: protocol.JobAptClean, State: grid.JobQueued}, done},
-			[]string{"JOB · apt clean · queued", `hx-get="/hosts/alpha/jobs/job-10"`}, nil},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -759,21 +755,20 @@ func TestPackagesChangedEvent(t *testing.T) {
 	}
 }
 
-func TestPackagesEventsOnlyForPackagesStreams(t *testing.T) {
+// The list reload only makes sense on the packages page; the job events go to every page because the
+// status-bar chip opens the job dialog from anywhere.
+func TestPackagesEventsByStream(t *testing.T) {
 	p := newPackagesEnv(t)
 	job := grid.Job{ID: "job-1", Host: "a1", Kind: protocol.JobAptUpdate, State: grid.JobRunning}
-	events := []grid.Event{
-		{Kind: grid.EventJobStarted, Host: "a1", Payload: job},
-		{Kind: grid.EventJobOutput, Host: "a1", Payload: grid.JobOutputEvent{JobID: "job-1"}},
-		{Kind: grid.EventPackages, Host: "a1"},
-	}
 	for _, r := range []*http.Request{nil, httptest.NewRequest("GET", "/events?host=alpha", nil), httptest.NewRequest("GET", "/events?view=overview", nil)} {
-		for _, ev := range events {
-			for _, render := range []EventRenderer{p.srv.renderPackagesJob, p.srv.renderPackagesJobOutput, p.srv.renderPackagesChanged} {
-				if name, _, ok := render(r, ev); ok {
-					t.Errorf("%s rendered %q for a foreign stream", ev.Kind, name)
-				}
-			}
+		if name, _, ok := p.srv.renderPackagesChanged(r, grid.Event{Kind: grid.EventPackages, Host: "a1"}); ok {
+			t.Errorf("%s rendered for a foreign stream", name)
+		}
+		if name, _, ok := p.srv.renderPackagesJob(r, grid.Event{Kind: grid.EventJobStarted, Host: "a1", Payload: job}); !ok || name != packagesEventJob {
+			t.Errorf("job event not rendered for stream %v", r)
+		}
+		if name, _, ok := p.srv.renderPackagesJobOutput(r, grid.Event{Kind: grid.EventJobOutput, Host: "a1", Payload: grid.JobOutputEvent{JobID: "job-1"}}); !ok || name != packagesEventJob {
+			t.Errorf("job output not rendered for stream %v", r)
 		}
 	}
 }

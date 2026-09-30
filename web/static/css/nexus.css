@@ -293,6 +293,20 @@ svg { flex: none; }
   font-family: var(--font-mono); font-size: 13px; font-weight: 600;
 }
 
+/* operator and sign out (desktop sidebar and icon rail; phones have the More sheet) */
+.account { flex: none; display: flex; align-items: stretch; height: 36px; background: var(--panel); }
+.account-id { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1px; padding: 0 10px; }
+.account-label { font-size: 8px; line-height: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--micro); }
+.account-name { font-size: 12px; font-weight: 600; line-height: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.signout { display: flex; }
+.account-out {
+  display: flex; align-items: center; gap: 6px; padding: 0 10px;
+  background: var(--panel-2); color: #b4b6b9;
+  font-family: var(--font-display); font-stretch: 125%; font-weight: 800;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap;
+}
+.account-out:hover { background: var(--lime); color: var(--ink); }
+
 .host-portrait { margin-top: auto; display: flex; flex-direction: column; }
 .host-portrait-title {
   height: 32px; display: flex; align-items: center; padding: 0 10px;
@@ -365,6 +379,21 @@ svg { flex: none; }
   background: var(--lime); color: var(--ink);
   font-family: var(--font-mono); font-size: 10px; font-weight: 700;
 }
+
+/* job chip slot of the status bar: no box of its own, so an empty slot adds no gap */
+.job-chip-slot { display: contents; }
+
+/* "More" sheet of the phone layout: dims the page above the status bar, holds operator and sign out */
+.sheet {
+  position: fixed; left: 0; right: 0; top: 0; bottom: calc(28px + 66px + var(--safe-bottom)); z-index: 15;
+  display: none; flex-direction: column; justify-content: flex-end;
+}
+.sheet-backdrop { position: absolute; inset: 0; background: rgba(10,11,12,.8); }
+.sheet-panel { position: relative; max-height: 100%; overflow-y: auto; background: var(--card); color: var(--ink); }
+.sheet-row { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
+.sheet-signout { margin-top: 4px; }
+.bnav-item[aria-expanded="true"] { background: var(--nav-active); color: var(--ink); }
+.bnav:has([aria-expanded="true"]) .bnav-item.on { background: none; color: var(--muted); }
 
 /* connection lost band (shown through the body class, set on SSE errors) */
 .ticker.ticker-lost { display: none; margin-bottom: 10px; height: 28px; }
@@ -737,6 +766,11 @@ svg { flex: none; }
   .nav-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .nav-badge { position: absolute; top: 0; right: 0; width: auto; min-width: 18px; height: 18px; padding: 0 3px; font-size: 11px; }
   .host-portrait { display: none; }
+  .account { height: auto; flex-direction: column; }
+  .account-id { display: none; }
+  .signout, .account-out { width: 100%; }
+  .account-out { height: 44px; justify-content: center; padding: 0; }
+  .account-out span { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .grid-cards { grid-template-columns: minmax(0, 1fr); }
   .grid-cards > :nth-child(3):last-child { grid-column: auto; }
   .topbar { gap: 12px; }
@@ -770,6 +804,7 @@ svg { flex: none; }
   :root { --gutter: 10px; --side-gap: 0px; --side-w: 0px; }
   .app-body { padding: 0; gap: 0; }
   .sidebar { display: none; }
+  .sheet { display: flex; }
   .main { max-width: none; padding: 6px 10px 16px; padding-left: calc(10px + var(--safe-left)); padding-right: calc(10px + var(--safe-right)); }
   .view { gap: 12px; }
   .view-head { height: auto; min-height: 30px; flex-wrap: wrap; gap: 8px; }
@@ -799,9 +834,13 @@ svg { flex: none; }
   /* top bar: pill + latency, host tabs in their own 48px row */
   .topbar {
     height: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
-    gap: 0; padding: calc(8px + var(--safe-top)) calc(10px + var(--safe-right)) 0 calc(10px + var(--safe-left));
+    gap: 0; padding: calc(16px + var(--safe-top)) calc(10px + var(--safe-right)) 0 calc(10px + var(--safe-left));
   }
+  /* the micro line sits above the pill (4px to 14px), as in the phone mockups; the pill starts at 16px */
   .micro-short { display: block; position: absolute; left: 176px; top: calc(4px + var(--safe-top)); }
+  .auth .topbar { padding-top: calc(14px + var(--safe-top)); }
+  .auth-login .micro-short { left: 190px; }
+  .auth-setup .micro-short { left: 210px; }
   .topbar-latency { position: static; font-size: 11px; grid-column: 2; grid-row: 1; }
   .pill { height: 34px; grid-column: 1; grid-row: 1; }
   .pill-seg { padding: 0 10px; font-size: 13px; }

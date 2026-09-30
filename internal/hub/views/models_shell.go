@@ -42,15 +42,14 @@ func ShellKeys() []ShellKey {
 type ShellPage struct {
 	Layout
 
-	State     string // ShellReady, ShellOffline or ShellDisabled
-	Host      string // URL name of the host
-	Label     string // display name
-	Address   string
-	Version   string // "v.6.6.51" (kernel), empty if unknown
-	WSURL     string // WebSocket path incl. ?csrf=; empty unless State is ShellReady
-	EventsURL string // SSE stream limited to the host, for the offline state
-	BackURL   string // overview of the host
-	Keys      []ShellKey
+	State   string // ShellReady, ShellOffline or ShellDisabled
+	Host    string // URL name of the host
+	Label   string // display name
+	Address string
+	Version string // "v.6.6.51" (kernel), empty if unknown
+	WSURL   string // WebSocket path incl. ?csrf=; empty unless State is ShellReady
+	BackURL string // overview of the host
+	Keys    []ShellKey
 }
 
 // KernelVersion shortens a kernel release for the terminal header:

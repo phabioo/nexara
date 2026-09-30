@@ -161,6 +161,7 @@ func appData0(page string) appData {
 		Title:     "Overview",
 		ActiveNav: "overview",
 		CSRF:      "preview",
+		Operator:  "fabio",
 		NodeNo:    "01",
 		Uptime:    "41D 06H",
 		HostName:  "pi5-media",

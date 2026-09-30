@@ -1,12 +1,9 @@
 package httpserver
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"html"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -72,9 +69,6 @@ func (s *Server) renderOverview(w http.ResponseWriter, r *http.Request, h *grid.
 	} else {
 		snap, _ := s.hub.Snapshot(h.ID)
 		s.overviewFill(&page, *h, snap)
-		if page.Log == "" && h.Online {
-			page.Log = "Connected to " + h.Name
-		}
 		if h.Online {
 			s.overviewRefreshServices(r, *h)
 		}
@@ -88,7 +82,6 @@ func (s *Server) renderOverview(w http.ResponseWriter, r *http.Request, h *grid.
 func (s *Server) overviewFill(p *views.OverviewPage, h grid.HostInfo, snap grid.Snapshot) {
 	label := hostLabel(h)
 	p.Host, p.Label = h.Name, label
-	p.SSEURL = "/events?host=" + url.QueryEscape(h.Name)
 	p.MicroNode = "grid_node_" + p.NodeNo
 	p.MicroRes = "res_map_" + h.Name
 	p.RebootRequired = h.RebootRequired || (snap.Packages != nil && snap.Packages.RebootRequired)
@@ -173,25 +166,12 @@ func (s *Server) handleServicesRestart(w http.ResponseWriter, r *http.Request) {
 		}
 		toast = views.Toast{Title: "Restored", Sub: h.Name + " | systemctl restart"}
 	}
-	if err := s.renderer.RenderPartial(w, "overview-toast", toast); err != nil {
+	if err := s.renderer.RenderPartial(w, "toasts", toast); err != nil {
 		s.serverError(w, r, err)
 	}
 }
 
 // --- SSE renderers ----------------------------------------------------------------
-
-// metricsOf extracts the sample from an event payload (value or pointer).
-func overviewMetrics(ev grid.Event) (protocol.Metrics, bool) {
-	switch m := ev.Payload.(type) {
-	case protocol.Metrics:
-		return m, true
-	case *protocol.Metrics:
-		if m != nil {
-			return *m, true
-		}
-	}
-	return protocol.Metrics{}, false
-}
 
 func overviewServices(ev grid.Event) (protocol.Services, bool) {
 	switch v := ev.Payload.(type) {
@@ -206,7 +186,7 @@ func overviewServices(ev grid.Event) (protocol.Services, bool) {
 }
 
 func (s *Server) renderOverviewLoad(_ *http.Request, ev grid.Event) (string, string, bool) {
-	m, ok := overviewMetrics(ev)
+	m, ok := eventMetrics(ev)
 	if !ok {
 		return "", "", false
 	}
@@ -214,7 +194,7 @@ func (s *Server) renderOverviewLoad(_ *http.Request, ev grid.Event) (string, str
 }
 
 func (s *Server) renderOverviewCPU(_ *http.Request, ev grid.Event) (string, string, bool) {
-	m, ok := overviewMetrics(ev)
+	m, ok := eventMetrics(ev)
 	if !ok {
 		return "", "", false
 	}
@@ -228,7 +208,7 @@ func (s *Server) renderOverviewCPU(_ *http.Request, ev grid.Event) (string, stri
 }
 
 func (s *Server) renderOverviewMem(_ *http.Request, ev grid.Event) (string, string, bool) {
-	m, ok := overviewMetrics(ev)
+	m, ok := eventMetrics(ev)
 	if !ok {
 		return "", "", false
 	}
@@ -276,27 +256,6 @@ func (s *Server) renderOverviewState(_ *http.Request, ev grid.Event) (string, st
 
 // overviewPartial renders a partial into a string for an SSE payload.
 func (s *Server) overviewPartial(name string, data any) (string, error) {
-	if s.renderer == nil {
-		return "", errors.New("no renderer")
-	}
-	w := &overviewBuf{}
-	if err := s.renderer.RenderPartial(w, name, data); err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(w.buf.String()), nil
+	out, err := s.partialString(name, data)
+	return strings.TrimSpace(out), err
 }
-
-// overviewBuf is a minimal http.ResponseWriter that collects the body.
-type overviewBuf struct {
-	buf bytes.Buffer
-	hdr http.Header
-}
-
-func (b *overviewBuf) Header() http.Header {
-	if b.hdr == nil {
-		b.hdr = http.Header{}
-	}
-	return b.hdr
-}
-func (b *overviewBuf) Write(p []byte) (int, error) { return b.buf.Write(p) }
-func (b *overviewBuf) WriteHeader(int)             {}

@@ -41,9 +41,8 @@
   {{template "checker"}}
   <input type="hidden" name="package" value="{{.Package}}">
   <div class="modal-actions">
-    {{/* Literal buttons: the shared btn-card filters a plain-string data-modal-close in Attrs (ZgotmplZ). */}}
-    <button type="button" class="btn-card btn-card-grey" data-modal-close><span>Cancel</span>{{icon "close" 14}}</button>
-    <button type="submit" class="btn-card"><span>{{.Label}}</span>{{icon .Icon 14}}</button>
+    {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}
+    {{template "btn-card" (dict "Label" .Label "Type" "submit" "Icon" .Icon)}}
   </div>
 </form>
 {{template "modal-close"}}{{end}}
@@ -70,20 +69,16 @@
 </div>{{end}}
 
 {{define "packages-job-foot"}}<div id="job-foot-{{.ID}}" class="modal-actions job-foot"{{if .OOB}} hx-swap-oob="true"{{end}}>
-  {{if .Active}}<button type="button" class="btn-card btn-card-grey" data-modal-close><span>Run in background</span>{{icon "arrow-right" 14}}</button>
+  {{if .Active}}{{template "btn-card" (dict "Label" "Run in background" "Variant" "grey" "Icon" "arrow-right" "Attrs" (attr "data-modal-close"))}}
   {{template "btn-card" (dict "Label" "Cancel job" "Icon" "close" "Attrs" .CancelAttrs)}}
-  {{else}}<button type="button" class="btn-card" data-modal-close><span>Close</span>{{icon "info" 14}}</button>{{end}}
+  {{else}}{{template "btn-card" (dict "Label" "Close" "Attrs" (attr "data-modal-close"))}}{{end}}
 </div>{{end}}
 
-{{/* --- live updates of the job dialog and the status bar (payload of the "pkg-job" event).
+{{/* --- live updates of the job dialog (payload of the "pkg-job" event).
      Data: httpserver packagesJobEvent. --- */}}
 {{define "packages-job-state"}}{{template "packages-job-head" .Job}}
 {{template "packages-job-foot" .Job}}
 {{if .Job.Finished}}{{template "packages-job-term" .Job}}{{end}}
-<div hx-swap-oob="delete:.statusbar-log > .btn-tool.is-hot"></div>
-{{with .Chip}}<div hx-swap-oob="afterbegin:.statusbar-log"><button type="button" class="btn-tool is-hot" hx-get="{{.Href}}" hx-target="#modal-root" hx-swap="innerHTML">{{.Label}}</button></div>
-{{end}}
-<span id="statusbar-log" role="status" hx-swap-oob="true">{{.Log}}</span>
 {{with .Toast}}{{template "toasts" .}}{{end}}{{end}}
 
 {{define "packages-job-output"}}<div hx-swap-oob="beforeend:#job-lines-{{.ID}}">{{template "packages-job-line" .Line}}</div>{{end}}

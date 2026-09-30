@@ -12,10 +12,10 @@
       </div>
     </div>
   </div>
-</div>{{else if .Offline}}<div class="view" sse-connect="{{.SSEURL}}">
+</div>{{else if .Offline}}<div class="view">
   <span hidden sse-swap="ov-state" data-ov-state></span>
   {{template "overview-offline" .Offline}}
-</div>{{else}}<div class="view" sse-connect="{{.SSEURL}}">
+</div>{{else}}<div class="view">
   <span hidden sse-swap="ov-state" data-ov-state></span>
   <div class="view-head">
     <span class="view-title">Overview: {{.Label}}</span>

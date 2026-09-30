@@ -47,16 +47,8 @@ type linkRegistry struct {
 	codes map[string]*codeAttempt
 }
 
-// linkRegistries holds one registry per Server. The Server struct belongs to
-// another package owner, so the registry hangs off it from here.
-var linkRegistries sync.Map // *Server -> *linkRegistry
-
-func (s *Server) links() *linkRegistry {
-	if v, ok := linkRegistries.Load(s); ok {
-		return v.(*linkRegistry)
-	}
-	v, _ := linkRegistries.LoadOrStore(s, &linkRegistry{links: map[string]*linkAttempt{}, codes: map[string]*codeAttempt{}})
-	return v.(*linkRegistry)
+func newLinkRegistry() *linkRegistry {
+	return &linkRegistry{links: map[string]*linkAttempt{}, codes: map[string]*codeAttempt{}}
 }
 
 func newAttemptID() string {

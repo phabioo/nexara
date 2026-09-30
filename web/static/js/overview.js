@@ -1,5 +1,5 @@
-/* Nexara Nexus overview: the processes toggle, reloads after host or connection changes, and error toasts
-   for the restart action. Host switching with Q / E lives in nexus.js. No inline handlers (strict CSP). */
+/* Nexara Nexus overview: the processes toggle and reloads after host or connection changes. Error toasts
+   live in nexus.js. Host switching with Q / E lives in nexus.js. No inline handlers (strict CSP). */
 (function () {
   'use strict';
 
@@ -57,50 +57,6 @@
   document.addEventListener('htmx:sseOpen', function () {
     if (dropped) { dropped = false; reloadSoon(); }
   });
-
-  // --- toast for failed actions (nexus.js arms and removes it like a server-rendered one) ---
-  function span(cls) {
-    var el = document.createElement('span');
-    el.className = cls;
-    el.setAttribute('aria-hidden', 'true');
-    return el;
-  }
-
-  function showToast(title, sub) {
-    var host = document.getElementById('toasts');
-    if (!host) { return; }
-    var toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.setAttribute('role', 'status');
-    ['tl', 'tr', 'bl', 'br'].forEach(function (c) { toast.appendChild(span('corner corner-' + c)); });
-    var main = document.createElement('div');
-    main.className = 'toast-main';
-    var name = document.createElement('span');
-    name.className = 'toast-title t-serif';
-    name.textContent = title;
-    main.appendChild(span('crosshair-mark'));
-    main.appendChild(name);
-    main.appendChild(span('crosshair-mark'));
-    toast.appendChild(main);
-    if (sub) {
-      var line = document.createElement('div');
-      line.className = 'toast-sub t-display';
-      line.textContent = sub;
-      toast.appendChild(line);
-    }
-    host.appendChild(toast);
-  }
-
-  function failed(e) {
-    var elt = e.detail && e.detail.elt;
-    if (!(elt instanceof Element) || !elt.closest('[data-ov-restart]')) { return; }
-    var xhr = e.detail.xhr;
-    var text = xhr && xhr.responseText ? xhr.responseText.trim().slice(0, 120) : '';
-    showToast('Failed', text || 'Request failed');
-  }
-  document.addEventListener('htmx:responseError', failed);
-  document.addEventListener('htmx:sendError', failed);
-  document.addEventListener('htmx:timeout', failed);
 
   function init() {
     if (store(function (s) { return s.getItem(PROCS_KEY); }) === '1') { setProcs(true); }

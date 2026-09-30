@@ -28,6 +28,7 @@ type Layout struct {
 
 	Log            string   // last action, left side of the status bar
 	Job            *JobChip // running background job, left of the log line
+	EventsURL      string   // SSE stream of the page (sse-connect on <body>); empty: no live updates
 	BodyClass      string
 	ConnectionLost bool   // renders the reconnecting state from the start
 	Toast          *Toast // server-rendered banner, hidden again by nexus.js
