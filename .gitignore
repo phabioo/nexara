@@ -7,3 +7,4 @@
 .DS_Store
 Thumbs.db
 /docs/design/screenshots/*.tmp
+/.worktrees/
