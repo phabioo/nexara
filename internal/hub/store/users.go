@@ -90,6 +90,16 @@ func (s *Store) CountUsers(ctx context.Context) (int, error) {
 	return n, nil
 }
 
+// DeleteAllUsers removes every operator (sessions cascade) and returns how
+// many were removed. Used by `nexus user reset` to return to setup mode.
+func (s *Store) DeleteAllUsers(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx, "DELETE FROM users")
+	if err != nil {
+		return 0, fmt.Errorf("store: delete users: %w", err)
+	}
+	return res.RowsAffected()
+}
+
 // UpdatePassword replaces the password hash. It does not touch sessions; call
 // DeleteUserSessions as well when the change should log the user out.
 func (s *Store) UpdatePassword(ctx context.Context, id int64, passHash string) error {

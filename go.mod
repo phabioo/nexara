@@ -3,11 +3,14 @@ module github.com/phabioo/nexara
 go 1.26.0
 
 require (
+	github.com/pquerna/otp v1.5.0
 	go.yaml.in/yaml/v3 v3.0.5
+	golang.org/x/crypto v0.57.0
 	modernc.org/sqlite v1.60.1
 )
 
 require (
+	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
