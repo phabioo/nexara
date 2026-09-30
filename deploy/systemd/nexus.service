@@ -1,0 +1,22 @@
+# Nexara Nexus hub (draft)
+[Unit]
+Description=Nexara Nexus hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nexus
+Group=nexus
+ExecStart=/usr/local/bin/nexus serve --config /etc/nexus/nexus.yaml
+Restart=on-failure
+StateDirectory=nexus
+ConfigurationDirectory=nexus
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/nexus /etc/nexus
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nexus Mobile Overview</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@125,700;125,800;125,900&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#111214}
+button{font-family:inherit;cursor:pointer;border:0;color:inherit;padding:0;background:transparent}
+input{font-family:inherit}
+a{color:inherit}
+.w{font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;text-transform:uppercase;letter-spacing:.01em}
+.s{font-family:'Instrument Serif',serif;font-weight:400}
+.dim{color:#8d9093}
+.micro{font-family:'JetBrains Mono',monospace;font-size:8px;line-height:10px;letter-spacing:.04em;color:#7a7e82;text-transform:uppercase;white-space:nowrap}
+.t-lime{--c:#c6f500;--b0:#2c3a08}.t-green{--c:#22e06a;--b0:#0f3f2b}.t-blue{--c:#2f9bff;--b0:#11304a}.t-purple{--c:#b04dff;--b0:#2f1446}.t-pink{--c:#ff3f74;--b0:#44121f}.t-grey{--c:#b4b6b9;--b0:#2c2e31}
+.it{position:relative;display:flex;flex-direction:column;min-width:0;overflow:hidden;background:linear-gradient(180deg,var(--b0) 0%,#17191b 80%);color:#eceee9}
+.strip{height:16px;flex:none;display:flex}
+.strip b{flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:0 6px;background:var(--c);color:#0d0e0f;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:9px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.sq{width:13px;flex:none;display:grid;grid-template-columns:4px 4px;grid-auto-rows:4px;gap:2px;padding:2px 0 0 3px}
+.sq i{background:var(--c)}.sq i:nth-child(2),.sq i:nth-child(3){opacity:.35}
+.seg{display:flex;gap:2px;flex:1}
+.cell{flex:1;height:6px;background:rgba(255,255,255,.1)}.cell.on{background:var(--c)}
+.chipv{height:30px;display:flex;align-items:center;gap:8px;padding:0 10px;background:#1d1f22;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:#eceee9}
+.htab{height:36px;flex:none;display:flex;align-items:stretch;background:#2a2c2f;color:#b4b6b9;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.02em;text-decoration:none}
+.htab>span:first-child{display:flex;align-items:center;padding:0 12px;white-space:nowrap}
+.htab.on{background:#c6f500;color:#0d0e0f}
+.htab.add{background:#1d1f22;color:#c6f500;outline:1px dashed #4a4d51;outline-offset:-1px}
+.cnt{min-width:26px;display:flex;align-items:center;justify-content:center;border-left:2px solid #111214;background:#c6f500;color:#0d0e0f;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:12px}
+.htab.on .cnt{background:#f2f3ef}
+.hscroll{overflow-x:auto;scrollbar-width:none}.hscroll::-webkit-scrollbar{display:none}
+.vscroll{overflow-y:auto;scrollbar-width:none}.vscroll::-webkit-scrollbar{display:none}
+.card{display:flex;flex-direction:column;background:#b4b6b9;color:#0d0e0f}
+.ch{height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#c9cacd;border-bottom:1px solid #8e9093;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:14px;text-transform:uppercase}
+.ch.hot{background:#c6f500;border-color:#c6f500}
+.card.dk{background:#141618;color:#eceee9;outline:1px solid #25282b}
+.card.dk .ch{background:transparent;border:0;color:#c6f500}
+.card.dk .ct{color:#c9cacc}
+.cb{display:flex;flex-direction:column;gap:10px;padding:12px 14px 14px}
+.tag{align-self:flex-start;height:20px;display:flex;align-items:center;padding:0 8px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.tag.lt{background:#d9dadc;color:#2a2c2f}.tag.dk{background:#0d0e0f;color:#f2f3ef}.tag.gr{background:#c6f500;color:#0d0e0f}
+.ct{margin:0;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.45;color:#1a1c1e}
+.sec{font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+.chk{height:10px;flex:none;background:repeating-linear-gradient(90deg,#9c9ea1 0 40px,transparent 40px 80px) top/100% 5px no-repeat,repeating-linear-gradient(90deg,transparent 0 40px,#9c9ea1 40px 80px) bottom/100% 5px no-repeat}
+.obar{height:14px;background:#0d0e0f;position:relative}.obar i{position:absolute;left:0;top:0;bottom:0;background:#c6f500}.obar i.bad{background:#ff3f74}
+.orow{display:flex;gap:10px;align-items:flex-end}
+.ol{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.rw{width:44px;height:44px;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:1px solid #8e9093;background:#c2c3c6;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600}
+.rw.bad{background:#ff3f74;border-color:#c41f4c}
+.divl{display:flex;justify-content:center;align-items:center;gap:6px;height:22px;border-bottom:1px solid #4a4d51;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.06em;color:#c9cacc}
+.cbtn{height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#0d0e0f;color:#f2f3ef;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;text-decoration:none}
+.cbtn.lt{background:#f2f3ef;color:#0d0e0f}
+.pbtn{height:44px;flex:1;display:flex;align-items:center;justify-content:center;gap:8px;background:#1d1f22;color:#eceee9;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+.tb{height:36px;padding:0 12px;background:#0d0e0f;color:#f2f3ef;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600}
+.tb.hot{background:#c6f500;color:#0d0e0f}
+.tick{height:22px;flex:none;overflow:hidden;display:flex;align-items:center}
+.tick.bl{background:#3aa0e8;color:#0d0e0f}.tick.gr{background:#0e3a1d;color:#35e36a}
+.run{display:flex;gap:16px;white-space:nowrap;animation:mq 24s linear infinite;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:10px;letter-spacing:.04em;text-transform:uppercase}
+@keyframes mq{to{transform:translateX(-50%)}}
+.sin{width:100%;height:44px;padding:0 12px;background:#18191b;border:1px solid #2c2f32;color:#eceee9;font-size:14px;font-family:'JetBrains Mono',monospace}
+.fin{height:44px;width:100%;padding:0 12px;background:#0d0e0f;border:0;color:#eceee9;font-family:'JetBrains Mono',monospace;font-size:15px}
+.fin::placeholder,.sin::placeholder{color:#6f7377}
+.sin:focus-visible,.fin:focus-visible,.cbtn:focus-visible,.nv:focus-visible,.htab:focus-visible{outline:2px solid #c6f500;outline-offset:2px}
+.bnav{height:66px;flex:none;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;padding:4px 4px 10px;background:#0d0e0f;border-top:1px solid #1e2023}
+.nv{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#8d9093;text-decoration:none;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:9px;text-transform:uppercase;letter-spacing:.03em}
+.nv.on{background:#dcdddf;color:#0d0e0f}
+.nb{position:absolute;top:3px;right:10px;min-width:16px;height:16px;padding:0 3px;display:flex;align-items:center;justify-content:center;background:#c6f500;color:#0d0e0f;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
+@keyframes blink{50%{opacity:0}}
+.live{width:7px;height:7px;background:#c6f500;animation:blink 1.4s steps(1) infinite}
+.al{display:flex;align-items:stretch;gap:12px;min-height:72px;background:linear-gradient(90deg,var(--b0) 0%,#17191b 55%)}
+.al.res{opacity:.62}
+.alsev{width:6px;flex:none;background:var(--c)}
+.alsevtag{height:18px;display:flex;align-items:center;padding:0 6px;background:var(--c);color:#0d0e0f;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:9px;letter-spacing:.06em;text-transform:uppercase}
+.mrow{display:flex;align-items:center;gap:14px;min-height:56px;padding:0 14px;border-top:1px solid #9c9ea1;color:#0d0e0f;text-decoration:none;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:13px;text-transform:uppercase}
+.mrow .ic{width:32px;height:32px;flex:none;display:flex;align-items:center;justify-content:center;background:#0d0e0f;color:#c6f500}
+.code{padding:10px 12px;background:#0b0c0d;color:#35e36a;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.6}
+.link{font-family:'JetBrains Mono',monospace;font-size:12px;text-decoration:underline;color:#0d0e0f;min-height:44px;text-align:left}
+.xh{position:absolute;width:28px;height:28px;background:linear-gradient(#26292c,#26292c) center/1px 28px no-repeat,linear-gradient(#26292c,#26292c) center/28px 1px no-repeat;pointer-events:none}
+</style>
+</helmet>
+<div style="width:390px;height:844px;position:relative;overflow:hidden;display:flex;flex-direction:column;background-color:#111214;background-image:repeating-linear-gradient(0deg,rgba(255,255,255,0.012) 0 1px,transparent 1px 3px);color:#eceee9;font-family:'JetBrains Mono',monospace">
+<div style="height:58px;flex:none;position:relative;display:flex;align-items:center;justify-content:space-between;padding:8px 10px 0 10px">
+  <div class="micro" style="position:absolute;left:176px;top:4px">[nexus link] · 192.168.10.21</div>
+  <div style="display:flex;align-items:stretch;height:34px">
+    <div class="w" style="display:flex;align-items:center;gap:6px;padding:0 12px 0 10px;background:#c6f500;color:#0d0e0f;border-radius:17px 0 0 17px;font-size:16px;font-weight:900"><svg width="16" height="16" viewBox="0 0 64 64" aria-hidden="true" style="color:currentColor"><path d="M58 25V17L32 3L6 17V47L32 61L58 47V39" fill="none" stroke="currentColor" stroke-width="7"/><rect x="42" y="29" width="22" height="6" fill="currentColor"/><path d="M32 23L41 32L32 41L23 32Z" fill="currentColor"/></svg><span>01</span></div>
+    <div style="display:flex;align-items:center;gap:6px;padding:0 10px;background:#b9babd;color:#0d0e0f;border-left:2px solid #111214;font-size:13px;font-weight:500"><svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor"><path d="M1 1h12v2H1zM1 5h12v2H1zM1 9h12v2H1zM1 12.5h12v1.5H1z"/></svg><span>9/12</span></div>
+    <div style="display:flex;align-items:center;gap:6px;padding:0 12px 0 10px;background:#b9babd;color:#0d0e0f;border-left:2px solid #111214;border-radius:0 17px 17px 0;font-size:13px;font-weight:500"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5.5 8.5V2a1.5 1.5 0 0 1 3 0v6.5a3 3 0 1 1-3 0z"/></svg><span>47.2°</span></div>
+  </div>
+  <div style="font-size:11px;font-weight:500">4 MS</div>
+</div>
+<div class="hscroll" style="height:48px;flex:none;display:flex;gap:6px;align-items:center;padding:0 10px">
+  <button class="htab on"><span>pi5-media</span><span class="cnt">3</span></button>
+  <button class="htab"><span>pi3-dns</span><span class="cnt">2</span></button>
+  <button class="htab add" aria-label="Add host"><span><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><path d="M6 1v10M1 6h10"/></svg>Host</span></button>
+</div>
+
+<div class="vscroll" style="flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;padding:6px 10px 16px">
+  <div style="display:flex;align-items:center;justify-content:space-between;height:30px;flex:none">
+    <span style="font-size:12px;color:#c9cacc">Overview: pi5-media</span>
+    <div class="chipv"><span>LOAD</span><span>0.42 0.38 0.35</span></div>
+  </div>
+  <div style="display:flex;gap:6px;flex:none">
+    <button class="pbtn"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 7a5 5 0 1 1-1.5-3.6M12 1.5v3h-3"/></svg><span>Reboot</span></button>
+    <button class="pbtn"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 1v6M4 3.2a5 5 0 1 0 6 0"/></svg><span>Shut down</span></button>
+  </div>
+
+  <div class="card" style="flex:none">
+    <div class="ch hot">CPU · 4 Cores</div>
+    <div class="cb">
+      <span class="tag lt">Live</span>
+      <p class="ct">Quad-core Cortex-A76 at 2.4 GHz. Currently at 34% utilisation, SoC temperature 47.2 °C.</p>
+      <div class="chk"></div>
+      <div class="sec">Per core:</div>
+      <div class="orow"><div class="ol"><span class="ct">Core 0</span><div class="obar"><i style="width:39%"></i></div></div><div class="rw" style="width:40px;height:40px"><span style="font-size:12px">39</span><span>%</span></div></div><div class="orow"><div class="ol"><span class="ct">Core 1</span><div class="obar"><i style="width:29%"></i></div></div><div class="rw" style="width:40px;height:40px"><span style="font-size:12px">29</span><span>%</span></div></div><div class="orow"><div class="ol"><span class="ct">Core 2</span><div class="obar"><i style="width:36%"></i></div></div><div class="rw" style="width:40px;height:40px"><span style="font-size:12px">36</span><span>%</span></div></div><div class="orow"><div class="ol"><span class="ct">Core 3</span><div class="obar"><i style="width:31%"></i></div></div><div class="rw" style="width:40px;height:40px"><span style="font-size:12px">31</span><span>%</span></div></div>
+      <div class="orow"><div class="ol"><span class="ct">SoC temperature</span><div class="obar"><i style="width:56%"></i></div></div><div class="rw" style="width:40px;height:40px"><span style="font-size:12px">47</span><span>°C</span></div></div>
+      <button class="cbtn"><span>Show processes</span><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5.8"/><path d="M7 6.3v3.7M7 4v.4"/></svg></button>
+    </div>
+  </div>
+
+  <div class="card dk" style="flex:none">
+    <div class="ch">Memory &amp; storage</div>
+    <div class="cb">
+      <span class="tag gr">Healthy</span>
+      <div style="height:120px;flex:none;margin:0 -14px;position:relative;background-color:#0b1a10;background-image:radial-gradient(#1c5a30 1px,transparent 1px);background-size:4px 4px">
+        <svg viewBox="0 0 300 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;display:block"><polygon points="0,100 0.0,74.6 6.4,65.9 12.8,65.4 19.1,65.2 25.5,65.4 31.9,58.0 38.3,59.3 44.7,61.3 51.1,63.8 57.4,66.9 63.8,62.4 70.2,66.3 76.6,70.5 83.0,74.8 89.4,70.9 95.7,74.9 102.1,78.5 108.5,81.7 114.9,84.3 121.3,78.2 127.7,79.6 134.0,80.4 140.4,80.7 146.8,72.4 153.2,72.0 159.6,71.3 166.0,70.7 172.3,70.1 178.7,61.8 185.1,62.0 191.5,62.6 197.9,63.9 204.3,57.6 210.6,60.1 217.0,63.1 223.4,66.6 229.8,70.5 236.2,66.6 242.6,70.8 248.9,75.1 255.3,79.1 261.7,74.7 268.1,77.9 274.5,80.6 280.9,82.7 287.2,84.2 293.6,77.0 300.0,77.3 300,100" fill="#22e06a" fill-opacity="0.22"/><polyline points="0.0,74.6 6.4,65.9 12.8,65.4 19.1,65.2 25.5,65.4 31.9,58.0 38.3,59.3 44.7,61.3 51.1,63.8 57.4,66.9 63.8,62.4 70.2,66.3 76.6,70.5 83.0,74.8 89.4,70.9 95.7,74.9 102.1,78.5 108.5,81.7 114.9,84.3 121.3,78.2 127.7,79.6 134.0,80.4 140.4,80.7 146.8,72.4 153.2,72.0 159.6,71.3 166.0,70.7 172.3,70.1 178.7,61.8 185.1,62.0 191.5,62.6 197.9,63.9 204.3,57.6 210.6,60.1 217.0,63.1 223.4,66.6 229.8,70.5 236.2,66.6 242.6,70.8 248.9,75.1 255.3,79.1 261.7,74.7 268.1,77.9 274.5,80.6 280.9,82.7 287.2,84.2 293.6,77.0 300.0,77.3" fill="none" stroke="#35e36a" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+        <span style="position:absolute;left:10px;top:8px;font-size:10px;color:#35e36a">CPU · LAST 77 S</span><span style="position:absolute;right:10px;top:8px;font-size:10px;color:#35e36a">34%</span>
+      </div>
+      <p class="ct">3.4 of 8 GB RAM in use. Network: ↓ 1.2 MB/s · ↑ 8.6 MB/s on eth0.</p>
+      <div class="divl"><span>RESOURCES</span></div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px"><div class="it t-blue" style="height:76px"><div class="strip"><b><span>RAM</span></b><span class="sq"><i></i><i></i><i></i><i></i></span></div><div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:7px;padding:0 8px"><div style="font-size:13px;font-weight:700">3.4 / 8 GB</div><div class="seg"><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div></div></div><div class="it t-purple" style="height:76px"><div class="strip"><b><span>Swap</span></b><span class="sq"><i></i><i></i><i></i><i></i></span></div><div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:7px;padding:0 8px"><div style="font-size:13px;font-weight:700">0 / 2 GB</div><div class="seg"><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div></div></div><div class="it t-grey" style="height:76px"><div class="strip"><b><span>Disk /</span></b><span class="sq"><i></i><i></i><i></i><i></i></span></div><div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:7px;padding:0 8px"><div style="font-size:13px;font-weight:700">41 / 117 GB</div><div class="seg"><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div></div></div><div class="it t-grey" style="height:76px"><div class="strip"><b><span>Disk /mnt/data</span></b><span class="sq"><i></i><i></i><i></i><i></i></span></div><div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:7px;padding:0 8px"><div style="font-size:13px;font-weight:700">2.9 / 4.0 TB</div><div class="seg"><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i><i class="cell"></i></div></div></div></div>
+      <button class="cbtn lt" style="margin-top:4px"><span>Open shell</span><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5.8"/><path d="M7 6.3v3.7M7 4v.4"/></svg></button>
+    </div>
+  </div>
+
+  <div class="card" style="flex:none">
+    <div class="ch">Services</div>
+    <div class="cb">
+      <span class="tag dk">5/6 running</span>
+      <p class="ct">systemd units on pi5-media. Listening on 22, 445, 32400 and 5353/udp.</p>
+      <div class="chk"></div>
+      <div class="orow"><div class="ol"><div class="ct" style="display:flex;justify-content:space-between"><span>ssh</span><span>active</span></div><div class="obar"><i class="" style="width:100%"></i></div></div><div class="rw" style="width:40px;height:40px"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1.5 6.5 4.5 9.5 10.5 2.5"/></svg></div></div><div class="orow"><div class="ol"><div class="ct" style="display:flex;justify-content:space-between"><span>plexmediaserver</span><span>active</span></div><div class="obar"><i class="" style="width:100%"></i></div></div><div class="rw" style="width:40px;height:40px"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1.5 6.5 4.5 9.5 10.5 2.5"/></svg></div></div><div class="orow"><div class="ol"><div class="ct" style="display:flex;justify-content:space-between"><span>docker</span><span>active</span></div><div class="obar"><i class="" style="width:100%"></i></div></div><div class="rw" style="width:40px;height:40px"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1.5 6.5 4.5 9.5 10.5 2.5"/></svg></div></div><div class="orow"><div class="ol"><div class="ct" style="display:flex;justify-content:space-between"><span>cron</span><span>active</span></div><div class="obar"><i class="" style="width:100%"></i></div></div><div class="rw" style="width:40px;height:40px"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1.5 6.5 4.5 9.5 10.5 2.5"/></svg></div></div><div class="orow"><div class="ol"><div class="ct" style="display:flex;justify-content:space-between"><span>smbd</span><span>failed</span></div><div class="obar"><i class="bad" style="width:100%"></i></div></div><div class="rw bad" style="width:40px;height:40px"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 2l8 8M10 2l-8 8"/></svg></div></div><div class="orow"><div class="ol"><div class="ct" style="display:flex;justify-content:space-between"><span>avahi-daemon</span><span>active</span></div><div class="obar"><i class="" style="width:100%"></i></div></div><div class="rw" style="width:40px;height:40px"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1.5 6.5 4.5 9.5 10.5 2.5"/></svg></div></div>
+      <button class="cbtn"><span>Restart failed units (1)</span><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5.8"/><path d="M7 6.3v3.7M7 4v.4"/></svg></button>
+    </div>
+  </div>
+  <div class="micro">node_lnk_01 · [live feed]</div>
+</div>
+<div style="height:28px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 12px;border-top:1px solid #1e2023;font-size:11px">
+  <div style="display:flex;gap:8px;min-width:0;color:#c9cacc"><span style="color:#c6f500">&gt;</span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Connected to pi5-media</span></div>
+  <i class="live"></i>
+</div>
+<nav class="bnav" aria-label="Views"><a class="nv on" href="Mobile-Overview.dc.html" aria-current="page"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.5" y="1.5" width="6" height="6"/><rect x="10.5" y="1.5" width="6" height="6"/><rect x="1.5" y="10.5" width="6" height="6"/><rect x="10.5" y="10.5" width="6" height="6"/></svg><span>Overview</span></a><a class="nv" href="Mobile-Packages.dc.html"><span class="nb">3</span><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 1.5 16 5v8l-7 3.5L2 13V5z"/><path d="M2 5l7 3.5L16 5M9 8.5v8"/></svg><span>Packages</span></a><a class="nv" href="Mobile-Shell.dc.html"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.5" y="2.5" width="15" height="13"/><path d="M4.5 7l3 2.5-3 2.5M9.5 12h4"/></svg><span>Shell</span></a><a class="nv" href="Mobile-Alerts.dc.html"><span class="nb">2</span><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 2 17 16H1z"/><path d="M9 7v4M9 13v.5"/></svg><span>Alerts</span></a><a class="nv" href="Mobile-More.dc.html"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><rect x="2" y="8" width="3" height="3"/><rect x="7.5" y="8" width="3" height="3"/><rect x="13" y="8" width="3" height="3"/></svg><span>More</span></a></nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

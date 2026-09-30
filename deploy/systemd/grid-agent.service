@@ -1,0 +1,22 @@
+# Nexara Grid Agent (draft)
+# Runs as root because it manages packages, services and power.
+# It only exposes a fixed set of actions; the shell drops to the configured user
+# (e.g. pi), whose home directory must stay writable, so ProtectHome is not set.
+# No further sandboxing on purpose (see docs/decisions.md #30): apt and power need
+# a writable system, and NoNewPrivileges would break sudo inside Nexara Shell.
+[Unit]
+Description=Nexara Grid Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/grid-agent run --config /etc/grid-agent/agent.yaml
+Restart=always
+RestartSec=5
+StateDirectory=grid-agent
+ConfigurationDirectory=grid-agent
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

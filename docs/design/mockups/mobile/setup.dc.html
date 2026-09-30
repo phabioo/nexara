@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nexus Mobile Setup</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@125,700;125,800;125,900&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#111214}
+button{font-family:inherit;cursor:pointer;border:0;color:inherit;padding:0;background:transparent}
+input{font-family:inherit}
+a{color:inherit}
+.w{font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;text-transform:uppercase;letter-spacing:.01em}
+.s{font-family:'Instrument Serif',serif;font-weight:400}
+.dim{color:#8d9093}
+.micro{font-family:'JetBrains Mono',monospace;font-size:8px;line-height:10px;letter-spacing:.04em;color:#7a7e82;text-transform:uppercase;white-space:nowrap}
+.t-lime{--c:#c6f500;--b0:#2c3a08}.t-green{--c:#22e06a;--b0:#0f3f2b}.t-blue{--c:#2f9bff;--b0:#11304a}.t-purple{--c:#b04dff;--b0:#2f1446}.t-pink{--c:#ff3f74;--b0:#44121f}.t-grey{--c:#b4b6b9;--b0:#2c2e31}
+.it{position:relative;display:flex;flex-direction:column;min-width:0;overflow:hidden;background:linear-gradient(180deg,var(--b0) 0%,#17191b 80%);color:#eceee9}
+.strip{height:16px;flex:none;display:flex}
+.strip b{flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:0 6px;background:var(--c);color:#0d0e0f;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:9px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.sq{width:13px;flex:none;display:grid;grid-template-columns:4px 4px;grid-auto-rows:4px;gap:2px;padding:2px 0 0 3px}
+.sq i{background:var(--c)}.sq i:nth-child(2),.sq i:nth-child(3){opacity:.35}
+.seg{display:flex;gap:2px;flex:1}
+.cell{flex:1;height:6px;background:rgba(255,255,255,.1)}.cell.on{background:var(--c)}
+.chipv{height:30px;display:flex;align-items:center;gap:8px;padding:0 10px;background:#1d1f22;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:#eceee9}
+.htab{height:36px;flex:none;display:flex;align-items:stretch;background:#2a2c2f;color:#b4b6b9;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.02em;text-decoration:none}
+.htab>span:first-child{display:flex;align-items:center;padding:0 12px;white-space:nowrap}
+.htab.on{background:#c6f500;color:#0d0e0f}
+.htab.add{background:#1d1f22;color:#c6f500;outline:1px dashed #4a4d51;outline-offset:-1px}
+.cnt{min-width:26px;display:flex;align-items:center;justify-content:center;border-left:2px solid #111214;background:#c6f500;color:#0d0e0f;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:12px}
+.htab.on .cnt{background:#f2f3ef}
+.hscroll{overflow-x:auto;scrollbar-width:none}.hscroll::-webkit-scrollbar{display:none}
+.vscroll{overflow-y:auto;scrollbar-width:none}.vscroll::-webkit-scrollbar{display:none}
+.card{display:flex;flex-direction:column;background:#b4b6b9;color:#0d0e0f}
+.ch{height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#c9cacd;border-bottom:1px solid #8e9093;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:14px;text-transform:uppercase}
+.ch.hot{background:#c6f500;border-color:#c6f500}
+.card.dk{background:#141618;color:#eceee9;outline:1px solid #25282b}
+.card.dk .ch{background:transparent;border:0;color:#c6f500}
+.card.dk .ct{color:#c9cacc}
+.cb{display:flex;flex-direction:column;gap:10px;padding:12px 14px 14px}
+.tag{align-self:flex-start;height:20px;display:flex;align-items:center;padding:0 8px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.tag.lt{background:#d9dadc;color:#2a2c2f}.tag.dk{background:#0d0e0f;color:#f2f3ef}.tag.gr{background:#c6f500;color:#0d0e0f}
+.ct{margin:0;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.45;color:#1a1c1e}
+.sec{font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+.chk{height:10px;flex:none;background:repeating-linear-gradient(90deg,#9c9ea1 0 40px,transparent 40px 80px) top/100% 5px no-repeat,repeating-linear-gradient(90deg,transparent 0 40px,#9c9ea1 40px 80px) bottom/100% 5px no-repeat}
+.obar{height:14px;background:#0d0e0f;position:relative}.obar i{position:absolute;left:0;top:0;bottom:0;background:#c6f500}.obar i.bad{background:#ff3f74}
+.orow{display:flex;gap:10px;align-items:flex-end}
+.ol{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.rw{width:44px;height:44px;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:1px solid #8e9093;background:#c2c3c6;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600}
+.rw.bad{background:#ff3f74;border-color:#c41f4c}
+.divl{display:flex;justify-content:center;align-items:center;gap:6px;height:22px;border-bottom:1px solid #4a4d51;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.06em;color:#c9cacc}
+.cbtn{height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#0d0e0f;color:#f2f3ef;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;text-decoration:none}
+.cbtn.lt{background:#f2f3ef;color:#0d0e0f}
+.pbtn{height:44px;flex:1;display:flex;align-items:center;justify-content:center;gap:8px;background:#1d1f22;color:#eceee9;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+.tb{height:36px;padding:0 12px;background:#0d0e0f;color:#f2f3ef;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600}
+.tb.hot{background:#c6f500;color:#0d0e0f}
+.tick{height:22px;flex:none;overflow:hidden;display:flex;align-items:center}
+.tick.bl{background:#3aa0e8;color:#0d0e0f}.tick.gr{background:#0e3a1d;color:#35e36a}
+.run{display:flex;gap:16px;white-space:nowrap;animation:mq 24s linear infinite;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:10px;letter-spacing:.04em;text-transform:uppercase}
+@keyframes mq{to{transform:translateX(-50%)}}
+.sin{width:100%;height:44px;padding:0 12px;background:#18191b;border:1px solid #2c2f32;color:#eceee9;font-size:14px;font-family:'JetBrains Mono',monospace}
+.fin{height:44px;width:100%;padding:0 12px;background:#0d0e0f;border:0;color:#eceee9;font-family:'JetBrains Mono',monospace;font-size:15px}
+.fin::placeholder,.sin::placeholder{color:#6f7377}
+.sin:focus-visible,.fin:focus-visible,.cbtn:focus-visible,.nv:focus-visible,.htab:focus-visible{outline:2px solid #c6f500;outline-offset:2px}
+.bnav{height:66px;flex:none;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;padding:4px 4px 10px;background:#0d0e0f;border-top:1px solid #1e2023}
+.nv{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#8d9093;text-decoration:none;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:9px;text-transform:uppercase;letter-spacing:.03em}
+.nv.on{background:#dcdddf;color:#0d0e0f}
+.nb{position:absolute;top:3px;right:10px;min-width:16px;height:16px;padding:0 3px;display:flex;align-items:center;justify-content:center;background:#c6f500;color:#0d0e0f;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
+@keyframes blink{50%{opacity:0}}
+.live{width:7px;height:7px;background:#c6f500;animation:blink 1.4s steps(1) infinite}
+.al{display:flex;align-items:stretch;gap:12px;min-height:72px;background:linear-gradient(90deg,var(--b0) 0%,#17191b 55%)}
+.al.res{opacity:.62}
+.alsev{width:6px;flex:none;background:var(--c)}
+.alsevtag{height:18px;display:flex;align-items:center;padding:0 6px;background:var(--c);color:#0d0e0f;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:9px;letter-spacing:.06em;text-transform:uppercase}
+.mrow{display:flex;align-items:center;gap:14px;min-height:56px;padding:0 14px;border-top:1px solid #9c9ea1;color:#0d0e0f;text-decoration:none;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:13px;text-transform:uppercase}
+.mrow .ic{width:32px;height:32px;flex:none;display:flex;align-items:center;justify-content:center;background:#0d0e0f;color:#c6f500}
+.code{padding:10px 12px;background:#0b0c0d;color:#35e36a;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.6}
+.link{font-family:'JetBrains Mono',monospace;font-size:12px;text-decoration:underline;color:#0d0e0f;min-height:44px;text-align:left}
+.xh{position:absolute;width:28px;height:28px;background:linear-gradient(#26292c,#26292c) center/1px 28px no-repeat,linear-gradient(#26292c,#26292c) center/28px 1px no-repeat;pointer-events:none}
+</style>
+</helmet>
+<div style="width:390px;height:844px;position:relative;overflow:hidden;display:flex;flex-direction:column;background-color:#111214;background-image:repeating-linear-gradient(0deg,rgba(255,255,255,0.012) 0 1px,transparent 1px 3px);color:#eceee9;font-family:'JetBrains Mono',monospace">
+
+<div style="height:52px;flex:none;position:relative;display:flex;align-items:center;justify-content:space-between;padding:8px 10px 0">
+  <div class="micro" style="position:absolute;left:210px;top:4px">[first run · setup mode]</div>
+  <div style="display:flex;align-items:stretch;height:34px">
+    <div class="w" style="display:flex;align-items:center;gap:6px;padding:0 12px 0 10px;background:#c6f500;color:#0d0e0f;border-radius:17px 0 0 17px;font-size:13px;font-weight:900"><svg width="15" height="15" viewBox="0 0 64 64" aria-hidden="true" style="color:currentColor"><path d="M58 25V17L32 3L6 17V47L32 61L58 47V39" fill="none" stroke="currentColor" stroke-width="7"/><rect x="42" y="29" width="22" height="6" fill="currentColor"/><path d="M32 23L41 32L32 41L23 32Z" fill="currentColor"/></svg><span>Nexus</span></div>
+    <div style="display:flex;align-items:center;padding:0 10px;background:#2a2c2f;border-left:2px solid #111214;font-size:12px;font-weight:600">SETUP</div>
+    <div style="display:flex;align-items:center;padding:0 12px 0 10px;background:#b9babd;color:#0d0e0f;border-left:2px solid #111214;border-radius:0 17px 17px 0;font-size:12px;font-weight:500">1/7</div>
+  </div>
+</div>
+<div class="tick bl" style="margin-top:8px"><div class="run"><span>first run · nexara nexus setup</span><span>+</span><span>first run · nexara nexus setup</span><span>+</span><span>first run · nexara nexus setup</span><span>+</span><span>first run · nexara nexus setup</span><span>+</span><span>first run · nexara nexus setup</span><span>+</span><span>first run · nexara nexus setup</span><span>+</span><span>first run · nexara nexus setup</span><span>+</span><span>first run · nexara nexus setup</span><span>+</span><span>first run · nexara nexus setup</span><span>+</span><span>first run · nexara nexus setup</span><span>+</span><span>first run · nexara nexus setup</span><span>+</span><span>first run · nexara nexus setup</span><span>+</span></div></div>
+<div class="vscroll" style="flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;padding:16px 14px 20px">
+  <div style="display:flex;align-items:center;gap:12px"><svg width="34" height="34" viewBox="0 0 64 64" aria-hidden="true" style="color:#c6f500"><path d="M58 25V17L32 3L6 17V47L32 61L58 47V39" fill="none" stroke="currentColor" stroke-width="7"/><rect x="42" y="29" width="22" height="6" fill="currentColor"/><path d="M32 23L41 32L32 41L23 32Z" fill="currentColor"/></svg><span class="s" style="font-size:42px;line-height:.9;color:#f2f3ef">NEXARA</span></div>
+  <div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:3px"><i style="flex:1;height:6px;background:#c6f500"></i><i style="flex:1;height:6px;background:#2a2c2f"></i><i style="flex:1;height:6px;background:#2a2c2f"></i><i style="flex:1;height:6px;background:#2a2c2f"></i><i style="flex:1;height:6px;background:#2a2c2f"></i><i style="flex:1;height:6px;background:#2a2c2f"></i><i style="flex:1;height:6px;background:#2a2c2f"></i></div><div style="display:flex;justify-content:space-between;font-size:11px;color:#c9cacc"><span>STEP 1/7 · UNLOCK</span><span style="color:#8d9093">NEXT: TRUST</span></div></div>
+  <div class="card" style="flex:none;position:relative;box-shadow:0 0 0 10px rgba(17,18,20,.55)">
+    <div class="ch hot">Claim this hub</div>
+    <div class="cb" style="gap:12px">
+      <span class="tag dk">First run</span>
+      <p class="ct">Enter the one-time setup code the installer printed, so nobody else in the network can take over this hub.</p>
+      <div class="chk"></div>
+      <div style="display:flex;flex-direction:column;gap:6px"><span class="sec">Printed by the installer</span><div class="code">✓ Nexus 0.1.0 installed<br>&nbsp;&nbsp;Open https://frpi5.local:8443<br>&nbsp;&nbsp;Code 7KQ2-M9XD (60 min)</div></div>
+      <div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between"><label for="m-code" class="sec">Setup code</label><span style="font-size:11px;color:#3b3d3f">5 attempts</span></div><input id="m-code" class="fin" type="text" autocomplete="off" placeholder="XXXX-XXXX"></div>
+      <button class="cbtn"><span>Unlock</span><svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 6h13M9 1l5 5-5 5"/></svg></button>
+      <button class="link">Restore from a backup instead</button>
+    </div>
+  </div>
+</div>
+<div style="height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-top:1px solid #1e2023;font-size:11px;color:#8d9093">
+  <div style="display:flex;align-items:center;gap:8px"><i class="live"></i><span>SETUP MODE · LAN ONLY</span></div>
+  <div style="display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 64 64" aria-hidden="true" style="color:#c6f500"><path d="M58 25V17L32 3L6 17V47L32 61L58 47V39" fill="none" stroke="currentColor" stroke-width="7"/><rect x="42" y="29" width="22" height="6" fill="currentColor"/><path d="M32 23L41 32L32 41L23 32Z" fill="currentColor"/></svg><span class="s" style="font-size:17px;color:#eceee9">NEXARA</span></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

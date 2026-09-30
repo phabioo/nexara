@@ -1,0 +1,1508 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nexara Nexus</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@125,700;125,800;125,900&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#111214}
+button{font-family:inherit;cursor:pointer;border:0;color:inherit;padding:0;background:transparent}
+input{font-family:inherit}
+.w{font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;text-transform:uppercase;letter-spacing:.01em}
+.s{font-family:'Instrument Serif',serif;font-weight:400}
+.dim{color:#8d9093}
+.micro{font-family:'JetBrains Mono',monospace;font-size:8px;line-height:10px;letter-spacing:.04em;color:#7a7e82;text-transform:uppercase;white-space:nowrap}
+
+.t-lime{--c:#c6f500;--b0:#2c3a08}
+.t-green{--c:#22e06a;--b0:#0f3f2b}
+.t-blue{--c:#2f9bff;--b0:#11304a}
+.t-purple{--c:#b04dff;--b0:#2f1446}
+.t-pink{--c:#ff3f74;--b0:#44121f}
+.t-grey{--c:#b4b6b9;--b0:#2c2e31}
+.it{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;background:linear-gradient(180deg,var(--b0) 0%,#17191b 80%);color:#eceee9}
+.strip{height:16px;flex:none;display:flex}
+.strip b{flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:0 6px;background:var(--c);color:#0d0e0f;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:9px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.sq{width:13px;flex:none;display:grid;grid-template-columns:4px 4px;grid-auto-rows:4px;gap:2px;padding:2px 0 0 3px}
+.sq i{background:var(--c)}
+.sq i:nth-child(2),.sq i:nth-child(3){opacity:.35}
+.seg{display:flex;gap:2px;flex:1}
+.cell{flex:1;height:6px;background:rgba(255,255,255,.1)}
+.cell.on{background:var(--c)}
+
+.chipv{height:30px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#1d1f22;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:500;color:#eceee9;letter-spacing:.02em}
+
+.htab{height:32px;display:flex;align-items:stretch;background:#2a2c2f;color:#b4b6b9;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:.02em}
+.htab>span:first-child{display:flex;align-items:center;padding:0 12px}
+.htab:hover{background:#3a3d40;color:#eceee9}
+.htab.on{background:#c6f500;color:#0d0e0f}
+.cnt{min-width:24px;display:flex;align-items:center;justify-content:center;border-left:2px solid #111214;background:#c6f500;color:#0d0e0f;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:13px}
+.htab.on .cnt{background:#f2f3ef}
+.key{width:24px;height:24px;display:flex;align-items:center;justify-content:center;border:1.5px solid #6f7377;border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:#b4b6b9}
+.key:hover{border-color:#eceee9;color:#eceee9}
+
+.mi{height:36px;display:flex;align-items:stretch;gap:2px;width:100%;text-align:left;color:#f2f3ef;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+.mi>span:first-child{flex:1;display:flex;align-items:center;padding:0 12px}
+.mi:hover>span:first-child{background:#26282b}
+.mi.hot>span:first-child{background:#c6f500;color:#0d0e0f}
+.mi.on>span:first-child{background:#dcdddf;color:#0d0e0f}
+.nb{width:28px;display:flex;align-items:center;justify-content:center;background:#c6f500;color:#0d0e0f;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600}
+
+.tb{height:26px;padding:0 10px;background:#0d0e0f;color:#f2f3ef;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.02em}
+.tb:hover{background:#f2f3ef;color:#0d0e0f}
+.tb.hot{background:#c6f500;color:#0d0e0f}
+.tb.hot:hover{background:#dcff4d}
+.sin{flex:1;min-width:0;height:32px;padding:0 12px;background:#18191b;border:1px solid #2c2f32;color:#eceee9;font-size:13px}
+.sin:focus-visible,.tin:focus-visible{outline:2px solid #c6f500;outline-offset:2px}
+
+.tick{height:24px;flex:none;overflow:hidden;display:flex;align-items:center}
+.tick.bl{background:#3aa0e8;color:#0d0e0f}
+.tick.gr{background:#0e3a1d;color:#35e36a}
+.run{display:flex;gap:18px;white-space:nowrap;animation:mq 26s linear infinite;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+@keyframes mq{to{transform:translateX(-50%)}}
+
+.card{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;background:#b4b6b9;color:#0d0e0f}
+.ch{height:34px;flex:none;display:flex;align-items:center;padding:0 12px;background:#c9cacd;border-bottom:1px solid #8e9093;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:14px;text-transform:uppercase}
+.ch.hot{background:#c6f500;border-color:#c6f500}
+.card.dk{background:#141618;color:#eceee9;outline:1px solid #25282b}
+.card.dk .ch{background:transparent;border:0;color:#c6f500}
+.card.dk .ct{color:#c9cacc}
+.cb{flex:1;min-height:0;display:flex;flex-direction:column;gap:9px;padding:10px 12px 12px}
+.tag{align-self:flex-start;height:20px;display:flex;align-items:center;padding:0 8px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.tag.lt{background:#d9dadc;color:#2a2c2f}
+.tag.dk{background:#0d0e0f;color:#f2f3ef}
+.tag.gr{background:#c6f500;color:#0d0e0f}
+.ct{margin:0;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.45;color:#1a1c1e}
+.sec{font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+.chk{height:10px;flex:none;background:repeating-linear-gradient(90deg,#9c9ea1 0 40px,transparent 40px 80px) top/100% 5px no-repeat,repeating-linear-gradient(90deg,transparent 0 40px,#9c9ea1 40px 80px) bottom/100% 5px no-repeat}
+.obar{height:14px;background:#0d0e0f;position:relative}
+.obar i{position:absolute;left:0;top:0;bottom:0;background:#c6f500}
+.obar i.bad{background:#ff3f74}
+.orow{display:flex;gap:10px;align-items:flex-end}
+.ol{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.rw{width:46px;height:46px;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:1px solid #8e9093;background:#c2c3c6;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600}
+.rw.sm{width:38px;height:38px}
+.rw.bad{background:#ff3f74;border-color:#c41f4c}
+.divl{display:flex;justify-content:center;align-items:center;gap:6px;height:22px;border-bottom:1px solid #4a4d51;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.06em;color:#c9cacc}
+.cbtn{margin-top:auto;height:34px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:#0d0e0f;color:#f2f3ef;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600}
+.cbtn:hover{background:#2a2c2f}
+.cbtn.lt{background:#f2f3ef;color:#0d0e0f}
+.cbtn.lt:hover{background:#ffffff}
+.pr{display:flex;align-items:center;height:26px;border-top:1px solid #9c9ea1;font-family:'JetBrains Mono',monospace;font-size:12px}
+
+.tin{flex:1;min-width:0;background:transparent;border:0;outline:0;color:#c9f7d4;font-size:13px;font-family:'JetBrains Mono',monospace}
+.tscroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;padding-right:10px;scrollbar-width:thin;scrollbar-color:#35e36a #0e3a1d}
+.tscroll::-webkit-scrollbar{width:6px}
+.tscroll::-webkit-scrollbar-track{background:#0e3a1d}
+.tscroll::-webkit-scrollbar-thumb{background:#35e36a}
+.xh{position:absolute;width:40px;height:40px;background:linear-gradient(#26292c,#26292c) center/1px 40px no-repeat,linear-gradient(#26292c,#26292c) center/40px 1px no-repeat;pointer-events:none}
+@keyframes blink{50%{opacity:0}}
+.live{width:8px;height:8px;background:#c6f500;animation:blink 1.4s steps(1) infinite}
+.htab.add{background:#1d1f22;color:#c6f500;outline:1px dashed #4a4d51;outline-offset:-1px}
+.htab.add>span:first-child{gap:6px}
+.htab.add:hover{background:#c6f500;color:#0d0e0f;outline-color:#c6f500}
+.fld{display:flex;flex-direction:column;gap:6px;min-width:0}
+.fin{height:36px;width:100%;padding:0 12px;background:#0d0e0f;border:0;color:#eceee9;font-family:'JetBrains Mono',monospace;font-size:13px}
+.fin::placeholder{color:#6f7377}
+.fin:focus-visible{outline:2px solid #0d0e0f;outline-offset:2px}
+.cbtn.gr{background:#d9dadc;color:#0d0e0f}
+.cbtn.gr:hover{background:#eceee9}
+.ferr{display:flex;align-items:center;gap:8px;min-height:30px;padding:6px 10px;background:#ff3f74;color:#0d0e0f;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600}
+.xbtn{width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:#0d0e0f}
+.xbtn:hover{background:#0d0e0f;color:#c6f500}
+.ch.bad{background:#ff3f74;border-color:#ff3f74}
+.pbtn{height:30px;display:flex;align-items:center;gap:7px;padding:0 12px;background:#1d1f22;color:#eceee9;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+.pbtn:hover{background:#c6f500;color:#0d0e0f}
+.pbtn.bad:hover{background:#ff3f74;color:#0d0e0f}
+.offdot{display:inline-block;width:7px;height:7px;background:#ff3f74;margin-right:8px}
+.tb.bad{background:#ff3f74;color:#0d0e0f}
+.tb.bad:hover{background:#ff6d95}
+.al{display:flex;align-items:stretch;gap:14px;min-height:66px;background:linear-gradient(90deg,var(--b0) 0%,#17191b 45%)}
+.al.res{opacity:.62}
+.alsev{width:6px;flex:none;background:var(--c)}
+.alsevtag{height:18px;display:flex;align-items:center;padding:0 6px;background:var(--c);color:#0d0e0f;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:9px;letter-spacing:.06em;text-transform:uppercase}
+.rrow{display:flex;align-items:center;gap:10px;width:100%;padding:8px 0;border-top:1px solid #9c9ea1;font-family:'JetBrains Mono',monospace;font-size:12px;color:#1a1c1e;text-align:left}
+.rrow:hover{background:rgba(255,255,255,.18)}
+.rbox{width:18px;height:18px;flex:none;display:flex;align-items:center;justify-content:center;background:#0d0e0f;color:#c6f500}
+.srow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid #9c9ea1;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#1a1c1e}
+.hrow{display:flex;flex-direction:column;gap:8px;padding:10px 0;border-top:1px solid #9c9ea1}
+.chips{display:flex;gap:4px;flex-wrap:wrap}
+.chips .htab{height:28px;font-size:11px}
+.vscroll{overflow-y:auto;scrollbar-width:thin;scrollbar-color:#6f7377 #1d1f22}
+.vscroll::-webkit-scrollbar{width:6px}
+.vscroll::-webkit-scrollbar-track{background:#1d1f22}
+.vscroll::-webkit-scrollbar-thumb{background:#6f7377}
+.stp{display:flex;align-items:center;gap:12px;min-height:40px;border-top:1px solid #9c9ea1;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#1a1c1e}
+.stp .bx{width:22px;height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:#8e9093;color:#0d0e0f}
+.stp.done .bx{background:#0d0e0f;color:#c6f500}
+.stp.run .bx{background:#c6f500;animation:blink 1s steps(1) infinite}
+.stp.wait{color:#5b5e62}
+.cmd{display:flex;align-items:stretch;background:#0b0c0d}
+.cmd code{flex:1;min-width:0;padding:12px 14px;color:#35e36a;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;word-break:break-all}
+.cmd button{width:80px;flex:none;background:#2a2c2f;color:#c6f500;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:11px;text-transform:uppercase}
+.cmd button:hover{background:#c6f500;color:#0d0e0f}
+.jobterm{height:300px;display:flex;flex-direction:column;overflow-y:auto;padding:12px 14px;background:#0b0c0d;color:#35e36a;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.55}
+.lostband{height:28px;flex:none;overflow:hidden;display:flex;align-items:center;background:#ff3f74;color:#0d0e0f;margin-bottom:10px}
+.rbtn{height:30px;display:flex;align-items:center;gap:7px;padding:0 12px;background:#ff3f74;color:#0d0e0f;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+.rbtn:hover{background:#ff6d95}
+.fin2{height:36px;flex:1;min-width:0;padding:0 12px;background:#0d0e0f;border:0;color:#eceee9;font-family:'JetBrains Mono',monospace;font-size:13px}
+.fin2:focus-visible{outline:2px solid #0d0e0f;outline-offset:2px}
+.ccn{position:absolute;width:8px;height:8px;background:#c6f500;border:1px solid #0d0e0f}
+</style>
+</helmet>
+
+<div style="width:1440px;height:900px;position:relative;overflow:hidden;display:flex;flex-direction:column;background-color:#111214;background-image:repeating-linear-gradient(0deg,rgba(255,255,255,0.012) 0 1px,transparent 1px 3px);color:#eceee9;font-family:'JetBrains Mono',monospace">
+
+<span class="xh" style="left:228px;top:780px"></span>
+<span class="xh" style="left:1380px;top:74px"></span>
+
+<!-- TOP BAR -->
+<div style="height:72px;flex:none;position:relative;display:flex;align-items:center;justify-content:space-between;padding:10px 24px 0 18px">
+  <div class="micro" style="position:absolute;left:470px;top:6px">[nexara nexus engaged]<br>grid (ssh key) interface initialized<br>grid nodes 1] 2] . . . . . [secured]</div>
+  <div class="micro" style="position:absolute;left:860px;top:6px">nexara grid · remote host · {{H.ip}}</div>
+  <div style="position:absolute;right:24px;top:6px;font-size:13px;font-weight:500">{{H.lat}}</div>
+
+  <div style="display:flex;align-items:stretch;height:38px">
+    <div class="w" style="display:flex;align-items:center;gap:6px;padding:0 16px 0 12px;background:#c6f500;color:#0d0e0f;border-radius:19px 0 0 19px;font-size:19px;font-weight:900">
+      <svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true"><path d="M58 25V17L32 3L6 17V47L32 61L58 47V39" fill="none" stroke="currentColor" stroke-width="7"/><rect x="42" y="29" width="22" height="6" fill="currentColor"/><path d="M32 23L41 32L32 41L23 32Z" fill="currentColor"/></svg>
+      <span>{{hostNo}}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:0 14px;background:#2a2c2f;border-left:2px solid #111214;font-size:16px;font-weight:600" title="Systems online">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="#6f7377" stroke-width="2"><circle cx="9" cy="9" r="7"/></svg><span>{{onlineCount}}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:0 14px;background:#b9babd;color:#0d0e0f;border-left:2px solid #111214;font-size:16px;font-weight:500" title="Packages up to date">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M1 1h12v2H1zM1 5h12v2H1zM1 9h12v2H1zM1 12.5h12v1.5H1z"/></svg><span>{{pkgText}}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:0 16px 0 14px;background:#b9babd;color:#0d0e0f;border-left:2px solid #111214;border-radius:0 19px 19px 0;font-size:16px;font-weight:500" title="SoC temperature">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5.5 8.5V2a1.5 1.5 0 0 1 3 0v6.5a3 3 0 1 1-3 0z"/></svg><span>{{H.temp}}°</span>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:8px">
+    <button class="key" onClick="{{prevHost}}" aria-label="Previous system">Q</button>
+    <sc-for list="{{hostRows}}" as="h" hint-placeholder-count="2">
+      <button class="{{h.cls}}" onClick="{{h.go}}"><span><sc-if value="{{h.off}}" hint-placeholder-val="{{ false }}"><i class="offdot"></i></sc-if>{{h.name}}</span><sc-if value="{{h.hasUpd}}" hint-placeholder-val="{{ true }}"><span class="cnt">{{h.upd}}</span></sc-if></button>
+    </sc-for>
+    <button class="key" onClick="{{nextHost}}" aria-label="Next system">E</button>
+    <button class="htab add" style="margin-left:6px" onClick="{{openAdd}}" aria-label="Add host"><span><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 1v10M1 6h10"/></svg>Host</span></button>
+  </div>
+</div>
+
+<!-- BODY -->
+<div style="flex:1;min-height:0;display:flex;gap:28px;padding:14px 24px 16px 24px;position:relative">
+
+  <!-- SIDEBAR -->
+  <div style="width:208px;flex:none;display:flex;flex-direction:column;gap:12px">
+    <div style="height:198px;flex:none;background:#c6f500;color:#0d0e0f;display:flex;flex-direction:column">
+      <div style="height:52px;flex:none;display:flex;border-bottom:2px solid rgba(13,14,15,.35)">
+        <div style="flex:1;padding:8px 10px 0;display:flex;flex-direction:column;gap:2px">
+          <div class="w" style="font-size:16px">Node {{hostNo}}</div>
+          <div style="font-size:12px;font-weight:600">{{H.up}} <span style="font-size:9px">UP</span></div>
+        </div>
+        <div style="width:14px;background:#a3cc00"></div>
+      </div>
+      <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center">
+        <span style="position:absolute;left:8px;top:4px;font-size:16px">+</span>
+        <span style="position:absolute;right:8px;top:4px;font-size:16px">+</span>
+        <span style="position:absolute;left:8px;bottom:2px;font-size:16px">+</span>
+        <span style="position:absolute;right:8px;bottom:2px;font-size:16px">+</span>
+        <svg width="76" height="76" viewBox="0 0 64 64" aria-label="Nexara"><path d="M58 25V17L32 3L6 17V47L32 61L58 47V39" fill="none" stroke="#0d0e0f" stroke-width="7"/><rect x="42" y="29" width="22" height="6" fill="#0d0e0f"/><path d="M32 23L41 32L32 41L23 32Z" fill="#0d0e0f"/></svg>
+      </div>
+    </div>
+
+    <nav style="display:flex;flex-direction:column;gap:4px" aria-label="Views">
+      <sc-for list="{{navItems}}" as="n" hint-placeholder-count="7">
+        <button class="{{n.cls}}" onClick="{{n.go}}"><span>{{n.label}}</span><sc-if value="{{n.hasBadge}}" hint-placeholder-val="{{ false }}"><span class="nb">{{n.badge}}</span></sc-if></button>
+      </sc-for>
+    </nav>
+
+    <div style="margin-top:auto;display:flex;flex-direction:column">
+      <div class="w" style="height:32px;display:flex;align-items:center;padding:0 10px;background:#c6f500;color:#0d0e0f;font-size:15px">{{H.short}}</div>
+      <div style="height:150px;position:relative;overflow:hidden;background:#1a14d8">
+        <svg width="208" height="150" viewBox="0 0 52 49" preserveAspectRatio="xMidYMid slice" shape-rendering="crispEdges" style="display:block">
+          <defs><pattern id="dzA" width="2" height="2" patternUnits="userSpaceOnUse"><rect width="1" height="1" fill="#2d2af2"/></pattern></defs>
+          <rect width="52" height="49" fill="#1a14d8"/>
+          <rect x="0" y="0" width="30" height="14" fill="url(#dzA)"/>
+          <rect x="34" y="20" width="18" height="29" fill="#0a0a3a"/>
+          <rect x="36" y="22" width="1" height="1" fill="#3f6bff"/><rect x="40" y="25" width="2" height="1" fill="#3f6bff"/><rect x="46" y="23" width="1" height="1" fill="#3f6bff"/><rect x="44" y="30" width="2" height="1" fill="#3f6bff"/><rect x="38" y="33" width="1" height="1" fill="#3f6bff"/><rect x="48" y="36" width="1" height="1" fill="#3f6bff"/>
+          <rect x="8" y="9" width="34" height="24" fill="#13c95e"/>
+          <rect x="8" y="9" width="34" height="1" fill="#6dff9a"/>
+          <rect x="9" y="10" width="1" height="1" fill="#0a3a24"/><rect x="40" y="10" width="1" height="1" fill="#0a3a24"/><rect x="9" y="31" width="1" height="1" fill="#0a3a24"/><rect x="40" y="31" width="1" height="1" fill="#0a3a24"/>
+          <path d="M12 11.5H36M12 13.5H36" stroke="#d6ff3a" stroke-width="1" stroke-dasharray="1 1"/>
+          <rect x="14" y="17" width="10" height="10" fill="#0d1a14"/>
+          <rect x="16" y="19" width="6" height="6" fill="#1f3a2c"/>
+          <rect x="13" y="16" width="12" height="12" fill="none" stroke="#e4ff5a" stroke-width="0.5"/>
+          <rect x="27" y="18" width="6" height="8" fill="#0d1a14"/>
+          <rect x="37" y="15" width="7" height="5" fill="#cfd6dd"/><rect x="37" y="21" width="7" height="5" fill="#cfd6dd"/><rect x="36" y="27" width="8" height="5" fill="#8f99a4"/>
+          <path d="M11 33V49M13 33V47M15 33V49M17 33V45M19 33V49M21 33V48M23 33V49M25 33V46M27 33V49M29 33V47M31 33V49" stroke="#35e87a" stroke-width="1"/>
+          <path d="M12 33V49M16 33V49M20 33V49M24 33V49M28 33V49M32 33V48" stroke="#5fc8ff" stroke-width="1"/>
+        </svg>
+        <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.2) 0 1px,transparent 1px 3px);pointer-events:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+
+    <!-- OVERVIEW -->
+    <sc-if value="{{isOverview}}" hint-placeholder-val="{{ true }}">
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px">
+      <div style="height:32px;flex:none;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;color:#c9cacc">Overview: {{H.name}}</span>
+        <div style="display:flex;align-items:center;gap:6px">
+          <sc-if value="{{rebootNeeded}}" hint-placeholder-val="{{ false }}"><button class="rbtn" onClick="{{askReboot}}"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 7a5 5 0 1 1-1.5-3.6M12 1.5v3h-3"/></svg><span>Reboot required</span></button></sc-if>
+          <sc-if value="{{canPower}}" hint-placeholder-val="{{ true }}">
+            <button class="pbtn" onClick="{{askReboot}}"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 7a5 5 0 1 1-1.5-3.6M12 1.5v3h-3"/></svg><span>Reboot</span></button>
+            <button class="pbtn bad" onClick="{{askShutdown}}"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 1v6M4 3.2a5 5 0 1 0 6 0"/></svg><span>Shut down</span></button>
+          </sc-if>
+          <div class="chipv"><span>LOAD</span><span>{{loadText}}</span></div>
+        </div>
+      </div>
+      <div style="flex:1;min-height:0;display:flex;gap:12px">
+
+        <!-- Card 1: CPU -->
+        <div class="card">
+          <div class="ch hot">CPU · {{coreCount}} Cores</div>
+          <div class="cb">
+            <span class="tag lt">Live</span>
+            <p class="ct">{{H.cpuName}}. Currently at {{cpuNow}}% utilisation, SoC temperature {{H.temp}} °C. Throttling starts at 80 °C.</p>
+            <div class="chk"></div>
+            <div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">
+              <sc-if value="{{showCores}}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <div class="sec">Per core:</div>
+                  <sc-for list="{{cores}}" as="c" hint-placeholder-count="4">
+                    <div class="orow">
+                      <div class="ol"><span class="ct">{{c.label}}</span><div class="obar"><i style="width:{{c.w}}"></i></div></div>
+                      <div class="rw sm"><span style="font-size:12px">{{c.pct}}</span><span>%</span></div>
+                    </div>
+                  </sc-for>
+                  <div class="orow">
+                    <div class="ol"><span class="ct">SoC temperature</span><div class="obar"><i class="{{tempCls}}" style="width:{{tempW}}"></i></div></div>
+                    <div class="rw sm"><span style="font-size:12px">{{tempInt}}</span><span>°C</span></div>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{showProcs}}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column">
+                  <div class="sec" style="display:flex;justify-content:space-between;height:22px"><span>Top processes</span><span>{{procCount}}</span></div>
+                  <sc-for list="{{procs}}" as="p" hint-placeholder-count="8">
+                    <div class="pr"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{p.name}}</span><span style="width:64px;text-align:right">{{p.cpu}}</span><span style="width:64px;text-align:right">{{p.mem}}</span></div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <button class="cbtn" onClick="{{toggleProcs}}"><span>{{procBtn}}</span><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5.8"/><path d="M7 6.3v3.7M7 4v.4"/></svg></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Resources -->
+        <div class="card dk">
+          <div class="ch">Memory &amp; storage</div>
+          <div class="cb">
+            <span class="tag gr">{{resTag}}</span>
+            <div style="height:150px;flex:none;margin:0 -12px;position:relative;background-color:#0b1a10;background-image:radial-gradient(#1c5a30 1px,transparent 1px);background-size:4px 4px">
+              <svg viewBox="0 0 300 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;display:block">
+                <polygon points="{{cpuArea}}" fill="#22e06a" fill-opacity="0.22"/>
+                <polyline points="{{cpuLine}}" fill="none" stroke="#35e36a" stroke-width="2" vector-effect="non-scaling-stroke"/>
+              </svg>
+              <span style="position:absolute;left:10px;top:8px;font-size:10px;color:#35e36a">CPU · LAST 77 S</span>
+              <span style="position:absolute;right:10px;top:8px;font-size:10px;color:#35e36a">{{cpuNow}}%</span>
+            </div>
+            <p class="ct">{{H.ramUsed}} of {{H.ramTotal}} GB RAM in use. Network: ↓ {{rxText}} MB/s · ↑ {{txText}} MB/s on eth0.</p>
+            <div class="divl"><svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6"><ellipse cx="6" cy="3" rx="4.5" ry="1.8"/><path d="M1.5 3v6c0 1 2 1.8 4.5 1.8s4.5-.8 4.5-1.8V3"/></svg><span>RESOURCES</span></div>
+            <div style="margin-top:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:76px;gap:6px;padding:0 20px">
+              <sc-for list="{{resTiles}}" as="r" hint-placeholder-count="4">
+                <sc-if value="{{r.real}}" hint-placeholder-val="{{ true }}">
+                  <div class="it {{r.tone}}">
+                    <div class="strip"><b><span>{{r.label}}</span></b><span class="sq"><i></i><i></i><i></i><i></i></span></div>
+                    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:7px;padding:0 8px">
+                      <div style="font-size:13px;font-weight:700">{{r.text}}</div>
+                      <div class="seg"><sc-for list="{{r.cells}}" as="k" hint-placeholder-count="16"><i class="{{k.cls}}"></i></sc-for></div>
+                    </div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{r.none}}" hint-placeholder-val="{{ false }}">
+                  <div style="background:#1d1f22;display:flex;align-items:center;justify-content:center;font-size:12px;color:#8d9093">NO DISK</div>
+                </sc-if>
+              </sc-for>
+            </div>
+            <button class="cbtn lt" style="margin-top:12px" onClick="{{goTerminal}}"><span>Open shell</span><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5.8"/><path d="M7 6.3v3.7M7 4v.4"/></svg></button>
+          </div>
+        </div>
+
+        <!-- Card 3: Services -->
+        <div class="card">
+          <div class="ch">Services</div>
+          <div class="cb">
+            <span class="tag dk">{{svcText}} running</span>
+            <p class="ct">systemd units on {{H.name}}. Listening on {{portText}}.</p>
+            <div class="chk"></div>
+            <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{services}}" as="s" hint-placeholder-count="6">
+                <div class="orow">
+                  <div class="ol"><div class="ct" style="display:flex;justify-content:space-between"><span>{{s.name}}</span><span>{{s.state}}</span></div><div class="obar"><i class="{{s.barCls}}" style="width:100%"></i></div></div>
+                  <div class="{{s.boxCls}}">
+                    <sc-if value="{{s.ok}}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1.5 6.5 4.5 9.5 10.5 2.5"/></svg></sc-if>
+                    <sc-if value="{{s.bad}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 2l8 8M10 2l-8 8"/></svg></sc-if>
+                  </div>
+                </div>
+              </sc-for>
+              <button class="cbtn" onClick="{{doRestart}}"><span>{{restartLabel}}</span><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5.8"/><path d="M7 6.3v3.7M7 4v.4"/></svg></button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="micro" style="display:flex;gap:12px;height:20px">
+        <span style="flex:1">grid_node_{{hostNo}}<br>[live feed]</span>
+        <span style="flex:1">res_map_{{H.short}}<br>[sampled 1.6 s]</span>
+        <span style="flex:1">svc_unit_scan<br>[systemd]</span>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- PACKAGES -->
+    <sc-if value="{{isPackages}}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;min-height:0;display:flex;gap:26px">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px">
+        <div style="height:32px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:20px">
+          <div style="display:flex;align-items:baseline;gap:14px"><span class="w" style="font-size:16px">Packages</span><span style="font-size:15px">{{pkgText}}</span><span class="dim" style="font-size:12px">APT · {{H.name}}</span></div>
+          <div style="display:flex;align-items:center;gap:10px;width:320px">
+            <label for="pkgsearch" class="dim" style="font-size:11px;letter-spacing:.06em">SEARCH</label>
+            <input id="pkgsearch" class="sin" type="text" placeholder="Package name" value="{{query}}" onChange="{{onQuery}}">
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex:none">
+          <sc-for list="{{filters}}" as="f" hint-placeholder-count="5">
+            <button class="{{f.cls}}" onClick="{{f.go}}"><span>{{f.label}}</span><span class="cnt">{{f.n}}</span></button>
+          </sc-for>
+        </div>
+        <div class="tick bl"><div class="run"><sc-for list="{{tickP}}" as="t" hint-placeholder-count="24"><span>{{t.t}}</span></sc-for></div></div>
+        <sc-if value="{{rebootNeeded}}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 8px 8px 14px;background:#44121f;border-left:6px solid #ff3f74;flex:none"><span style="font-size:12px">Kernel updated on {{H.name}}. A reboot is required to finish the update.</span><button class="rbtn" onClick="{{askReboot}}"><span>Reboot now</span></button></div></sc-if>
+        <div style="flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:124px;gap:6px;align-content:start;overflow:hidden">
+          <sc-for list="{{pkgItems}}" as="p" hint-placeholder-count="12">
+            <div class="it {{p.tone}}">
+              <div class="strip"><b>
+                <sc-if value="{{p.gU}}" hint-placeholder-val="{{ false }}"><svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 11V2M2 5.5 6 1.5l4 4"/></svg></sc-if>
+                <sc-if value="{{p.gI}}" hint-placeholder-val="{{ true }}"><svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1.5 6.5 4.5 9.5 10.5 2.5"/></svg></sc-if>
+                <sc-if value="{{p.gA}}" hint-placeholder-val="{{ false }}"><svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 1v10M1 6h10"/></svg></sc-if>
+                <sc-if value="{{p.gO}}" hint-placeholder-val="{{ false }}"><svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 2l8 8M10 2l-8 8"/></svg></sc-if>
+                <span>{{p.label}}</span></b><span class="sq"><i></i><i></i><i></i><i></i></span></div>
+              <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:3px;padding:8px 10px 8px">
+                <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{p.n}}</div>
+                <div class="dim" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{p.d}}</div>
+                <div style="font-size:10px;color:#c9cacc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{p.ver}}</div>
+                <div style="margin-top:auto;display:flex;align-items:center;justify-content:space-between">
+                  <button class="{{p.btnCls}}" onClick="{{p.go}}">{{p.btn}}</button>
+                  <span style="padding:1px 5px;background:rgba(10,11,12,.82);font-size:11px">{{p.sz}}</span>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="width:360px;flex:none;display:flex;flex-direction:column;gap:10px">
+        <div class="card">
+          <div class="ch">Sync sources</div>
+          <div class="cb">
+            <span class="tag dk">Standard</span>
+            <p class="ct">Re-read the package lists from all sources on {{H.name}}.</p>
+            <div class="chk"></div>
+            <div class="orow">
+              <div class="ol"><div class="ct" style="display:flex;justify-content:space-between"><span>Sources read</span><b>{{srcText}}</b></div><div class="obar"><i style="width:{{srcW}}"></i></div></div>
+              <div class="rw"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 7a5 5 0 1 1-1.5-3.6M12 1.5v3h-3"/></svg><span>4</span></div>
+            </div>
+            <button class="cbtn" onClick="{{doRefresh}}"><span>apt update</span><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5.8"/><path d="M7 6.3v3.7M7 4v.4"/></svg></button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ch hot">System upgrade</div>
+          <div class="cb">
+            <span class="tag gr">Recommended</span>
+            <p class="ct">{{upgText}}</p>
+            <div class="chk"></div>
+            <div class="orow">
+              <div class="ol"><div class="ct" style="display:flex;justify-content:space-between"><span>Updates installed</span><b>{{updDoneText}}</b></div><div class="obar"><i style="width:{{updW}}"></i></div></div>
+              <div class="rw"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 11V2M2 5.5 6 1.5l4 4"/></svg><span>{{updTotal}}</span></div>
+            </div>
+            <button class="cbtn lt" onClick="{{doUpgradeAll}}"><span>apt upgrade</span><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5.8"/><path d="M7 6.3v3.7M7 4v.4"/></svg></button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ch">Clean up</div>
+          <div class="cb">
+            <span class="tag lt">Maintenance</span>
+            <p class="ct">Remove orphaned packages and clear the package cache.</p>
+            <div class="chk"></div>
+            <div class="orow">
+              <div class="ol"><div class="ct" style="display:flex;justify-content:space-between"><span>Orphans removed</span><b>{{orphDoneText}}</b></div><div class="obar"><i style="width:{{orphW}}"></i></div></div>
+              <div class="rw"><span style="font-size:13px">{{cache}}</span><span>MB</span></div>
+            </div>
+            <button class="cbtn" onClick="{{doClean}}"><span>autoremove + clean</span><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5.8"/><path d="M7 6.3v3.7M7 4v.4"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- TERMINAL -->
+    <sc-if value="{{isTerminal}}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px">
+      <div style="height:32px;flex:none;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;color:#c9cacc">Nexara Shell: Session 1</span>
+        <button class="tb" onClick="{{doTermClear}}">Clear</button>
+      </div>
+      <div style="flex:1;min-height:0;display:flex;flex-direction:column;background:#0b0c0d;border:1px solid #23262a">
+        <div class="tick gr"><div class="run"><sc-for list="{{tickT}}" as="t" hint-placeholder-count="24"><span>{{t.t}}</span></sc-for></div></div>
+        <div style="flex:1;min-height:0;display:flex;gap:26px;padding:20px 12px 14px 24px">
+          <div style="width:250px;flex:none;display:flex;flex-direction:column;gap:18px;color:#35e36a;font-size:12px;line-height:1.6">
+            <svg width="250" height="190" viewBox="0 0 50 38" shape-rendering="crispEdges" style="display:block">
+              <defs><pattern id="dzB" width="2" height="2" patternUnits="userSpaceOnUse"><rect width="1" height="1" fill="#1a6a36"/></pattern></defs>
+              <rect x="2" y="6" width="40" height="26" fill="url(#dzB)"/>
+              <rect x="6" y="9" width="34" height="22" fill="#1fbf5a"/>
+              <rect x="6" y="9" width="34" height="1" fill="#7dff9e"/>
+              <path d="M10 11.5H34" stroke="#0b0c0d" stroke-width="1" stroke-dasharray="1 1"/>
+              <rect x="12" y="15" width="10" height="10" fill="#0b0c0d"/>
+              <rect x="14" y="17" width="6" height="6" fill="#1a6a36"/>
+              <rect x="25" y="16" width="6" height="8" fill="#0b0c0d"/>
+              <rect x="35" y="13" width="7" height="5" fill="#7dff9e"/><rect x="35" y="19" width="7" height="5" fill="#7dff9e"/><rect x="34" y="25" width="8" height="5" fill="#35e36a"/>
+              <path d="M9 31V38M11 31V36M13 31V38M15 31V35M17 31V38M19 31V37M21 31V38M23 31V36M25 31V38M27 31V37M29 31V38" stroke="#35e36a" stroke-width="1"/>
+            </svg>
+            <div>HOST: {{H.name}}<br>ADDRESS: {{H.ip}}<br>PROTOCOL: SSH · PORT {{sshPort}}<br>USER: {{userName}}<br>SHELL: bash</div>
+          </div>
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;font-size:13px;line-height:1.5;color:#35e36a;overflow:hidden">
+            <div style="display:flex;justify-content:space-between;padding-right:16px"><span>nexara.shell.access</span><span>- -:- -.- -:- -.- -</span></div>
+            <div style="display:flex;justify-content:space-between;padding-right:16px"><span>SESSION: {{userName}}@{{H.name}}</span><span>v.{{H.kShort}}.{{H.osShort}}</span></div>
+            <div style="white-space:nowrap;overflow:hidden;padding-right:16px">==================================================================================================</div>
+            <div class="tscroll" ref="{{termRef}}">
+              <div style="margin-top:auto"></div>
+              <sc-for list="{{termLines}}" as="l" hint-placeholder-count="6">
+                <div style="white-space:pre-wrap;word-break:break-all"><span>{{l.p}}</span><span style="color:{{l.color}}">{{l.text}}</span></div>
+              </sc-for>
+              <div style="display:flex;align-items:center">
+                <label for="termin" style="white-space:pre">{{prompt}}</label>
+                <input id="termin" class="tin" type="text" autocomplete="off" spellcheck="false" value="{{termInput}}" onChange="{{onTermChange}}" onKeyDown="{{onTermKey}}">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tick gr"><div class="run"><sc-for list="{{tickT}}" as="t" hint-placeholder-count="24"><span>{{t.t}}</span></sc-for></div></div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- CONNECTION LOST -->
+    <sc-if value="{{connLost}}" hint-placeholder-val="{{ false }}">
+      <div class="lostband" role="status"><div class="run"><sc-for list="{{lostTick}}" as="t" hint-placeholder-count="20"><span>{{t.t}}</span></sc-for></div></div>
+    </sc-if>
+
+    <!-- OFFLINE -->
+    <sc-if value="{{showOffline}}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;display:flex;align-items:center;justify-content:center">
+      <div class="card" style="flex:none;width:540px;position:relative;box-shadow:0 0 0 12px rgba(17,18,20,.55)">
+        <span class="ccn" style="left:-5px;top:-5px"></span><span class="ccn" style="right:-5px;top:-5px"></span><span class="ccn" style="left:-5px;bottom:-5px"></span><span class="ccn" style="right:-5px;bottom:-5px"></span>
+        <div class="{{offHeadCls}}">{{offTitle}}</div>
+        <div class="cb" style="gap:12px;padding:14px 16px 16px">
+          <span class="tag dk">{{offTag}}</span>
+          <p class="ct">{{offText}}</p>
+          <div class="chk"></div>
+          <div class="orow">
+            <div class="ol"><div class="ct" style="display:flex;justify-content:space-between"><span>MAC address</span><b>{{H.mac}}</b></div><div class="obar"><i style="width:{{wakeW}}"></i></div></div>
+            <div class="rw"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 1v6M4 3.2a5 5 0 1 0 6 0"/></svg><span>WoL</span></div>
+          </div>
+          <button class="cbtn" style="margin-top:4px" onClick="{{doWake}}"><span>{{wakeLabel}}</span><svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 6h13M9 1l5 5-5 5"/></svg></button>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- CAPABILITY OFF -->
+    <sc-if value="{{showCapOff}}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;display:flex;align-items:center;justify-content:center">
+      <div class="card" style="flex:none;width:500px">
+        <div class="ch">{{capOffTitle}}</div>
+        <div class="cb" style="gap:12px;padding:14px 16px 16px">
+          <span class="tag lt">Disabled</span>
+          <p class="ct">{{capOffText}}</p>
+          <div class="chk"></div>
+          <button class="cbtn" onClick="{{goSettings}}"><span>Open settings</span><svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 6h13M9 1l5 5-5 5"/></svg></button>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- HISTORY -->
+    <sc-if value="{{isHistory}}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px">
+      <div style="height:32px;flex:none;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;color:#c9cacc">History: {{H.name}}</span>
+        <div style="display:flex;gap:6px"><sc-for list="{{ranges}}" as="r" hint-placeholder-count="3"><button class="{{r.cls}}" aria-pressed="{{r.on}}" onClick="{{r.go}}"><span>{{r.label}}</span></button></sc-for></div>
+      </div>
+      <div style="flex:1;min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:12px">
+        <sc-for list="{{charts}}" as="c" hint-placeholder-count="4">
+          <div class="it {{c.tone}}">
+            <div class="strip" style="height:20px"><b style="font-size:10px"><span>{{c.label}}</span></b><span class="sq"><i></i><i></i><i></i><i></i></span></div>
+            <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding:10px 12px 10px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+                <span class="w" style="font-size:26px;font-weight:900">{{c.now}}<span style="font-size:12px;color:#8d9093"> {{c.unit}}</span></span>
+                <span style="font-size:11px;color:#c9cacc">MIN {{c.min}} · AVG {{c.avg}} · MAX {{c.max}}</span>
+              </div>
+              <div style="flex:1;min-height:0;position:relative;background-color:#0b0c0d;background-image:radial-gradient(rgba(255,255,255,.09) 1px,transparent 1px);background-size:4px 4px">
+                <svg viewBox="0 0 300 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;display:block">
+                  <polygon points="{{c.area}}" fill="{{c.color}}" fill-opacity="0.16"/>
+                  <polyline points="{{c.line}}" fill="none" stroke="{{c.color}}" stroke-width="2" vector-effect="non-scaling-stroke"/>
+                  <polyline points="{{c.line2}}" fill="none" stroke="#b04dff" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+                </svg>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:10px;color:#8d9093"><span>{{c.x0}}</span><span>{{c.note}}</span><span>{{c.x1}}</span><span>NOW</span></div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ALERTS -->
+    <sc-if value="{{isAlerts}}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;min-height:0;display:flex;gap:26px">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px">
+        <div style="height:32px;flex:none;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:13px;color:#c9cacc">Alerts: all hosts</span>
+          <div style="display:flex;gap:6px"><sc-for list="{{alertTabs}}" as="t" hint-placeholder-count="2"><button class="{{t.cls}}" aria-pressed="{{t.on}}" onClick="{{t.go}}"><span>{{t.label}}</span><span class="cnt">{{t.n}}</span></button></sc-for></div>
+        </div>
+        <div class="vscroll" style="flex:1;min-height:0;display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{alertRows}}" as="a" hint-placeholder-count="3">
+            <div class="al {{a.cls}}">
+              <span class="alsev"></span>
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:5px;padding:12px 0">
+                <div style="display:flex;align-items:center;gap:10px"><span class="alsevtag">{{a.sevLabel}}</span><b style="font-size:14px">{{a.title}}</b></div>
+                <span style="font-size:12px;color:#8d9093">{{a.host}} · {{a.rule}} · {{a.when}}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding-right:14px">
+                <sc-if value="{{a.canAck}}" hint-placeholder-val="{{ true }}"><button class="tb hot" onClick="{{a.ack}}">Acknowledge</button></sc-if>
+                <sc-if value="{{a.showState}}" hint-placeholder-val="{{ false }}"><span class="tag lt">{{a.state}}</span></sc-if>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{noAlerts}}" hint-placeholder-val="{{ false }}">
+            <div style="height:120px;display:flex;align-items:center;justify-content:center;gap:12px;background:#17191b;color:#8d9093;font-size:13px"><svg width="16" height="16" viewBox="0 0 12 12" fill="none" stroke="#c6f500" stroke-width="1.8"><path d="M1.5 6.5 4.5 9.5 10.5 2.5"/></svg><span>{{emptyAlertText}}</span></div>
+          </sc-if>
+        </div>
+      </div>
+      <div style="width:360px;flex:none;display:flex;flex-direction:column;gap:10px">
+        <div class="card" style="flex:none">
+          <div class="ch">Rules</div>
+          <div class="cb">
+            <span class="tag dk">{{rulesOn}} active</span>
+            <p class="ct">Checked on every sample the Grid Agents send.</p>
+            <div class="chk"></div>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{rules}}" as="r" hint-placeholder-count="5">
+                <button class="rrow" aria-pressed="{{r.on}}" onClick="{{r.go}}"><span class="rbox"><sc-if value="{{r.on}}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1.5 6.5 4.5 9.5 10.5 2.5"/></svg></sc-if></span><span style="flex:1">{{r.label}}</span><b>{{r.th}}</b></button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="flex:none">
+          <div class="ch">Notifications</div>
+          <div class="cb">
+            <div style="display:flex;flex-direction:column">
+              <div class="srow"><span>Dashboard</span><span class="tag gr">On</span></div>
+              <div class="srow"><span>E-mail (own SMTP)</span><span class="tag lt">From v0.3</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- CONTAINERS -->
+    <sc-if value="{{isContainers}}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;min-height:0;display:flex;gap:26px">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px">
+        <div style="height:32px;flex:none;display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:baseline;gap:14px"><span class="w" style="font-size:16px">Containers</span><span style="font-size:15px">{{ctRunning}}/{{ctTotal}}</span><span class="dim" style="font-size:12px">DOCKER ENGINE · {{H.name}}</span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:156px;gap:8px;align-content:start">
+          <sc-for list="{{containers}}" as="c" hint-placeholder-count="4">
+            <div class="it {{c.tone}}" style="outline:{{c.outline}};outline-offset:-2px">
+              <div class="strip"><b><span>{{c.state}}</span></b><span class="sq"><i></i><i></i><i></i><i></i></span></div>
+              <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:4px;padding:10px 12px 10px">
+                <div style="font-size:14px;font-weight:700">{{c.n}}</div>
+                <div class="dim" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{c.img}}</div>
+                <div style="font-size:11px;color:#c9cacc">{{c.up}}</div>
+                <div style="font-size:11px;color:#c9cacc">PORTS {{c.ports}} · CPU {{c.cpu}} · MEM {{c.mem}}</div>
+                <div style="margin-top:auto;display:flex;gap:6px">
+                  <button class="{{c.p1cls}}" onClick="{{c.p1}}">{{c.p1label}}</button>
+                  <button class="tb" onClick="{{c.restart}}">Restart</button>
+                  <button class="tb" aria-pressed="{{c.sel}}" onClick="{{c.logs}}">Logs</button>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{noContainers}}" hint-placeholder-val="{{ false }}">
+          <div style="height:120px;display:flex;align-items:center;justify-content:center;background:#17191b;color:#8d9093;font-size:13px">No containers on {{H.name}} yet.</div>
+        </sc-if>
+      </div>
+      <div style="width:420px;flex:none;display:flex;flex-direction:column;background:#0b0c0d;border:1px solid #23262a">
+        <div style="height:28px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:#0e3a1d;color:#35e36a" class="w"><span style="font-size:11px">Logs · {{logName}}</span><span style="font-size:10px">docker logs -f</span></div>
+        <div class="tscroll" style="padding:14px 10px 14px 16px;font-size:12px;line-height:1.55;color:#35e36a">
+          <div style="margin-top:auto"></div>
+          <sc-for list="{{logLines}}" as="l" hint-placeholder-count="8"><div style="white-space:pre-wrap;word-break:break-all"><span style="color:#1f8f45">{{l.t}} </span>{{l.m}}</div></sc-for>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- SETTINGS -->
+    <sc-if value="{{isSettings}}" hint-placeholder-val="{{ false }}">
+    <div class="vscroll" style="flex:1;min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-content:start;padding-right:8px">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="card" style="flex:none">
+          <div class="ch hot">Operators</div>
+          <div class="cb">
+            <span class="tag dk">1 operator</span>
+            <div style="display:flex;flex-direction:column">
+              <div class="srow"><span>Operator ID</span><b>fabio</b></div>
+              <div class="srow"><span>Role</span><b>Owner</b></div>
+              <div class="srow"><span>Two-factor</span><b>Enabled</b></div>
+              <div class="srow"><span>Last sign-in</span><b>Today 20:41 · 192.168.10.44</b></div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="flex:none">
+          <div class="ch">Security</div>
+          <div class="cb">
+            <div style="display:flex;flex-direction:column">
+              <button class="rrow" aria-pressed="{{tfaReq}}" onClick="{{toggleTfa}}"><span class="rbox"><sc-if value="{{tfaReq}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1.5 6.5 4.5 9.5 10.5 2.5"/></svg></sc-if></span><span style="flex:1">Require two-factor login</span><b>{{tfaState}}</b></button>
+              <button class="rrow" aria-pressed="{{lockOn}}" onClick="{{toggleLock}}"><span class="rbox"><sc-if value="{{lockOn}}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1.5 6.5 4.5 9.5 10.5 2.5"/></svg></sc-if></span><span style="flex:1">Lock sign-in after 5 failed attempts</span><b>15 min</b></button>
+              <div class="srow" style="flex-wrap:wrap"><span>Session timeout</span><div class="chips"><sc-for list="{{sessOpts}}" as="o" hint-placeholder-count="3"><button class="{{o.cls}}" aria-pressed="{{o.on}}" onClick="{{o.go}}"><span>{{o.label}}</span></button></sc-for></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="flex:none">
+          <div class="ch">Updates</div>
+          <div class="cb">
+            <span class="tag gr">{{updStatus}}</span>
+            <div style="display:flex;flex-direction:column">
+              <div class="srow"><span>Nexus hub</span><b>v0.1.0 · linux/arm64</b></div>
+              <div class="srow"><span>Grid Agents</span><b>{{agentsCurrent}} on v0.1.0 · auto-update on</b></div>
+              <button class="rrow" aria-pressed="{{updCheck}}" onClick="{{toggleUpdCheck}}"><span class="rbox"><sc-if value="{{updCheck}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1.5 6.5 4.5 9.5 10.5 2.5"/></svg></sc-if></span><span style="flex:1">Check GitHub for new releases</span><b>{{updCheckState}}</b></button>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="cbtn" style="flex:1;margin-top:0" onClick="{{checkNow}}"><span>Check now</span><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5.8"/><path d="M7 6.3v3.7M7 4v.4"/></svg></button>
+              <label class="cbtn gr" for="upd-file" style="flex:1;margin-top:0;cursor:pointer"><span>Upload update file</span><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 11V2M2 5.5 6 1.5l4 4"/></svg></label>
+              <input id="upd-file" type="file" accept=".deb,.nxu" style="position:absolute;width:1px;height:1px;opacity:0" onChange="{{onUpdFile}}">
+            </div>
+          </div>
+        </div>
+        <div class="card" style="flex:none">
+          <div class="ch">Backup</div>
+          <div class="cb">
+            <div style="display:flex;flex-direction:column">
+              <div class="srow"><span>Automatic</span><b>Nightly 03:00 · keeps 7 · before updates</b></div>
+              <div class="srow"><span>Last backup</span><b>{{lastBackup}}</b></div>
+            </div>
+            <div class="fld"><label for="bk-pass" class="sec">Passphrase for the download</label><div style="display:flex;gap:6px"><input id="bk-pass" class="fin2" type="password" autocomplete="new-password" placeholder="min. 12 characters" value="{{bkPass}}" onChange="{{onBkPass}}"><button class="tb" style="height:36px" onClick="{{doBackup}}">Download backup</button></div></div>
+            <sc-if value="{{hasBkErr}}" hint-placeholder-val="{{ false }}"><div class="ferr" role="alert"><span>!</span><span>{{bkErr}}</span></div></sc-if>
+            <p class="ct" style="font-size:11px;color:#3b3d3f">Restore a backup in the setup wizard of a fresh hub.</p>
+          </div>
+        </div>
+        <div class="card" style="flex:none">
+          <div class="ch">History retention</div>
+          <div class="cb">
+            <div style="display:flex;flex-direction:column">
+              <div class="srow"><span>Minute values</span><b>7 days</b></div>
+              <div class="srow" style="flex-wrap:wrap"><span>Hourly values</span><div class="chips"><sc-for list="{{retOpts}}" as="o" hint-placeholder-count="3"><button class="{{o.cls}}" aria-pressed="{{o.on}}" onClick="{{o.go}}"><span>{{o.label}}</span></button></sc-for></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="card" style="flex:none">
+          <div class="ch">Hosts &amp; capabilities</div>
+          <div class="cb">
+            <span class="tag dk">Nexara Grid · {{hostCount}} hosts</span>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{hostSettings}}" as="h" hint-placeholder-count="2">
+                <div class="hrow">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                    <div style="display:flex;flex-direction:column;gap:2px"><b style="font-size:13px">{{h.name}}</b><span class="ct" style="font-size:11px">{{h.ip}} · {{h.role}}</span></div>
+                    <sc-if value="{{h.removable}}" hint-placeholder-val="{{ false }}"><button class="tb bad" onClick="{{h.remove}}">Remove</button></sc-if>
+                  </div>
+                  <div class="chips"><sc-for list="{{h.caps}}" as="c" hint-placeholder-count="4"><button class="{{c.cls}}" aria-pressed="{{c.on}}" onClick="{{c.go}}"><span>{{c.label}}</span></button></sc-for></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="flex:none">
+          <div class="ch">Certificates</div>
+          <div class="cb">
+            <div style="display:flex;flex-direction:column">
+              <div class="srow"><span>Nexara CA</span><b>SHA-256 4F:9A:12:C7 … 8E:C2 · until 2036</b></div>
+              <div class="srow"><span>Hub certificate</span><b>until 30 Sep 2027 · auto-renew</b></div>
+              <div class="srow"><span>Names</span><b>frpi5 · frpi5.local · 192.168.10.21</b></div>
+              <div class="srow"><span>Agent certificates</span><b>{{hostCount}} valid · renew 30 days before expiry</b></div>
+            </div>
+            <button class="cbtn gr" style="margin-top:0" onClick="{{downloadCa}}"><span>Download CA certificate</span><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 1v8M2 5.5 6 9.5l4-4M1 11h10"/></svg></button>
+          </div>
+        </div>
+        <div class="card" style="flex:none">
+          <div class="ch">Diagnostics</div>
+          <div class="cb">
+            <p class="ct">Logs of the hub and every Grid Agent, newest first.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="tb" onClick="{{viewHubLog}}">Hub log</button>
+              <sc-for list="{{agentLogBtns}}" as="b" hint-placeholder-count="2"><button class="tb" onClick="{{b.go}}">{{b.label}}</button></sc-for>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="flex:none">
+          <div class="ch">Audit log</div>
+          <div class="cb">
+            <span class="tag lt">Last {{auditShown}} of {{auditTotal}}</span>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{auditRows}}" as="a" hint-placeholder-count="8">
+                <div class="srow" style="justify-content:flex-start;align-items:flex-start;font-size:11.5px"><span style="width:62px;flex:none">{{a.t}}</span><span style="width:82px;flex:none;font-weight:700">{{a.host}}</span><span style="flex:1">{{a.m}}</span></div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- BANNER -->
+    <sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}">
+    <div aria-live="polite" style="position:absolute;left:0;right:0;top:290px;display:flex;justify-content:center;pointer-events:none;z-index:5">
+      <div style="width:620px;position:relative;background:#c6f500;color:#0d0e0f;display:flex;flex-direction:column;box-shadow:0 0 0 12px rgba(17,18,20,.55)">
+        <span style="position:absolute;left:-5px;top:-5px;width:8px;height:8px;background:#c6f500;border:1px solid #0d0e0f"></span>
+        <span style="position:absolute;right:-5px;top:-5px;width:8px;height:8px;background:#c6f500;border:1px solid #0d0e0f"></span>
+        <span style="position:absolute;left:-5px;bottom:-5px;width:8px;height:8px;background:#c6f500;border:1px solid #0d0e0f"></span>
+        <span style="position:absolute;right:-5px;bottom:-5px;width:8px;height:8px;background:#c6f500;border:1px solid #0d0e0f"></span>
+        <div style="height:72px;display:flex;align-items:center;justify-content:center;gap:26px">
+          <span style="width:26px;height:26px;background:linear-gradient(#0d0e0f,#0d0e0f) center/1px 26px no-repeat,linear-gradient(#0d0e0f,#0d0e0f) center/26px 1px no-repeat"></span>
+          <span class="s" style="font-size:46px;line-height:1;text-transform:uppercase">{{toastTitle}}</span>
+          <span style="width:26px;height:26px;background:linear-gradient(#0d0e0f,#0d0e0f) center/1px 26px no-repeat,linear-gradient(#0d0e0f,#0d0e0f) center/26px 1px no-repeat"></span>
+        </div>
+        <div class="w" style="height:30px;display:flex;align-items:center;justify-content:center;border-top:1px solid #0d0e0f;font-size:12px">{{toastSub}}</div>
+      </div>
+    </div>
+    </sc-if>
+
+  </div>
+</div>
+
+<!-- BOTTOM BAR -->
+<div style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:0 24px;border-top:1px solid #1e2023;background:#111214;font-size:13px">
+  <div style="display:flex;align-items:center;gap:10px;min-width:0;color:#c9cacc"><sc-if value="{{jobBg}}" hint-placeholder-val="{{ false }}"><button class="tb hot" style="height:26px" onClick="{{showJob}}">JOB · {{jobShort}} · {{jobPct}}</button></sc-if><span style="color:#c6f500">&gt;</span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{logMsg}}</span></div>
+  <div style="display:flex;align-items:center;gap:10px;color:#8d9093;white-space:nowrap"><i class="live" style="background:{{liveColor}}"></i><span>{{liveText}} · {{H.name}} · {{H.ip}}</span><span style="width:1px;height:18px;background:#2a2c2f"></span><svg width="16" height="16" viewBox="0 0 64 64" aria-hidden="true"><path d="M58 25V17L32 3L6 17V47L32 61L58 47V39" fill="none" stroke="#c6f500" stroke-width="7"/><rect x="42" y="29" width="22" height="6" fill="#c6f500"/><path d="M32 23L41 32L32 41L23 32Z" fill="#c6f500"/></svg><span class="s" style="font-size:20px;line-height:1;color:#eceee9;letter-spacing:.02em">NEXARA</span><span class="w" style="font-size:11px;color:#c6f500">Nexus</span></div>
+</div>
+
+<!-- POWER CONFIRM -->
+<sc-if value="{{powerOpen}}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;z-index:10;background:rgba(10,11,12,.8);display:flex;align-items:center;justify-content:center">
+  <div role="dialog" aria-modal="true" aria-labelledby="pwTitle" style="width:500px;position:relative;background:#b4b6b9;color:#0d0e0f;display:flex;flex-direction:column;box-shadow:0 0 0 12px rgba(17,18,20,.6)">
+    <span class="ccn" style="left:-5px;top:-5px"></span><span class="ccn" style="right:-5px;top:-5px"></span><span class="ccn" style="left:-5px;bottom:-5px"></span><span class="ccn" style="right:-5px;bottom:-5px"></span>
+    <div class="{{pwHeadCls}}" style="justify-content:space-between;padding-right:4px"><span id="pwTitle">{{pwTitle}}</span><button class="xbtn" onClick="{{closePower}}" aria-label="Close"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 2l8 8M10 2l-8 8"/></svg></button></div>
+    <div class="cb" style="gap:12px;padding:14px 16px 16px">
+      <span class="tag dk">{{H.name}} · {{H.ip}}</span>
+      <p class="ct">{{pwText}}</p>
+      <div class="chk"></div>
+      <div style="display:flex;gap:8px">
+        <button class="cbtn gr" style="flex:1;margin-top:0" onClick="{{closePower}}"><span>Cancel</span></button>
+        <button class="cbtn" style="flex:1.6;margin-top:0" onClick="{{confirmPower}}"><span>{{pwConfirm}}</span><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 1v6M4 3.2a5 5 0 1 0 6 0"/></svg></button>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<!-- JOB -->
+<sc-if value="{{jobOpen}}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;z-index:10;background:rgba(10,11,12,.8);display:flex;align-items:center;justify-content:center">
+  <div role="dialog" aria-modal="true" aria-labelledby="jobTitle" style="width:720px;position:relative;background:#b4b6b9;color:#0d0e0f;display:flex;flex-direction:column;box-shadow:0 0 0 12px rgba(17,18,20,.6)">
+    <span class="ccn" style="left:-5px;top:-5px"></span><span class="ccn" style="right:-5px;top:-5px"></span><span class="ccn" style="left:-5px;bottom:-5px"></span><span class="ccn" style="right:-5px;bottom:-5px"></span>
+    <div class="{{jobHeadCls}}" style="justify-content:space-between;padding-right:4px"><span id="jobTitle">{{jobTitle}}</span><button class="xbtn" onClick="{{hideJob}}" aria-label="Close"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 2l8 8M10 2l-8 8"/></svg></button></div>
+    <div class="cb" style="gap:12px;padding:14px 16px 16px">
+      <div style="display:flex;align-items:center;gap:8px"><span class="tag dk">{{jobHost}}</span><span class="{{jobTagCls}}">{{jobState}}</span></div>
+      <div class="obar"><i style="width:{{jobPct}}"></i></div>
+      <div class="jobterm" aria-live="polite"><div style="margin-top:auto"></div><sc-for list="{{jobLines}}" as="l" hint-placeholder-count="8"><div style="white-space:pre-wrap;word-break:break-all;color:{{l.c}}">{{l.t}}</div></sc-for></div>
+      <div style="display:flex;gap:8px">
+        <sc-if value="{{jobRunning}}" hint-placeholder-val="{{ true }}"><button class="cbtn gr" style="flex:1;margin-top:0" onClick="{{hideJob}}"><span>Run in background</span></button></sc-if>
+        <sc-if value="{{jobDone}}" hint-placeholder-val="{{ false }}"><button class="cbtn" style="flex:1;margin-top:0" onClick="{{hideJob}}"><span>Close</span><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5.8"/><path d="M7 6.3v3.7M7 4v.4"/></svg></button></sc-if>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<!-- CONFIRM -->
+<sc-if value="{{askOpen}}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;z-index:11;background:rgba(10,11,12,.8);display:flex;align-items:center;justify-content:center">
+  <div role="dialog" aria-modal="true" aria-labelledby="askTitle" style="width:480px;position:relative;background:#b4b6b9;color:#0d0e0f;display:flex;flex-direction:column;box-shadow:0 0 0 12px rgba(17,18,20,.6)">
+    <span class="ccn" style="left:-5px;top:-5px"></span><span class="ccn" style="right:-5px;top:-5px"></span><span class="ccn" style="left:-5px;bottom:-5px"></span><span class="ccn" style="right:-5px;bottom:-5px"></span>
+    <div class="ch bad" style="justify-content:space-between;padding-right:4px"><span id="askTitle">{{askTitle}}</span><button class="xbtn" onClick="{{closeAsk}}" aria-label="Close"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 2l8 8M10 2l-8 8"/></svg></button></div>
+    <div class="cb" style="gap:12px;padding:14px 16px 16px">
+      <span class="tag dk">{{H.name}}</span>
+      <p class="ct">{{askText}}</p>
+      <div class="chk"></div>
+      <div style="display:flex;gap:8px">
+        <button class="cbtn gr" style="flex:1;margin-top:0" onClick="{{closeAsk}}"><span>Cancel</span></button>
+        <button class="cbtn" style="flex:1.6;margin-top:0" onClick="{{confirmAsk}}"><span>{{askLabel}}</span><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 2l8 8M10 2l-8 8"/></svg></button>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ADD HOST -->
+<sc-if value="{{addOpen}}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;z-index:10;background:rgba(10,11,12,.8);display:flex;align-items:center;justify-content:center">
+  <div role="dialog" aria-modal="true" aria-labelledby="addTitle" style="width:600px;position:relative;background:#b4b6b9;color:#0d0e0f;display:flex;flex-direction:column;box-shadow:0 0 0 12px rgba(17,18,20,.6)">
+    <span class="ccn" style="left:-5px;top:-5px"></span><span class="ccn" style="right:-5px;top:-5px"></span><span class="ccn" style="left:-5px;bottom:-5px"></span><span class="ccn" style="right:-5px;bottom:-5px"></span>
+    <div class="ch hot" style="justify-content:space-between;padding-right:4px"><span id="addTitle">Link new host</span><button class="xbtn" onClick="{{closeAdd}}" aria-label="Close"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 2l8 8M10 2l-8 8"/></svg></button></div>
+    <div class="cb" style="gap:12px;padding:14px 16px 16px">
+      <sc-if value="{{addForm}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;gap:6px"><sc-for list="{{addModes}}" as="m" hint-placeholder-count="2"><button class="{{m.cls}}" aria-pressed="{{m.on}}" onClick="{{m.go}}"><span>{{m.label}}</span></button></sc-for></div>
+        <sc-if value="{{modeSsh}}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <p class="ct">Nexus logs in once over SSH, installs the Grid Agent and enrolls it. The credentials are used only for this and are never stored.</p>
+          <div class="chk"></div>
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px 14px">
+            <div class="fld"><label for="f-addr" class="sec">Address</label><input id="f-addr" class="fin" type="text" placeholder="192.168.10.30 or pi4.local" autocomplete="off" spellcheck="false" value="{{fAddr}}" onChange="{{onFAddr}}"></div>
+            <div class="fld"><label for="f-port" class="sec">SSH port</label><input id="f-port" class="fin" type="text" inputmode="numeric" placeholder="22" value="{{fPort}}" onChange="{{onFPort}}"></div>
+            <div class="fld"><label for="f-user" class="sec">User (with sudo)</label><input id="f-user" class="fin" type="text" placeholder="pi" autocomplete="off" spellcheck="false" value="{{fUser}}" onChange="{{onFUser}}"></div>
+            <div class="fld"><label for="f-name" class="sec">Display name</label><input id="f-name" class="fin" type="text" placeholder="from hostname" autocomplete="off" spellcheck="false" value="{{fName}}" onChange="{{onFName}}"></div>
+          </div>
+          <div class="fld">
+            <span class="sec">Sign in with</span>
+            <div style="display:flex;gap:6px">
+              <button class="{{pwCls}}" aria-pressed="{{authPass}}" onClick="{{setPass}}"><span>Password</span></button>
+              <button class="{{keyCls}}" aria-pressed="{{authKey}}" onClick="{{setKey}}"><span>Hub SSH key</span></button>
+            </div>
+          </div>
+          <sc-if value="{{authPass}}" hint-placeholder-val="{{ true }}">
+            <div class="fld"><label for="f-pass" class="sec">Password</label><input id="f-pass" class="fin" type="password" autocomplete="off" value="{{fPass}}" onChange="{{onFPass}}"></div>
+          </sc-if>
+          <sc-if value="{{authKey}}" hint-placeholder-val="{{ false }}">
+            <div class="fld"><span class="sec">Add this key to ~/.ssh/authorized_keys on the host</span><div class="cmd"><code>ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK3v…9Qx nexus@frpi5</code><button onClick="{{copyKey}}">{{copyKeyLabel}}</button></div></div>
+          </sc-if>
+          <sc-if value="{{hasErr}}" hint-placeholder-val="{{ false }}">
+            <div class="ferr" role="alert"><span>!</span><span>{{formErr}}</span></div>
+          </sc-if>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <button class="cbtn gr" style="flex:1;margin-top:0" onClick="{{closeAdd}}"><span>Cancel</span></button>
+            <button class="cbtn" style="flex:1.6;margin-top:0" onClick="{{submitAdd}}"><span>Install agent &amp; link</span><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 1v10M1 6h10"/></svg></button>
+          </div>
+        </div>
+        </sc-if>
+        <sc-if value="{{modeCode}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <p class="ct">For hosts without SSH, and later Windows and macOS. Run this once on the host. It downloads the Grid Agent from this hub and enrolls it.</p>
+          <div class="chk"></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;background:#c6f500">
+            <span class="w" style="font-size:24px;font-weight:900;letter-spacing:.06em">{{enrollCode}}</span>
+            <span style="font-size:12px;font-weight:600">valid 15 min · one use</span>
+          </div>
+          <div class="cmd"><code>curl -fsSL https://frpi5.local:8443/grid/install.sh | sudo sh -s -- {{enrollCode}}</code><button onClick="{{copyCmd}}">{{copyCmdLabel}}</button></div>
+          <div style="display:flex;align-items:center;gap:10px;font-size:12px"><i class="live"></i><span>Waiting for the agent to connect…</span></div>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <button class="cbtn gr" style="flex:1;margin-top:0" onClick="{{newCode}}"><span>New code</span></button>
+            <button class="cbtn" style="flex:1.6;margin-top:0" onClick="{{simulateEnroll}}"><span>Simulate agent connect</span><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5.8"/><path d="M7 6.3v3.7M7 4v.4"/></svg></button>
+          </div>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+      <sc-if value="{{addProgress}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:12px" aria-live="polite">
+        <div style="display:flex;align-items:center;gap:8px"><span class="tag dk">{{addTarget}}</span><span class="{{addTagCls}}">{{addState}}</span></div>
+        <div style="display:flex;flex-direction:column">
+          <sc-for list="{{addSteps}}" as="st" hint-placeholder-count="5">
+            <div class="{{st.cls}}"><span class="bx"><sc-if value="{{st.done}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1.5 6.5 4.5 9.5 10.5 2.5"/></svg></sc-if></span><span style="flex:1">{{st.label}}</span><span style="color:#3b3d3f">{{st.detail}}</span></div>
+          </sc-for>
+        </div>
+        <sc-if value="{{addFinished}}" hint-placeholder-val="{{ false }}">
+          <button class="cbtn" style="margin-top:4px" onClick="{{openNewHost}}"><span>Open {{addTarget}}</span><svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 6h13M9 1l5 5-5 5"/></svg></button>
+        </sc-if>
+      </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"connectionLost":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    const hist = [];
+    for (let i = 0; i < 48; i++) hist.push(26 + Math.round(11 * Math.sin(i / 4) + (i * 7 % 9)));
+    this.state = {
+      view: 'overview', host: 0, cpu: hist, filter: 'all', query: '',
+      ov: {}, cache: { 0: 214, 1: 38 }, refreshed: {}, fixed: {}, showProcs: false,
+      job: null, jobOpen: false, rebootReq: {}, ask: null, addMode: 'ssh', addPhase: 'form', addStep: 0, addTarget: '', addUser: '', addAddr: '',
+      enrollCode: 'GRID-7F3K-Q9ZD', copiedKey: false, copiedCmd: false, updCheck: false, bkPass: '', bkErr: '', lastBackup: 'Today 03:00 · 2.1 MB',
+      power: {}, ack: {}, alertTab: 'active', range: '24h', ct: {}, ctSel: 'uptime-kuma',
+      rules: { temp: true, disk: true, unit: true, offline: true, updates: true },
+      caps: { 0: { shell: true, packages: true, power: true, docker: true }, 1: { shell: true, packages: true, power: true, docker: false } },
+      tfaReq: false, sessH: 12, lockOn: true, ret: 365, powerAsk: null,
+      audit: [
+        { t: '20:41:12', host: '—', m: 'Operator fabio signed in' },
+        { t: '20:12:03', host: 'pi3-dns', m: 'apt update: package lists refreshed' },
+        { t: '19:58:44', host: 'pi5-media', m: 'Shell session closed after 12 min' }
+      ], extra: [], addOpen: false, formErr: '',
+      form: { name: '', addr: '', port: '22', user: 'pi', auth: 'pass', key: '', pass: '' },
+      log: 'Connected to pi5-media', termInput: '', termLines: {}, toast: null
+    };
+    this.termEl = null;
+    this.termKey = '';
+    this.termRef = (el) => {
+      this.termEl = el;
+      if (el) el.scrollTop = el.scrollHeight;
+    };
+  }
+  componentDidMount() {
+    this.timer = setInterval(() => {
+      const c = this.state.cpu.slice(1);
+      const last = this.state.cpu[this.state.cpu.length - 1];
+      c.push(Math.max(4, Math.min(96, Math.round(last + (Math.random() - 0.5) * 14))));
+      this.setState({ cpu: c });
+    }, 1600);
+  }
+  componentDidUpdate(prevProps, prevState) {
+    if (prevState && prevState.log !== this.state.log) {
+      const d = new Date(), pad = (n) => (n < 10 ? '0' : '') + n;
+      const hs = this.hosts(), h = hs[this.state.host] || hs[0];
+      const entry = { t: pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()), host: h.name, m: this.state.log };
+      this.setState({ audit: [entry].concat(this.state.audit).slice(0, 60) });
+    }
+    const lines = this.state.termLines[this.state.host];
+    const key = this.state.view + ':' + this.state.host + ':' + (lines ? lines.length : -1);
+    if (key !== this.termKey) {
+      this.termKey = key;
+      if (this.termEl) this.termEl.scrollTop = this.termEl.scrollHeight;
+    }
+  }
+  componentWillUnmount() { clearInterval(this.timer); clearTimeout(this.tt); clearTimeout(this.pt0); clearTimeout(this.pt1); clearTimeout(this.pt2); clearInterval(this.jt); clearInterval(this.at); }
+  flash(title, sub) {
+    clearTimeout(this.tt);
+    this.setState({ toast: { title: title, sub: sub } });
+    this.tt = setTimeout(() => this.setState({ toast: null }), 2600);
+  }
+
+  startJob(hostName, title, script, finish) {
+    if (this.state.job && !this.state.job.done) { this.setState({ log: 'Job queued behind "' + this.state.job.title + '": ' + title, jobOpen: true }); return; }
+    clearInterval(this.jt);
+    const job = { host: hostName, title: title, lines: [{ t: '$ ' + title, c: '#c9f7d4' }], total: script.length, n: 0, done: false };
+    this.setState({ job: job, jobOpen: true, log: 'Job started on ' + hostName + ': ' + title });
+    this.jt = setInterval(() => {
+      const j = Object.assign({}, this.state.job);
+      if (j.n < j.total) {
+        const t = script[j.n];
+        const c = t.indexOf('W:') === 0 || t.indexOf('Waiting') === 0 ? '#c6f500' : (t.indexOf('E:') === 0 ? '#ff3f74' : '#35e36a');
+        j.lines = j.lines.concat([{ t: t, c: c }]); j.n = j.n + 1;
+        this.setState({ job: j });
+      } else {
+        clearInterval(this.jt);
+        j.done = true; j.lines = j.lines.concat([{ t: '✓ finished', c: '#c6f500' }]);
+        this.setState({ job: j });
+        if (finish) finish();
+      }
+    }, 300);
+  }
+  showStatic(hostName, title, lines) {
+    if (this.state.job && !this.state.job.done) { this.setState({ jobOpen: true }); return; }
+    this.setState({ jobOpen: true, job: { host: hostName, title: title, lines: lines.map((t) => ({ t: t, c: '#35e36a' })), total: 1, n: 1, done: true } });
+  }
+  hosts() {
+    return this.baseHosts().concat(this.state.extra);
+  }
+  baseHosts() {
+    return [
+      { name: 'pi5-media', short: 'PI5-MEDIA', cpuName: 'Quad-core Cortex-A76 at 2.4 GHz', ip: '192.168.10.21', kShort: '6.6.51', osShort: 'BOOKWORM',
+        temp: 47.2, up: '41D 06H', upEn: '41 days,  6:02', ramUsed: 3.4, ramTotal: 8, swapUsed: 0, swapTotal: 2, load: [0.42, 0.38, 0.35], cpuF: 1, lat: '4 MS',
+        disks: [{ mount: '/', used: 41, total: 117, unit: 'GB' }, { mount: '/mnt/data', used: 2.9, total: 4.0, unit: 'TB' }],
+        rx: 1.2, tx: 8.6, nproc: 142, mac: '2C:CF:67:0A:41:9E',
+        procs: [['plexmediaserver', 12.4, 4.1], ['dockerd', 1.9, 3.3], ['python3', 1.4, 1.2], ['containerd', 0.8, 1.9], ['sshd: pi', 0.4, 0.2], ['smbd', 0.3, 0.6], ['cron', 0.1, 0.1], ['systemd', 0.1, 0.3]],
+        services: [['ssh', 1], ['plexmediaserver', 1], ['docker', 1], ['cron', 1], ['smbd', 0], ['avahi-daemon', 1]],
+        ports: '22, 445, 32400 and 5353/udp' },
+      { name: 'pi3-dns', short: 'PI3-DNS', cpuName: 'Quad-core Cortex-A53 at 1.4 GHz', ip: '192.168.10.5', kShort: '6.6.51', osShort: 'BOOKWORM',
+        temp: 54.8, up: '112D 03H', upEn: '112 days,  3:14', ramUsed: 0.31, ramTotal: 1, swapUsed: 0.1, swapTotal: 0.1, load: [0.08, 0.11, 0.09], cpuF: 0.35, lat: '6 MS',
+        disks: [{ mount: '/', used: 6.2, total: 29, unit: 'GB' }],
+        rx: 0.3, tx: 0.2, nproc: 87, mac: 'B8:27:EB:5D:12:C4',
+        procs: [['technitium', 4.8, 22.6], ['systemd-journald', 0.6, 1.4], ['sshd: pi', 0.3, 0.9], ['ntpd', 0.1, 0.5], ['cron', 0.1, 0.4], ['systemd', 0.1, 1.1]],
+        services: [['ssh', 1], ['technitium-dns', 1], ['cron', 1], ['ntp', 1]],
+        ports: '22, 53, 53/udp and 5380' }
+    ];
+  }
+  pkgs() {
+    return [
+      { n: 'openssh-server', d: 'Secure shell server', v: '1:9.2p1-2+deb12u3', nv: '1:9.2p1-2+deb12u4', sz: '1.4 MB', s: ['update', 'update'] },
+      { n: 'linux-image-rpi-v8', d: 'Raspberry Pi kernel (arm64)', v: '6.6.51-1+rpt3', nv: '6.6.62-1+rpt1', sz: '78 MB', s: ['update', 'update'] },
+      { n: 'ffmpeg', d: 'Audio and video tools', v: '7:5.1.6-0+deb12u1', nv: '7:5.1.7-0+deb12u1', sz: '9.6 MB', s: ['update', 'available'] },
+      { n: 'curl', d: 'Command-line URL client', v: '7.88.1-10+deb12u8', nv: '', sz: '315 KB', s: ['installed', 'installed'] },
+      { n: 'htop', d: 'Interactive process viewer', v: '3.2.2-2', nv: '', sz: '432 KB', s: ['installed', 'installed'] },
+      { n: 'nginx', d: 'Web server and reverse proxy', v: '1.22.1-9', nv: '', sz: '1.6 MB', s: ['installed', 'available'] },
+      { n: 'docker.io', d: 'Container runtime', v: '20.10.24+dfsg1-1', nv: '', sz: '31 MB', s: ['installed', 'available'] },
+      { n: 'etherwake', d: 'Wake-on-LAN client', v: '1.09-4+b1', nv: '', sz: '22 KB', s: ['installed', 'available'] },
+      { n: 'samba', d: 'SMB/CIFS file server', v: '2:4.17.12+dfsg-0+deb12u1', nv: '', sz: '3.1 MB', s: ['installed', 'available'] },
+      { n: 'python3-pip', d: 'Python package installer', v: '23.0.1+dfsg-1', nv: '', sz: '1.3 MB', s: ['installed', 'installed'] },
+      { n: 'linux-image-6.1.0-rpi7', d: 'Old kernel, no longer needed', v: '6.1.63-1+rpt1', nv: '', sz: '64 MB', s: ['orphan', 'orphan'] },
+      { n: 'libjs-sphinxdoc', d: 'Orphaned dependency', v: '5.3.0-4', nv: '', sz: '1.1 MB', s: ['orphan', 'orphan'] }
+    ];
+  }
+  st(hi, p) { const o = this.state.ov[hi + ':' + p.n]; return o !== undefined ? o : (p.s[hi] || 'installed'); }
+  cells(n, frac) {
+    const on = Math.round(n * Math.max(0, Math.min(1, frac)));
+    return Array.from({ length: n }, (_, i) => ({ cls: 'cell' + (i < on ? ' on' : '') }));
+  }
+  initLines(H) {
+    const p = (H.user || 'pi') + '@' + H.name + ':~ $ ';
+    return [
+      { p: p, text: 'uptime', color: '#c9f7d4' },
+      { p: '', text: ' 21:14:07 up ' + H.upEn + ',  1 user,  load average: ' + H.load.join(', '), color: '#2fc45e' },
+      { p: p, text: 'vcgencmd measure_temp', color: '#c9f7d4' },
+      { p: '', text: "temp=" + H.temp + "'C", color: '#2fc45e' }
+    ];
+  }
+
+  renderVals() {
+    const s = this.state, hi = s.host, hosts = this.hosts(), H = hosts[hi], pkgs = this.pkgs();
+    const cnt = (h, status) => pkgs.filter((p) => this.st(h, p) === status).length;
+    const initCnt = (h, status) => pkgs.filter((p) => (p.s[h] || 'installed') === status).length;
+    const setView = (v) => () => this.setState({ view: v });
+    const selHost = (i) => this.setState({ host: i, log: 'Connected to ' + hosts[i].name });
+
+    const updTotal = cnt(hi, 'update');
+    const installed = cnt(hi, 'installed') + updTotal;
+    const current = cnt(hi, 'installed');
+
+    // Alerts (global)
+    const R = s.rules;
+    const activeAlerts = [];
+    if (R.unit && !s.fixed[0]) activeAlerts.push({ id: 'smbd', sev: 'critical', title: 'smbd.service failed', host: hosts[0].name, rule: 'systemd unit failed', when: 'since 20:52' });
+    const upd0 = cnt(0, 'update');
+    if (R.updates && upd0 > 0) activeAlerts.push({ id: 'upd0', sev: 'warning', title: upd0 + (upd0 === 1 ? ' update' : ' updates') + ' pending for 9 days', host: hosts[0].name, rule: 'Updates pending', when: 'since 20 Sep' });
+    hosts.forEach((h, i) => { if (R.offline && s.power[i] === 'off') activeAlerts.push({ id: 'off' + i, sev: 'critical', title: h.name + ' is offline', host: h.name, rule: 'Host offline', when: 'just now' }); });
+    const resolvedAlerts = [];
+    if (s.fixed[0]) resolvedAlerts.push({ id: 'smbd-r', sev: 'critical', title: 'smbd.service failed', host: hosts[0].name, rule: 'systemd unit failed', when: 'resolved by restart' });
+    if (upd0 === 0) resolvedAlerts.push({ id: 'upd0-r', sev: 'warning', title: 'Updates pending', host: hosts[0].name, rule: 'Updates pending', when: 'resolved by upgrade' });
+    resolvedAlerts.push({ id: 'r1', sev: 'critical', title: 'pi3-dns was offline for 3 min', host: 'pi3-dns', rule: 'Host offline', when: 'yesterday 23:41' });
+    resolvedAlerts.push({ id: 'r2', sev: 'warning', title: 'SoC temperature reached 78 °C', host: 'pi5-media', rule: 'Temperature', when: '27 Sep 16:05' });
+    const openAlerts = activeAlerts.filter((a) => !s.ack[a.id]).length;
+
+    const navItems = [['overview', 'Overview', 0], ['packages', 'Packages', updTotal], ['terminal', 'Shell', 0], ['history', 'History', 0], ['alerts', 'Alerts', openAlerts], ['containers', 'Containers', 0], ['settings', 'Settings', 0]].map((x) => ({
+      label: x[1], badge: x[2], hasBadge: x[2] > 0,
+      cls: s.view === x[0] ? 'mi on' : (x[2] > 0 ? 'mi hot' : 'mi'), go: setView(x[0])
+    }));
+    const hostRows = hosts.map((h, i) => {
+      const u = cnt(i, 'update');
+      return { name: h.name, upd: u, hasUpd: u > 0, off: !!s.power[i], cls: 'htab' + (i === hi ? ' on' : ''), go: () => selHost(i) };
+    });
+
+    // Overview
+    const now = Math.max(1, Math.round(s.cpu[s.cpu.length - 1] * H.cpuF));
+    const pts = s.cpu.map((v, i) => (i * 300 / (s.cpu.length - 1)).toFixed(1) + ',' + (98 - Math.max(1, v * H.cpuF) * 0.9).toFixed(1));
+    const cores = [1.15, 0.85, 1.05, 0.9].map((m, i) => {
+      const pct = Math.max(1, Math.min(100, Math.round(now * m)));
+      return { label: 'Core ' + i, pct: pct, w: pct + '%' };
+    });
+    const procs = H.procs.map((p) => ({ name: p[0], cpu: p[1].toFixed(1) + '%', mem: p[2].toFixed(1) + '%' }));
+    const resTiles = [
+      { real: true, none: false, tone: 't-blue', label: 'RAM', text: H.ramUsed + ' / ' + H.ramTotal + ' GB', cells: this.cells(16, H.ramUsed / H.ramTotal) },
+      { real: true, none: false, tone: 't-purple', label: 'Swap', text: H.swapUsed + ' / ' + H.swapTotal + ' GB', cells: this.cells(16, H.swapUsed / H.swapTotal) }
+    ].concat(H.disks.map((d) => ({ real: true, none: false, tone: 't-grey', label: 'Disk ' + d.mount, text: d.used + ' / ' + d.total + ' ' + d.unit, cells: this.cells(16, d.used / d.total) })));
+    while (resTiles.length < 4) resTiles.push({ real: false, none: true, tone: '', label: '', text: '', cells: [] });
+    const diskHigh = H.disks.some((d) => d.used / d.total > 0.9);
+    const fixed = !!s.fixed[hi];
+    const svcList = H.services.map((x) => [x[0], fixed ? 1 : x[1]]);
+    const failed = svcList.filter((x) => !x[1]).length;
+    const services = svcList.map((x) => ({
+      name: x[0], state: x[1] ? 'active' : 'failed', ok: !!x[1], bad: !x[1],
+      barCls: x[1] ? '' : 'bad', boxCls: x[1] ? 'rw sm' : 'rw sm bad'
+    }));
+    const doRestart = () => {
+      if (!failed) return;
+      const f = Object.assign({}, this.state.fixed); f[hi] = true;
+      this.setState({ fixed: f, log: 'systemctl restart: failed units on ' + H.name + ' restarted' });
+      this.flash('Restored', H.name + ' | systemctl restart');
+    };
+
+    // Packages
+    const q = s.query.trim().toLowerCase();
+    const filters = [['all', 'All'], ['update', 'Updates'], ['installed', 'Installed'], ['available', 'Available'], ['orphan', 'Orphaned']].map((x) => {
+      const k = x[0];
+      const n = k === 'all' ? pkgs.length : (k === 'installed' ? installed : cnt(hi, k));
+      return { label: x[1], n: n, cls: 'htab' + (s.filter === k ? ' on' : ''), go: () => this.setState({ filter: k }) };
+    });
+    const meta = {
+      update: { tone: 't-lime', label: 'Update', btn: 'Update', btnCls: 'tb hot', next: 'installed', msg: 'upgraded' },
+      installed: { tone: 't-grey', label: 'Installed', btn: 'Remove', btnCls: 'tb', next: 'available', msg: 'removed' },
+      available: { tone: 't-blue', label: 'Available', btn: 'Install', btnCls: 'tb', next: 'installed', msg: 'installed' },
+      orphan: { tone: 't-pink', label: 'Orphaned', btn: 'Remove', btnCls: 'tb', next: 'available', msg: 'removed' }
+    };
+    const pkgItems = pkgs.filter((p) => {
+      const st = this.st(hi, p);
+      const okF = s.filter === 'all' || st === s.filter || (s.filter === 'installed' && st === 'update');
+      return okF && (!q || p.n.toLowerCase().indexOf(q) >= 0);
+    }).map((p) => {
+      const st = this.st(hi, p), m = meta[st], o = s.ov[hi + ':' + p.n];
+      const ver = st === 'update' ? p.v + ' → ' + p.nv : (p.nv && o === 'installed' ? p.nv : p.v);
+      return {
+        n: p.n, d: p.d, sz: p.sz, ver: ver, tone: m.tone, label: m.label, btn: m.btn, btnCls: m.btnCls,
+        gU: st === 'update', gI: st === 'installed', gA: st === 'available', gO: st === 'orphan',
+        go: () => {
+          const verb = st === 'update' ? 'install --only-upgrade' : (m.btn === 'Remove' ? 'remove' : 'install');
+          const run = () => this.startJob(H.name, 'apt ' + verb + ' -y ' + p.n, ['Reading package lists... Done', 'Building dependency tree... Done', (m.btn === 'Remove' ? 'Removing ' : 'Setting up ') + p.n + ' (' + (st === 'update' ? p.nv : p.v) + ') ...'], () => {
+            const ov = Object.assign({}, this.state.ov); ov[hi + ':' + p.n] = m.next;
+            const rr = Object.assign({}, this.state.rebootReq); if (st === 'update' && p.n.indexOf('linux-image') === 0) rr[hi] = true;
+            this.setState({ ov: ov, rebootReq: rr, log: 'apt: ' + p.n + ' ' + m.msg });
+          });
+          if (m.btn === 'Remove') this.setState({ ask: { title: 'Remove package', text: 'Remove ' + p.n + ' from ' + H.name + '? Configuration files are kept. Dependent packages may stop working.', label: 'Remove ' + p.n, run: run } });
+          else run();
+        }
+      };
+    });
+    const tickText = updTotal > 0 ? updTotal + (updTotal === 1 ? ' update available' : ' updates available') : 'System up to date';
+    const tickP = Array.from({ length: 24 }, (_, i) => ({ t: i % 2 ? '+' : tickText }));
+    const tickT = Array.from({ length: 24 }, (_, i) => ({ t: i % 2 ? '+' : 'nexara shell 1.0 (ssh.session)' }));
+
+    const initUpd = initCnt(hi, 'update'), initOrph = initCnt(hi, 'orphan');
+    const updDone = Math.max(0, initUpd - updTotal);
+    const orphDone = Math.max(0, initOrph - cnt(hi, 'orphan'));
+    const refreshed = !!s.refreshed[hi];
+
+    const updPkgs = pkgs.filter((p) => this.st(hi, p) === 'update');
+    const doRefresh = () => {
+      this.startJob(H.name, 'apt update', ['Hit:1 http://deb.debian.org/debian bookworm InRelease', 'Hit:2 http://archive.raspberrypi.com/debian bookworm InRelease', 'Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [48.0 kB]', 'Fetched 48.0 kB in 1s (52.1 kB/s)', 'Reading package lists... Done', 'Building dependency tree... Done', updPkgs.length + ' packages can be upgraded.'], () => {
+        const r = Object.assign({}, this.state.refreshed); r[hi] = true;
+        this.setState({ refreshed: r, log: 'apt update: package lists on ' + H.name + ' refreshed' });
+        this.flash('Synced', H.name + ' | apt update');
+      });
+    };
+    const doUpgradeAll = () => {
+      if (!updPkgs.length) { this.setState({ log: 'apt upgrade: nothing to do on ' + H.name }); return; }
+      const kernel = updPkgs.some((p) => p.n.indexOf('linux-image') === 0);
+      const lines = ['Waiting for cache lock: /var/lib/dpkg/lock-frontend is held by unattended-upgr (pid 1873)', 'Lock released after 4 s', 'Reading package lists... Done', 'Calculating upgrade... Done', 'The following packages will be upgraded:', '  ' + updPkgs.map((p) => p.n).join(' ')]
+        .concat(updPkgs.map((p) => 'Get: ' + p.n + ' ' + p.nv + ' [' + p.sz + ']'))
+        .concat(updPkgs.map((p) => 'Unpacking ' + p.n + ' (' + p.nv + ') ...'))
+        .concat(updPkgs.map((p) => 'Setting up ' + p.n + ' (' + p.nv + ') ...'))
+        .concat(['Processing triggers for man-db (2.11.2-2) ...'])
+        .concat(kernel ? ['W: A reboot is required to finish the kernel update.'] : []);
+      this.startJob(H.name, 'apt upgrade -y', lines, () => {
+        const ov = Object.assign({}, this.state.ov);
+        pkgs.forEach((p) => { if (this.st(hi, p) === 'update') ov[hi + ':' + p.n] = 'installed'; });
+        const rr = Object.assign({}, this.state.rebootReq); if (kernel) rr[hi] = true;
+        this.setState({ ov: ov, rebootReq: rr, log: 'apt upgrade: all updates installed on ' + H.name + (kernel ? ' · reboot required' : '') });
+        this.flash('Updated', H.name + ' | apt upgrade');
+      });
+    };
+    const doClean = () => {
+      const orph = pkgs.filter((p) => this.st(hi, p) === 'orphan');
+      const lines = ['Reading package lists... Done', 'The following packages will be REMOVED:', '  ' + (orph.map((p) => p.n).join(' ') || '(none)')]
+        .concat(orph.map((p) => 'Removing ' + p.n + ' (' + p.v + ') ...'))
+        .concat(['Cleaning package cache ...', 'Freed ' + (this.state.cache[hi] || 0) + ' MB']);
+      this.startJob(H.name, 'apt autoremove -y && apt clean', lines, () => {
+        const ov = Object.assign({}, this.state.ov);
+        pkgs.forEach((p) => { if (this.st(hi, p) === 'orphan') ov[hi + ':' + p.n] = 'available'; });
+        const c = Object.assign({}, this.state.cache); c[hi] = 0;
+        this.setState({ ov: ov, cache: c, log: 'apt autoremove + clean finished on ' + H.name });
+        this.flash('Cleaned', H.name + ' | autoremove + clean');
+      });
+    };
+
+    // Add host
+    const f = s.form;
+    const setF = (k) => (e) => { const nf = Object.assign({}, this.state.form); nf[k] = e.target.value; this.setState({ form: nf, formErr: '' }); };
+    const setAuth = (a) => () => { const nf = Object.assign({}, this.state.form); nf.auth = a; this.setState({ form: nf, formErr: '' }); };
+    const mkHost = (name, addr, user, port) => ({ name: name, short: name.toUpperCase(), cpuName: 'Awaiting first sync', ip: addr, kShort: '—', osShort: 'PENDING',
+      temp: 0, up: '00D 00H', upEn: '0 min', ramUsed: 0, ramTotal: 1, swapUsed: 0, swapTotal: 1, load: [0, 0, 0], cpuF: 0, lat: '— MS',
+      disks: [], rx: 0, tx: 0, nproc: 0, mac: 'unknown', procs: [], services: [], ports: 'no ports yet', user: user, port: port });
+    const runEnroll = (name, nh) => {
+      clearInterval(this.at);
+      this.setState({ addPhase: 'progress', addStep: 0, addTarget: name, formErr: '', log: 'Nexara Grid: linking ' + name });
+      this.at = setInterval(() => {
+        const n = this.state.addStep + 1;
+        if (n >= 5) {
+          clearInterval(this.at);
+          this.setState({ addStep: 5, extra: this.state.extra.concat([nh]), log: 'Nexara Grid: ' + name + ' online · Grid Agent v0.1.0' });
+          this.flash('Linked', name + ' | nexara grid');
+        } else this.setState({ addStep: n });
+      }, 900);
+    };
+    const submitAdd = () => {
+      const fm = this.state.form, addr = fm.addr.trim(), port = parseInt(fm.port, 10), user = fm.user.trim();
+      const isIp = /^\d+\.\d+\.\d+\.\d+$/.test(addr);
+      const name = fm.name.trim() || (isIp ? 'node-' + addr.split('.').at(-1) : addr.split('.')[0]);
+      let err = '';
+      if (!addr) err = 'Enter the IP address or hostname of the device.';
+      else if (!(port >= 1 && port <= 65535)) err = 'SSH port must be between 1 and 65535.';
+      else if (!user) err = 'Enter a user with sudo rights.';
+      else if (fm.auth === 'pass' && !fm.pass) err = 'Enter the password for ' + user + '.';
+      else if (!/^[a-z0-9][a-z0-9-]{0,30}$/i.test(name)) err = 'Display name: letters, digits and dashes only.';
+      else if (hosts.some((h) => h.name.toLowerCase() === name.toLowerCase())) err = 'A host named ' + name + ' already exists.';
+      if (err) { this.setState({ formErr: err }); return; }
+      this.setState({ addUser: user, addAddr: addr + ':' + port, addMode: 'ssh' });
+      runEnroll(name, mkHost(name, addr, user, port));
+    };
+    const simulateEnroll = () => {
+      let k = 1, name = 'pi-zero';
+      while (hosts.some((h) => h.name === name)) { k = k + 1; name = 'pi-zero-' + k; }
+      this.setState({ addUser: '', addAddr: this.state.enrollCode, addMode: 'code' });
+      runEnroll(name, mkHost(name, '192.168.10.' + (40 + k), 'pi', 22));
+    };
+    const stepDefs = s.addMode === 'code'
+      ? [['Agent connected with code', s.addAddr], ['Detect system', 'Debian 12 · armhf'], ['Deliver Grid Agent', 'v0.1.0 from this hub'], ['Enroll & issue certificate', 'mTLS · valid 1 year'], ['Agent online', 'first sync running']]
+      : [['Connect via SSH', s.addUser + '@' + s.addAddr], ['Detect system', 'Debian 12 · arm64'], ['Install Grid Agent', 'v0.1.0 · systemd unit'], ['Enroll & issue certificate', 'mTLS · valid 1 year · SSH closed'], ['Agent online', 'first sync running']];
+    const addSteps = stepDefs.map((d, i) => ({ label: d[0], detail: i <= s.addStep ? d[1] : '', done: i < s.addStep || s.addStep >= 5, cls: 'stp' + (i < s.addStep || s.addStep >= 5 ? ' done' : (i === s.addStep ? ' run' : ' wait')) }));
+    const resetAdd = { addOpen: false, addPhase: 'form', addStep: 0, formErr: '', copiedKey: false, copiedCmd: false, form: { name: '', addr: '', port: '22', user: 'pi', auth: 'pass', key: '', pass: '' } };
+    const copy = (text, key) => () => { try { navigator.clipboard.writeText(text); } catch (e) { } const o = {}; o[key] = true; this.setState(o); };
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const newCode = () => { let c = 'GRID-'; for (let i = 0; i < 8; i++) { c += chars.charAt(Math.floor(Math.random() * chars.length)); if (i === 3) c += '-'; } this.setState({ enrollCode: c, copiedCmd: false, log: 'New enrollment code issued (valid 15 min)' }); };
+
+    // Power & capabilities
+    const defCaps = { shell: true, packages: true, power: true, docker: false };
+    const capsOf = (i) => s.caps[i] || defCaps;
+    const cap = capsOf(hi);
+    const pw = s.power[hi];
+    const hostOff = !!pw;
+    const liveViews = ['overview', 'packages', 'terminal', 'containers'];
+    const showOffline = hostOff && liveViews.indexOf(s.view) >= 0;
+    const shellOff = !hostOff && s.view === 'terminal' && !cap.shell;
+    const dockerOff = !hostOff && s.view === 'containers' && !cap.docker;
+    const setPower = (i, v) => { const p = Object.assign({}, this.state.power); if (v) p[i] = v; else delete p[i]; this.setState({ power: p }); };
+    const bootDone = (i, name) => { setPower(i, null); const rr = Object.assign({}, this.state.rebootReq); delete rr[i]; this.setState({ rebootReq: rr, log: 'Grid Agent on ' + name + ' reconnected' }); };
+    const confirmPower = () => {
+      const kind = this.state.powerAsk;
+      this.setState({ powerAsk: null });
+      if (kind === 'reboot') {
+        setPower(hi, 'boot'); this.setState({ log: 'Reboot requested on ' + H.name });
+        this.flash('Rebooting', H.name + ' | nexara grid');
+        clearTimeout(this['pt' + (hi % 3)]); this['pt' + (hi % 3)] = setTimeout(() => bootDone(hi, H.name), 4500);
+      } else if (kind === 'shutdown') {
+        setPower(hi, 'off'); this.setState({ log: 'Shutdown requested on ' + H.name });
+        this.flash('Shut down', H.name + ' | nexara grid');
+      }
+    };
+    const doWake = () => {
+      if (this.state.power[hi] !== 'off') return;
+      setPower(hi, 'boot'); this.setState({ log: 'Wake-on-LAN packet sent to ' + H.mac });
+      this.flash('Waking', H.name + ' | wake-on-lan');
+      clearTimeout(this['pt' + (hi % 3)]); this['pt' + (hi % 3)] = setTimeout(() => bootDone(hi, H.name), 4500);
+    };
+
+    // History
+    const rangeMeta = { '24h': { n: 48, x0: '-24 H', x1: '-12 H', seed: 1 }, '7d': { n: 56, x0: '-7 D', x1: '-3.5 D', seed: 2 }, '30d': { n: 60, x0: '-30 D', x1: '-15 D', seed: 3 } };
+    const rm = rangeMeta[s.range];
+    const ranges = [['24h', '24 h'], ['7d', '7 days'], ['30d', '30 days']].map((x) => ({ label: x[1], on: s.range === x[0], cls: 'htab' + (s.range === x[0] ? ' on' : ''), go: () => this.setState({ range: x[0] }) }));
+    const series = (k, base, amp, lo, hiV) => Array.from({ length: rm.n }, (_, i) => {
+      const v = base + amp * Math.sin(i / (3 + rm.seed + k)) + amp * 0.5 * Math.sin(i * 1.7 + k + rm.seed) + amp * 0.25 * Math.cos(i * 0.37 * (k + 1));
+      return Math.max(lo, Math.min(hiV, v));
+    });
+    const toPts = (arr, lo, hiV) => arr.map((v, i) => (i * 300 / (arr.length - 1)).toFixed(1) + ',' + (96 - (v - lo) / (hiV - lo || 1) * 88).toFixed(1)).join(' ');
+    const stat = (arr, d) => { const mn = Math.min.apply(null, arr), mx = Math.max.apply(null, arr), av = arr.reduce((a, b) => a + b, 0) / arr.length; return { min: mn.toFixed(d), max: mx.toFixed(d), avg: av.toFixed(d), now: arr.at(-1).toFixed(d) }; };
+    const mk = (label, tone, color, unit, arr, lo, hiV, d, arr2, note) => {
+      const st = stat(arr, d), line = toPts(arr, lo, hiV);
+      return { label: label + ' · ' + s.range.toUpperCase(), tone: tone, color: color, unit: unit, now: st.now, min: st.min, avg: st.avg, max: st.max,
+        line: line, area: '0,100 ' + line + ' 300,100', line2: arr2 ? toPts(arr2, lo, hiV) : '', x0: rm.x0, x1: rm.x1, note: note || '' };
+    };
+    const cpuS = series(0, 30 * H.cpuF + 4, 12 * H.cpuF + 2, 0, 100);
+    const ramBase = 100 * H.ramUsed / H.ramTotal;
+    const ramS = series(1, ramBase, ramBase > 0 ? 6 : 0, 0, 100);
+    const tmpS = series(2, H.temp, H.temp > 0 ? 4 : 0, 0, 90);
+    const rxS = series(3, H.rx, H.rx * 0.6 + (H.rx > 0 ? 0.1 : 0), 0, 1000);
+    const txS = series(4, H.tx, H.tx * 0.6 + (H.tx > 0 ? 0.1 : 0), 0, 1000);
+    const netMax = Math.max(1, Math.max.apply(null, rxS.concat(txS)) * 1.15);
+    const charts = [
+      mk('CPU', 't-lime', '#c6f500', '%', cpuS, 0, 100, 0),
+      mk('Memory', 't-blue', '#2f9bff', '%', ramS, 0, 100, 0),
+      mk('SoC temperature', 't-pink', '#ff3f74', '°C', tmpS, 0, 90, 1),
+      mk('Network eth0', 't-green', '#22e06a', 'MB/s ↓', rxS, 0, netMax, 1, txS, 'GREEN ↓ RX · PURPLE ↑ TX')
+    ];
+
+    // Alerts view
+    const alertTabs = [['active', 'Active', activeAlerts.length], ['resolved', 'Resolved', resolvedAlerts.length]].map((x) => ({ label: x[1], n: x[2], on: s.alertTab === x[0], cls: 'htab' + (s.alertTab === x[0] ? ' on' : ''), go: () => this.setState({ alertTab: x[0] }) }));
+    const sevTone = { critical: 't-pink', warning: 't-lime', info: 't-blue' };
+    const listA = s.alertTab === 'active' ? activeAlerts : resolvedAlerts;
+    const alertRows = listA.map((a) => {
+      const acked = !!s.ack[a.id], res = s.alertTab === 'resolved';
+      return { title: a.title, host: a.host, rule: a.rule, when: a.when, sevLabel: a.sev, cls: sevTone[a.sev] + (res ? ' res' : ''),
+        canAck: !res && !acked, showState: res || acked, state: res ? 'Resolved' : 'Acknowledged',
+        ack: () => { const k = Object.assign({}, this.state.ack); k[a.id] = true; this.setState({ ack: k, log: 'Alert acknowledged: ' + a.title }); } };
+    });
+    const ruleDefs = [['temp', 'SoC temperature above', '75 °C'], ['disk', 'Disk usage above', '90 %'], ['unit', 'systemd unit failed', 'any'], ['offline', 'Host offline for', '60 s'], ['updates', 'Updates pending for', '7 days']];
+    const rules = ruleDefs.map((x) => ({ label: x[1], th: x[2], on: !!R[x[0]], go: () => { const r = Object.assign({}, this.state.rules); r[x[0]] = !r[x[0]]; this.setState({ rules: r, log: 'Alert rule "' + x[1] + ' ' + x[2] + '" ' + (r[x[0]] ? 'enabled' : 'disabled') }); } }));
+
+    // Containers
+    const ctBase = hi === 0 ? [
+      { n: 'uptime-kuma', img: 'louislam/uptime-kuma:1', st: 'running', up: 'Up 3 days', ports: '3001', cpu: '0.8%', mem: '92 MB' },
+      { n: 'vaultwarden', img: 'vaultwarden/server:latest', st: 'running', up: 'Up 12 days', ports: '8081', cpu: '0.1%', mem: '38 MB' },
+      { n: 'nginx-proxy', img: 'nginx:1.27-alpine', st: 'running', up: 'Up 12 days', ports: '443', cpu: '0.2%', mem: '14 MB' },
+      { n: 'watchtower', img: 'containrrr/watchtower', st: 'exited', up: 'Exited (0) 2 days ago', ports: 'none', cpu: '0%', mem: '0 MB' }
+    ] : [];
+    const ctState = (c) => s.ct[hi + ':' + c.n] || c.st;
+    const setCt = (c, v, msg) => { const o = Object.assign({}, this.state.ct); o[hi + ':' + c.n] = v; this.setState({ ct: o, ctSel: c.n, log: msg }); };
+    const containers = ctBase.map((c) => {
+      const st = ctState(c), run = st === 'running';
+      return { n: c.n, img: c.img, ports: c.ports, cpu: run ? c.cpu : '0%', mem: run ? c.mem : '0 MB',
+        up: run ? (c.st === 'running' ? c.up : 'Up a few seconds') : (c.st === 'exited' ? c.up : 'Exited (0) just now'),
+        state: run ? 'Running' : 'Exited', tone: run ? 't-green' : 't-grey', sel: s.ctSel === c.n, outline: s.ctSel === c.n ? '2px solid #c6f500' : 'none',
+        p1label: run ? 'Stop' : 'Start', p1cls: run ? 'tb' : 'tb hot',
+        p1: () => setCt(c, run ? 'exited' : 'running', 'docker ' + (run ? 'stop ' : 'start ') + c.n + ' on ' + H.name),
+        restart: () => { setCt(c, 'running', 'docker restart ' + c.n + ' on ' + H.name); this.flash('Restarted', c.n + ' | docker'); },
+        logs: () => this.setState({ ctSel: c.n }) };
+    });
+    const logsBy = {
+      'uptime-kuma': ['[MONITOR] plex: up (32 ms)', '[MONITOR] pi3-dns: up (4 ms)', '[MONITOR] vaultwarden: up (11 ms)', '[SERVER] Next heartbeat in 60 s'],
+      'vaultwarden': ['[INFO] Rocket has launched from http://0.0.0.0:80', '[INFO] GET /api/sync 200', '[INFO] GET /alive 200'],
+      'nginx-proxy': ['192.168.10.44 - GET / HTTP/2.0 200', '192.168.10.44 - GET /favicon.ico 404', 'reloading configuration'],
+      'watchtower': ['Watchtower 1.7.1', 'Checking all containers', 'Session done: 0 updated', 'Exiting']
+    };
+    const selC = ctBase.find((c) => c.n === s.ctSel) || ctBase[0];
+    const logLines = selC ? logsBy[selC.n].map((m, i) => ({ t: '21:1' + i + ':0' + (i * 3 % 10), m: m })).concat(ctState(selC) === 'running' ? [] : [{ t: '—', m: 'container is not running' }]) : [];
+    const ctRunning = ctBase.filter((c) => ctState(c) === 'running').length;
+
+    // Settings
+    const toggleCap = (i, k) => () => { const c = Object.assign({}, this.state.caps); c[i] = Object.assign({}, capsOf(i)); c[i][k] = !c[i][k]; this.setState({ caps: c, log: k + ' ' + (c[i][k] ? 'enabled' : 'disabled') + ' on ' + hosts[i].name }); };
+    const baseLen = this.baseHosts().length;
+    const hostSettings = hosts.map((h, i) => ({
+      name: h.name, ip: h.ip, role: i === 0 ? 'Hub + agent' : (i < baseLen ? 'Agent' : 'Agent · awaiting sync'),
+      removable: i >= baseLen,
+      remove: () => { const ex = this.state.extra.filter((_, j) => j !== i - baseLen); this.setState({ extra: ex, host: 0, log: 'Host ' + h.name + ' removed, certificate revoked' }); },
+      caps: [['shell', 'Shell'], ['packages', 'Packages'], ['power', 'Power'], ['docker', 'Docker']].map((c) => ({ label: c[1], on: !!capsOf(i)[c[0]], cls: 'htab' + (capsOf(i)[c[0]] ? ' on' : ''), go: toggleCap(i, c[0]) }))
+    }));
+    const sessOpts = [4, 12, 24].map((hh) => ({ label: hh + ' h', on: s.sessH === hh, cls: 'htab' + (s.sessH === hh ? ' on' : ''), go: () => this.setState({ sessH: hh, log: 'Session timeout set to ' + hh + ' h' }) }));
+    const retOpts = [30, 90, 365].map((d) => ({ label: d === 365 ? '1 year' : d + ' days', on: s.ret === d, cls: 'htab' + (s.ret === d ? ' on' : ''), go: () => this.setState({ ret: d, log: 'Hourly history kept for ' + (d === 365 ? '1 year' : d + ' days') }) }));
+    const auditRows = s.audit.slice(0, 10);
+
+    // Terminal
+    const prompt = (H.user || 'pi') + '@' + H.name + ':~ $ ';
+    const lines = s.termLines[hi] || this.initLines(H);
+    const runCmd = (raw) => {
+      const c = raw.trim();
+      let cur = (this.state.termLines[hi] || this.initLines(H)).slice();
+      if (c === 'clear') { cur = []; }
+      else {
+        cur.push({ p: prompt, text: raw, color: '#c9f7d4' });
+        let out = null;
+        if (c === 'help') out = 'Available: help, uptime, hostname, whoami, vcgencmd measure_temp, clear';
+        else if (c === 'uptime') out = ' 21:14:07 up ' + H.upEn + ',  1 user,  load average: ' + H.load.join(', ');
+        else if (c === 'hostname') out = H.name;
+        else if (c === 'whoami') out = 'pi';
+        else if (c === 'vcgencmd measure_temp') out = "temp=" + H.temp + "'C";
+        else if (c !== '') out = 'bash: ' + c.split(' ')[0] + ': command not found';
+        if (out) cur.push({ p: '', text: out, color: '#2fc45e' });
+      }
+      if (cur.length > 500) cur = cur.slice(-500);
+      const tl = Object.assign({}, this.state.termLines); tl[hi] = cur;
+      this.setState({ termLines: tl, termInput: '' });
+    };
+
+    return {
+      H: H, hostNo: '0' + (hi + 1), onlineCount: hosts.length, pkgText: current + '/' + installed,
+      hostRows: hostRows, navItems: navItems,
+      prevHost: () => selHost((hi + hosts.length - 1) % hosts.length),
+      nextHost: () => selHost((hi + 1) % hosts.length),
+      isOverview: s.view === 'overview' && !hostOff, isPackages: s.view === 'packages' && !hostOff, isTerminal: s.view === 'terminal' && !hostOff && !!cap.shell,
+      isHistory: s.view === 'history', isAlerts: s.view === 'alerts', isContainers: s.view === 'containers' && !hostOff && !!cap.docker, isSettings: s.view === 'settings',
+      loadText: H.load.map((x) => x.toFixed(2)).join(' '), cpuNow: now, coreCount: cores.length, cores: cores,
+      cpuLine: pts.join(' '), cpuArea: '0,100 ' + pts.join(' ') + ' 300,100',
+      tempW: Math.min(100, Math.round(100 * H.temp / 85)) + '%', tempInt: Math.round(H.temp), tempCls: H.temp >= 70 ? 'bad' : '',
+      showCores: !s.showProcs, showProcs: s.showProcs, procs: procs, procCount: procs.length + '/' + H.nproc,
+      procBtn: s.showProcs ? 'Show cores' : 'Show processes',
+      toggleProcs: () => this.setState({ showProcs: !this.state.showProcs }),
+      resTiles: resTiles, resTag: diskHigh ? 'Disk almost full' : 'Healthy',
+      rxText: H.rx.toFixed(1), txText: H.tx.toFixed(1),
+      goTerminal: setView('terminal'),
+      services: services, svcText: (svcList.length - failed) + '/' + svcList.length, portText: H.ports,
+      restartLabel: failed ? 'Restart failed units (' + failed + ')' : 'All units running', doRestart: doRestart,
+      query: s.query, onQuery: (e) => this.setState({ query: e.target.value }),
+      filters: filters, pkgItems: pkgItems, tickP: tickP, tickT: tickT,
+      updTotal: updTotal,
+      srcText: (refreshed ? 4 : 0) + '/4', srcW: refreshed ? '100%' : '0%',
+      upgText: updTotal > 0 ? updTotal + (updTotal === 1 ? ' update' : ' updates') + ' ready, including kernel and OpenSSH.' : 'All packages are up to date.',
+      updDoneText: updDone + '/' + initUpd, updW: (initUpd ? Math.round(100 * updDone / initUpd) : 100) + '%',
+      orphDoneText: orphDone + '/' + initOrph, orphW: (initOrph ? Math.round(100 * orphDone / initOrph) : 100) + '%',
+      cache: s.cache[hi] || 0, doRefresh: doRefresh, doUpgradeAll: doUpgradeAll, doClean: doClean,
+      termLines: lines, termRef: this.termRef, prompt: prompt, termInput: s.termInput,
+      onTermChange: (e) => this.setState({ termInput: e.target.value }),
+      onTermKey: (e) => { if (e.key === 'Enter') runCmd(e.target.value); },
+      doTermClear: () => { const tl = Object.assign({}, this.state.termLines); tl[hi] = []; this.setState({ termLines: tl }); },
+      hasToast: !!s.toast, toastTitle: s.toast ? s.toast.title : '', toastSub: s.toast ? s.toast.sub : '',
+      logMsg: s.log,
+      showOffline: showOffline, offHeadCls: pw === 'off' ? 'ch bad' : 'ch hot', offTitle: H.name + (pw === 'off' ? ' · Offline' : ' · Starting'),
+      offTag: pw === 'off' ? 'Shut down' : 'Waiting for agent',
+      offText: pw === 'off' ? 'The Grid Agent is not connected. The hub can wake the device with a Wake-on-LAN packet.' : 'The device is starting. This view returns as soon as the Grid Agent reconnects.',
+      wakeW: pw === 'off' ? '0%' : '60%', wakeLabel: pw === 'off' ? 'Wake on LAN' : 'Waiting for agent…', doWake: doWake,
+      canPower: !!cap.power, askReboot: () => this.setState({ powerAsk: 'reboot' }), askShutdown: () => this.setState({ powerAsk: 'shutdown' }),
+      powerOpen: !!s.powerAsk, closePower: () => this.setState({ powerAsk: null }), confirmPower: confirmPower,
+      pwHeadCls: s.powerAsk === 'shutdown' ? 'ch bad' : 'ch hot', pwTitle: s.powerAsk === 'shutdown' ? 'Shut down host' : 'Reboot host',
+      pwText: s.powerAsk === 'shutdown' ? 'The device powers off and goes offline. You can wake it again from the hub with Wake-on-LAN.' : 'The device restarts. Running shell sessions and containers are interrupted for about a minute.',
+      pwConfirm: s.powerAsk === 'shutdown' ? 'Shut down' : 'Reboot',
+      showCapOff: shellOff || dockerOff, capOffTitle: shellOff ? 'Shell disabled' : 'Docker disabled',
+      capOffText: (shellOff ? 'Nexara Shell' : 'Docker management') + ' is turned off for ' + H.name + '. Enable it under Settings › Hosts & capabilities.',
+      goSettings: setView('settings'),
+      ranges: ranges, charts: charts,
+      alertTabs: alertTabs, alertRows: alertRows, noAlerts: alertRows.length === 0, emptyAlertText: s.alertTab === 'active' ? 'No active alerts. All rules are green.' : 'No resolved alerts yet.',
+      rules: rules, rulesOn: ruleDefs.filter((x) => R[x[0]]).length,
+      containers: containers, noContainers: containers.length === 0, ctRunning: ctRunning, ctTotal: ctBase.length, logName: selC ? selC.n : 'none', logLines: logLines,
+      hostSettings: hostSettings, hostCount: hosts.length, sessOpts: sessOpts, retOpts: retOpts,
+      tfaReq: s.tfaReq, tfaState: s.tfaReq ? 'Required' : 'Optional', toggleTfa: () => this.setState({ tfaReq: !this.state.tfaReq, log: 'Two-factor login ' + (!this.state.tfaReq ? 'required' : 'optional') }),
+      lockOn: s.lockOn, toggleLock: () => this.setState({ lockOn: !this.state.lockOn, log: 'Sign-in lockout ' + (!this.state.lockOn ? 'enabled' : 'disabled') }),
+      auditRows: auditRows, auditShown: auditRows.length, auditTotal: s.audit.length,
+      userName: H.user || 'pi', sshPort: H.port || 22,
+      addOpen: s.addOpen, openAdd: () => this.setState({ addOpen: true, formErr: '' }), closeAdd: () => { clearInterval(this.at); this.setState(resetAdd); },
+      addForm: s.addPhase === 'form', addProgress: s.addPhase === 'progress', addFinished: s.addStep >= 5,
+      addModes: [['ssh', 'Via SSH'], ['code', 'Enrollment code']].map((x) => ({ label: x[1], on: s.addMode === x[0], cls: 'htab' + (s.addMode === x[0] ? ' on' : ''), go: () => this.setState({ addMode: x[0], formErr: '' }) })),
+      modeSsh: s.addMode === 'ssh', modeCode: s.addMode === 'code',
+      fName: f.name, fAddr: f.addr, fPort: f.port, fUser: f.user, fPass: f.pass,
+      onFName: setF('name'), onFAddr: setF('addr'), onFPort: setF('port'), onFUser: setF('user'), onFPass: setF('pass'),
+      authKey: f.auth === 'key', authPass: f.auth === 'pass', keyCls: 'htab' + (f.auth === 'key' ? ' on' : ''), pwCls: 'htab' + (f.auth === 'pass' ? ' on' : ''),
+      setKey: setAuth('key'), setPass: setAuth('pass'), submitAdd: submitAdd, formErr: s.formErr, hasErr: !!s.formErr,
+      copyKey: copy('ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK3v9Qx nexus@frpi5', 'copiedKey'), copyKeyLabel: s.copiedKey ? 'Copied' : 'Copy',
+      enrollCode: s.enrollCode, copyCmd: copy('curl -fsSL https://frpi5.local:8443/grid/install.sh | sudo sh -s -- ' + s.enrollCode, 'copiedCmd'), copyCmdLabel: s.copiedCmd ? 'Copied' : 'Copy',
+      newCode: newCode, simulateEnroll: simulateEnroll,
+      addSteps: addSteps, addTarget: s.addTarget, addState: s.addStep >= 5 ? 'Online' : 'Linking', addTagCls: s.addStep >= 5 ? 'tag gr' : 'tag lt',
+      openNewHost: () => { clearInterval(this.at); const idx = hosts.findIndex((h) => h.name === this.state.addTarget); this.setState(Object.assign({}, resetAdd, { host: idx >= 0 ? idx : this.state.host, view: 'overview' })); },
+      jobOpen: !!s.job && s.jobOpen, jobTitle: s.job ? 'Job · ' + s.job.title : '', jobHost: s.job ? s.job.host : '', jobLines: s.job ? s.job.lines : [],
+      jobPct: s.job ? (s.job.done ? '100%' : Math.round(100 * s.job.n / Math.max(1, s.job.total)) + '%') : '0%',
+      jobRunning: !!s.job && !s.job.done, jobDone: !!s.job && s.job.done, jobState: s.job && s.job.done ? 'Done' : 'Running',
+      jobHeadCls: s.job && s.job.done ? 'ch hot' : 'ch', jobTagCls: s.job && s.job.done ? 'tag gr' : 'tag lt',
+      hideJob: () => this.setState({ jobOpen: false }), showJob: () => this.setState({ jobOpen: true }),
+      jobBg: !!s.job && !s.job.done && !s.jobOpen, jobShort: s.job ? s.job.title.split(' ').slice(0, 2).join(' ') : '',
+      askOpen: !!s.ask, askTitle: s.ask ? s.ask.title : '', askText: s.ask ? s.ask.text : '', askLabel: s.ask ? s.ask.label : '',
+      closeAsk: () => this.setState({ ask: null }), confirmAsk: () => { const a = this.state.ask; this.setState({ ask: null }); if (a && a.run) a.run(); },
+      rebootNeeded: !!s.rebootReq[hi] && !hostOff,
+      connLost: !!this.props.connectionLost, lostTick: Array.from({ length: 20 }, (_, i) => ({ t: i % 2 ? '+' : 'connection to hub lost · reconnecting in 3 s' })),
+      liveColor: this.props.connectionLost ? '#ff3f74' : '#c6f500', liveText: this.props.connectionLost ? 'RECONNECTING' : 'LIVE',
+      updStatus: 'Up to date', agentsCurrent: hosts.length + '/' + hosts.length, updCheck: s.updCheck, updCheckState: s.updCheck ? 'On' : 'Off',
+      toggleUpdCheck: () => this.setState({ updCheck: !this.state.updCheck, log: 'Update check ' + (!this.state.updCheck ? 'enabled (GitHub Releases)' : 'disabled') }),
+      checkNow: () => { if (!this.state.updCheck) { this.setState({ log: 'Update check is off · turn it on or upload an update file' }); return; } this.setState({ log: 'GitHub Releases checked · v0.1.0 is the latest version' }); this.flash('Up to date', 'nexus v0.1.0'); },
+      onUpdFile: (e) => { const fl = e.target.files && e.target.files[0]; if (!fl) return; this.setState({ log: 'Update file ' + fl.name + ' checked · signature valid · ready to install' }); this.flash('Verified', fl.name); },
+      bkPass: s.bkPass, onBkPass: (e) => this.setState({ bkPass: e.target.value, bkErr: '' }), bkErr: s.bkErr, hasBkErr: !!s.bkErr, lastBackup: s.lastBackup,
+      doBackup: () => { if (this.state.bkPass.length < 12) { this.setState({ bkErr: 'The backup passphrase needs at least 12 characters.' }); return; } this.setState({ bkPass: '', lastBackup: 'Just now · nexus-backup-2026-09-30.nxb · 2.1 MB', log: 'Encrypted backup created and downloaded' }); this.flash('Backup', 'nexus-backup-2026-09-30.nxb'); },
+      downloadCa: () => this.setState({ log: 'CA certificate downloaded (nexara-ca.crt)' }),
+      viewHubLog: () => this.showStatic('frpi5', 'journalctl -u nexus', ['nexus 0.1.0 starting (linux/arm64)', 'store: database /var/lib/nexus/nexus.db · schema v1', 'pki: CA loaded · server cert valid until 2027-09-30', 'http: listening on :8443 (TLS)', 'grid: agent pi5-media connected (v0.1.0, proto 1)', 'grid: agent pi3-dns connected (v0.1.0, proto 1)', 'auth: operator fabio signed in from 192.168.10.44', 'backup: nightly backup written (2.1 MB)']),
+      agentLogBtns: hosts.map((h) => ({ label: h.name + ' log', go: () => this.showStatic(h.name, 'journalctl -u grid-agent', ['grid-agent 0.1.0 starting', 'tls: client certificate valid until 2027-09-30', 'hub: connected to wss://frpi5.local:8443/grid/connect', 'metrics: sampling every 2 s', 'packages: backend apt (Debian 12)']) }))
+    };
+  }
+}
+</script>
+</body>
+</html>

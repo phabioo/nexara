@@ -1,0 +1,24 @@
+# Nexara Grid Agent configuration (example, draft)
+# Written by the hub during enrollment to /etc/grid-agent/agent.yaml.
+
+hub:
+  url: wss://frpi5.local:8443/grid/connect
+
+tls:
+  ca: /var/lib/grid-agent/ca.pem
+  cert: /var/lib/grid-agent/agent.pem
+  key: /var/lib/grid-agent/agent.key
+
+metrics:
+  interval_seconds: 2
+
+shell:
+  user: pi   # the Pi's normal sudo user, never root
+
+capabilities:
+  monitoring: true
+  packages: true
+  services: true
+  shell: true
+  power: true
+  docker: false

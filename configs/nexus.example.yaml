@@ -1,0 +1,32 @@
+# Nexara Nexus hub configuration (example, draft)
+# Copy to /etc/nexus/nexus.yaml. The setup wizard fills in hub.* on first run.
+
+hub:
+  name: frpi5
+  timezone: Europe/Berlin
+  # Address agents use to reach the hub
+  agent_address: frpi5.local
+  listen: ":8443"
+
+tls:
+  # "self" = hub issues its own certificate from its CA
+  mode: self
+  dir: /var/lib/nexus/pki
+
+storage:
+  database: /var/lib/nexus/nexus.db
+  history:
+    minute_days: 7
+    hour_days: 365
+
+security:
+  session_idle_hours: 12
+  totp_required: false   # true from v0.2
+  login_rate_limit:
+    attempts: 5
+    window_minutes: 15
+
+alerts:
+  cpu_temp_c: 75
+  disk_used_percent: 90
+  host_offline_seconds: 60

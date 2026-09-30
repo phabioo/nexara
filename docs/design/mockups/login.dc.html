@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nexara Nexus Sign-in</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@125,700;125,800;125,900&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#111214}
+button{font-family:inherit;cursor:pointer;border:0;color:inherit;padding:0;background:transparent}
+input{font-family:inherit}
+.w{font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;text-transform:uppercase;letter-spacing:.01em}
+.s{font-family:'Instrument Serif',serif;font-weight:400}
+.micro{font-family:'JetBrains Mono',monospace;font-size:8px;line-height:10px;letter-spacing:.04em;color:#7a7e82;text-transform:uppercase;white-space:nowrap}
+.tick{height:24px;flex:none;overflow:hidden;display:flex;align-items:center;background:#3aa0e8;color:#0d0e0f}
+.run{display:flex;gap:18px;white-space:nowrap;animation:mq 30s linear infinite;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+@keyframes mq{to{transform:translateX(-50%)}}
+.ch{height:36px;flex:none;display:flex;align-items:center;padding:0 14px;background:#c6f500;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:14px;text-transform:uppercase}
+.tag{align-self:flex-start;height:20px;display:flex;align-items:center;padding:0 8px;background:#0d0e0f;color:#f2f3ef;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.ct{margin:0;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.45;color:#1a1c1e}
+.sec{font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+.chk{height:10px;flex:none;background:repeating-linear-gradient(90deg,#9c9ea1 0 40px,transparent 40px 80px) top/100% 5px no-repeat,repeating-linear-gradient(90deg,transparent 0 40px,#9c9ea1 40px 80px) bottom/100% 5px no-repeat}
+.fld{display:flex;flex-direction:column;gap:6px}
+.fin{height:40px;width:100%;padding:0 12px;background:#0d0e0f;border:0;color:#eceee9;font-family:'JetBrains Mono',monospace;font-size:14px}
+.fin::placeholder{color:#6f7377}
+.fin:focus-visible,.eye:focus-visible,.cbtn:focus-visible,.rem input:focus-visible{outline:2px solid #0d0e0f;outline-offset:2px}
+.eye{width:44px;height:40px;flex:none;display:flex;align-items:center;justify-content:center;background:#2a2c2f;color:#c9cacc}
+.eye:hover{background:#c6f500;color:#0d0e0f}
+.cbtn{height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#0d0e0f;color:#f2f3ef;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;text-decoration:none}
+.cbtn:hover{background:#2a2c2f}
+.cbtn.hot{background:#0d0e0f;color:#c6f500}
+.rem{display:flex;align-items:center;gap:10px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#1a1c1e;cursor:pointer}
+.rem input{width:18px;height:18px;margin:0;accent-color:#0d0e0f}
+.ferr{display:flex;align-items:center;gap:8px;min-height:30px;padding:6px 10px;background:#ff3f74;color:#0d0e0f;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600}
+.ccn{position:absolute;width:8px;height:8px;background:#c6f500;border:1px solid #0d0e0f}
+.xh{position:absolute;width:40px;height:40px;background:linear-gradient(#26292c,#26292c) center/1px 40px no-repeat,linear-gradient(#26292c,#26292c) center/40px 1px no-repeat;pointer-events:none}
+@keyframes blink{50%{opacity:0}}
+.live{width:8px;height:8px;background:#c6f500;animation:blink 1.4s steps(1) infinite}
+</style>
+</helmet>
+
+<div style="width:1440px;height:900px;position:relative;overflow:hidden;display:flex;flex-direction:column;background-color:#111214;background-image:repeating-linear-gradient(0deg,rgba(255,255,255,0.012) 0 1px,transparent 1px 3px);color:#eceee9;font-family:'JetBrains Mono',monospace">
+
+  <span class="xh" style="left:60px;top:150px"></span>
+  <span class="xh" style="right:60px;top:150px"></span>
+  <span class="xh" style="left:60px;top:720px"></span>
+  <span class="xh" style="right:60px;top:720px"></span>
+
+  <!-- TOP -->
+  <div style="height:72px;flex:none;position:relative;display:flex;align-items:center;justify-content:space-between;padding:10px 24px 0 18px">
+    <div class="micro" style="position:absolute;left:470px;top:6px">[nexara nexus standby]<br>operator authentication required<br>grid nodes . . . . . . . [locked]</div>
+    <div style="display:flex;align-items:stretch;height:38px">
+      <div class="w" style="display:flex;align-items:center;gap:8px;padding:0 16px 0 14px;background:#c6f500;color:#0d0e0f;border-radius:19px 0 0 19px;font-size:15px;font-weight:900">
+        <svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true"><path d="M58 25V17L32 3L6 17V47L32 61L58 47V39" fill="none" stroke="currentColor" stroke-width="7"/><rect x="42" y="29" width="22" height="6" fill="currentColor"/><path d="M32 23L41 32L32 41L23 32Z" fill="currentColor"/></svg>
+        <span>Nexus</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:0 16px 0 14px;background:#2a2c2f;border-left:2px solid #111214;border-radius:0 19px 19px 0;font-size:14px;font-weight:600">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#c9cacc" stroke-width="1.6"><rect x="2.5" y="6" width="9" height="6.5"/><path d="M4.5 6V4a2.5 2.5 0 0 1 5 0v2"/></svg><span>LOCKED</span>
+      </div>
+    </div>
+    <div class="micro" style="text-align:right">nexus build 0.1.0<br>go1.23 · linux/arm64</div>
+  </div>
+
+  <!-- STAGE -->
+  <div style="flex:1;min-height:0;position:relative">
+
+    <!-- band -->
+    <div style="position:absolute;left:0;right:0;top:170px;height:420px;display:flex;flex-direction:column;background-color:#3000d6;background-image:radial-gradient(#4a2cff 1px,transparent 1px);background-size:4px 4px">
+      <div class="tick"><div class="run"><sc-for list="{{tick}}" as="t" hint-placeholder-count="24"><span>{{t.t}}</span></sc-for></div></div>
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:18px;padding-left:120px">
+        <div class="micro" style="color:#b9b3ff">[operator access] / nexara grid / secure channel</div>
+        <div style="display:flex;align-items:center;gap:26px">
+          <svg width="96" height="96" viewBox="0 0 64 64" aria-hidden="true"><path d="M58 25V17L32 3L6 17V47L32 61L58 47V39" fill="none" stroke="#c6f500" stroke-width="7"/><rect x="42" y="29" width="22" height="6" fill="#c6f500"/><path d="M32 23L41 32L32 41L23 32Z" fill="#c6f500"/></svg>
+          <span class="s" style="font-size:118px;line-height:.9;letter-spacing:.01em;color:#f2f3ef">NEXARA</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px">
+          <span class="w" style="font-size:22px;color:#c6f500">Nexus</span>
+          <span style="width:40px;height:1px;background:#b9b3ff"></span>
+          <span style="font-size:13px;color:#e4e1ff;letter-spacing:.06em">SYSTEM MANAGEMENT CONSOLE</span>
+        </div>
+      </div>
+      <div class="tick"><div class="run"><sc-for list="{{tick}}" as="t" hint-placeholder-count="24"><span>{{t.t}}</span></sc-for></div></div>
+    </div>
+
+    <!-- card -->
+    <div role="region" aria-labelledby="loginTitle" style="position:absolute;left:880px;top:92px;width:440px;background:#b4b6b9;color:#0d0e0f;display:flex;flex-direction:column;box-shadow:0 0 0 12px rgba(17,18,20,.55)">
+      <span class="ccn" style="left:-5px;top:-5px"></span><span class="ccn" style="right:-5px;top:-5px"></span><span class="ccn" style="left:-5px;bottom:-5px"></span><span class="ccn" style="right:-5px;bottom:-5px"></span>
+      <div class="ch" id="loginTitle">Authenticate</div>
+
+      <sc-if value="{{isForm}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:14px;padding:16px 18px 18px">
+        <span class="tag">Restricted</span>
+        <p class="ct">Sign in to Nexara Nexus. Sessions end after 12 hours without activity.</p>
+        <div class="chk"></div>
+        <div class="fld">
+          <label for="l-user" class="sec">Operator ID</label>
+          <input id="l-user" class="fin" type="text" autocomplete="username" spellcheck="false" placeholder="operator" value="{{user}}" onChange="{{onUser}}" onKeyDown="{{onKey}}">
+        </div>
+        <div class="fld">
+          <label for="l-pass" class="sec">Passphrase</label>
+          <div style="display:flex;gap:4px">
+            <input id="l-pass" class="fin" type="{{passType}}" autocomplete="current-password" value="{{pass}}" onChange="{{onPass}}" onKeyDown="{{onKey}}">
+            <button class="eye" onClick="{{toggleShow}}" aria-label="{{eyeLabel}}" aria-pressed="{{show}}">
+              <svg width="18" height="14" viewBox="0 0 18 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 7s3-5.5 8-5.5S17 7 17 7s-3 5.5-8 5.5S1 7 1 7z"/><rect x="7" y="5" width="4" height="4"/></svg>
+            </button>
+          </div>
+        </div>
+        <label class="rem" for="l-rem"><input id="l-rem" type="checkbox" checked="{{remember}}" onChange="{{toggleRem}}"><span>Keep me signed in on this device</span></label>
+        <sc-if value="{{hasErr}}" hint-placeholder-val="{{ false }}">
+          <div class="ferr" role="alert"><span>!</span><span>{{err}}</span></div>
+        </sc-if>
+        <button class="cbtn" onClick="{{submit}}"><span>Sign in</span><svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 6h13M9 1l5 5-5 5"/></svg></button>
+        <p class="ct" style="font-size:11px;color:#3b3d3f">Lost your passphrase? Reset it with <b>nexus user reset</b> on the host.</p>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{isTotp}}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px;padding:16px 18px 18px">
+        <span class="tag">Step 2 of 2</span>
+        <p class="ct">Enter the 6-digit code from your authenticator app for <b>{{userShown}}</b>.</p>
+        <div class="chk"></div>
+        <div class="fld">
+          <label for="l-totp" class="sec">Authentication code</label>
+          <input id="l-totp" class="fin" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" maxlength="6" style="font-size:22px;letter-spacing:.4em" value="{{totp}}" onChange="{{onTotp}}" onKeyDown="{{onKey2}}">
+        </div>
+        <sc-if value="{{hasErr}}" hint-placeholder-val="{{ false }}">
+          <div class="ferr" role="alert"><span>!</span><span>{{err}}</span></div>
+        </sc-if>
+        <div style="display:flex;gap:8px">
+          <button class="cbtn" style="flex:0 0 120px;background:#d9dadc;color:#0d0e0f" onClick="{{backToCreds}}"><span>Back</span></button>
+          <button class="cbtn" style="flex:1" onClick="{{verify}}"><span>Verify</span><svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 6h13M9 1l5 5-5 5"/></svg></button>
+        </div>
+        <p class="ct" style="font-size:11px;color:#3b3d3f">Lost your authenticator? An operator can reset two-factor with <b>nexus user reset</b> on the host.</p>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{isOk}}" hint-placeholder-val="{{ false }}">
+      <div aria-live="polite" style="display:flex;flex-direction:column;gap:14px;padding:16px 18px 18px">
+        <span class="tag" style="background:#c6f500;color:#0d0e0f">Verified</span>
+        <div style="height:120px;display:flex;align-items:center;justify-content:center;gap:22px;background:#c6f500;position:relative">
+          <span style="width:22px;height:22px;background:linear-gradient(#0d0e0f,#0d0e0f) center/1px 22px no-repeat,linear-gradient(#0d0e0f,#0d0e0f) center/22px 1px no-repeat"></span>
+          <span class="s" style="font-size:40px;line-height:1;text-transform:uppercase">Access granted</span>
+          <span style="width:22px;height:22px;background:linear-gradient(#0d0e0f,#0d0e0f) center/1px 22px no-repeat,linear-gradient(#0d0e0f,#0d0e0f) center/22px 1px no-repeat"></span>
+        </div>
+        <p class="ct">Welcome back, <b>{{userShown}}</b>. Grid link established.</p>
+        <div class="chk"></div>
+        <a class="cbtn hot" href="Main.dc.html"><span>Enter Nexus</span><svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 6h13M9 1l5 5-5 5"/></svg></a>
+      </div>
+      </sc-if>
+    </div>
+
+    <div class="micro" style="position:absolute;left:880px;top:630px">auth_gate_01<br>[argon2id · tls 1.3]</div>
+  </div>
+
+  <!-- BOTTOM -->
+  <div style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:0 24px;border-top:1px solid #1e2023;background:#111214;font-size:13px">
+    <div style="display:flex;align-items:center;gap:10px;color:#c9cacc"><span style="color:#c6f500">&gt;</span><span>{{log}}</span></div>
+    <div style="display:flex;align-items:center;gap:10px;color:#8d9093;white-space:nowrap">
+      <i class="live"></i><span>SECURE CHANNEL · TLS 1.3</span>
+      <span style="width:1px;height:18px;background:#2a2c2f"></span>
+      <svg width="16" height="16" viewBox="0 0 64 64" aria-hidden="true"><path d="M58 25V17L32 3L6 17V47L32 61L58 47V39" fill="none" stroke="#c6f500" stroke-width="7"/><rect x="42" y="29" width="22" height="6" fill="#c6f500"/><path d="M32 23L41 32L32 41L23 32Z" fill="#c6f500"/></svg>
+      <span class="s" style="font-size:20px;line-height:1;color:#eceee9;letter-spacing:.02em">NEXARA</span><span class="w" style="font-size:11px;color:#c6f500">Nexus</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { user: '', pass: '', totp: '', phase: 'creds', show: false, remember: true, err: '', log: 'Awaiting operator credentials' };
+  }
+  renderVals() {
+    const s = this.state;
+    const submit = () => {
+      const u = this.state.user.trim();
+      if (!u || !this.state.pass) {
+        this.setState({ err: 'Enter your operator ID and passphrase.', log: 'Sign-in rejected: missing credentials' });
+        return;
+      }
+      this.setState({ phase: 'totp', err: '', log: 'Passphrase accepted · waiting for second factor' });
+    };
+    return {
+      tick: Array.from({ length: 24 }, (_, i) => ({ t: i % 2 ? '+' : 'restricted access · nexara grid' })),
+      isForm: s.phase === 'creds', isTotp: s.phase === 'totp', isOk: s.phase === 'ok',
+      totp: s.totp, onTotp: (e) => this.setState({ totp: e.target.value.replace(/[^0-9]/g, '').slice(0, 6), err: '' }),
+      verify: () => { if (!/^\d{6}$/.test(this.state.totp)) { this.setState({ err: 'Enter the 6-digit code.', log: 'Second factor rejected' }); return; } this.setState({ phase: 'ok', err: '', log: 'Operator ' + this.state.user.trim() + ' authenticated' }); },
+      onKey2: (e) => { if (e.key === 'Enter') { if (!/^\d{6}$/.test(this.state.totp)) { this.setState({ err: 'Enter the 6-digit code.' }); return; } this.setState({ phase: 'ok', err: '', log: 'Operator ' + this.state.user.trim() + ' authenticated' }); } },
+      backToCreds: () => this.setState({ phase: 'creds', totp: '', err: '' }),
+      user: s.user, pass: s.pass, userShown: s.user.trim(),
+      onUser: (e) => this.setState({ user: e.target.value, err: '' }),
+      onPass: (e) => this.setState({ pass: e.target.value, err: '' }),
+      onKey: (e) => { if (e.key === 'Enter') submit(); },
+      passType: s.show ? 'text' : 'password', show: s.show, eyeLabel: s.show ? 'Hide passphrase' : 'Show passphrase',
+      toggleShow: () => this.setState({ show: !this.state.show }),
+      remember: s.remember, toggleRem: () => this.setState({ remember: !this.state.remember }),
+      hasErr: !!s.err, err: s.err, submit: submit, log: s.log
+    };
+  }
+}
+</script>
+</body>
+</html>

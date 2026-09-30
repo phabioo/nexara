@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nexara Nexus Setup</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@125,700;125,800;125,900&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#111214}
+button{font-family:inherit;cursor:pointer;border:0;color:inherit;padding:0;background:transparent}
+input{font-family:inherit}
+.w{font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;text-transform:uppercase;letter-spacing:.01em}
+.s{font-family:'Instrument Serif',serif;font-weight:400}
+.micro{font-family:'JetBrains Mono',monospace;font-size:8px;line-height:10px;letter-spacing:.04em;color:#7a7e82;text-transform:uppercase;white-space:nowrap}
+.tick{height:24px;flex:none;overflow:hidden;display:flex;align-items:center;background:#3aa0e8;color:#0d0e0f}
+.run{display:flex;gap:18px;white-space:nowrap;animation:mq 30s linear infinite;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+@keyframes mq{to{transform:translateX(-50%)}}
+
+.st{height:44px;display:flex;align-items:stretch;gap:2px}
+.st .n{width:44px;flex:none;display:flex;align-items:center;justify-content:center;background:#2a2c2f;color:#8d9093;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600}
+.st .l{flex:1;display:flex;align-items:center;padding:0 14px;color:#8d9093;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+.st.done .n{background:#c6f500;color:#0d0e0f}
+.st.done .l{color:#eceee9}
+.st.on .n{background:#c6f500;color:#0d0e0f}
+.st.on .l{background:#dcdddf;color:#0d0e0f}
+
+.card{display:flex;flex-direction:column;background:#b4b6b9;color:#0d0e0f;position:relative}
+.ch{height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#c6f500;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:15px;text-transform:uppercase}
+.cb{display:flex;flex-direction:column;gap:14px;padding:16px 20px 20px}
+.tag{align-self:flex-start;height:20px;display:flex;align-items:center;padding:0 8px;background:#0d0e0f;color:#f2f3ef;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.ct{margin:0;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.5;color:#1a1c1e}
+.sec{font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+.chk{height:10px;flex:none;background:repeating-linear-gradient(90deg,#9c9ea1 0 40px,transparent 40px 80px) top/100% 5px no-repeat,repeating-linear-gradient(90deg,transparent 0 40px,#9c9ea1 40px 80px) bottom/100% 5px no-repeat}
+.prog{display:flex;gap:3px;height:6px;flex:none}
+.prog i{flex:1;background:#8e9093}
+.prog i.on{background:#0d0e0f}
+.fld{display:flex;flex-direction:column;gap:6px;min-width:0}
+.fin{height:40px;width:100%;padding:0 12px;background:#0d0e0f;border:0;color:#eceee9;font-family:'JetBrains Mono',monospace;font-size:14px}
+.fin::placeholder{color:#6f7377}
+.fin:focus-visible,.cbtn:focus-visible,.chip:focus-visible,.tog:focus-visible{outline:2px solid #0d0e0f;outline-offset:2px}
+.hint{font-family:'JetBrains Mono',monospace;font-size:11px;color:#3b3d3f}
+.code{padding:12px 14px;background:#0b0c0d;color:#35e36a;font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.6}
+.seg{display:flex;gap:3px}
+.seg i{flex:1;height:8px;background:#8e9093}
+.seg i.on{background:#0d0e0f}
+.chip{height:32px;display:flex;align-items:center;padding:0 12px;background:#2a2c2f;color:#c9cacc;font-family:'Archivo',sans-serif;font-stretch:125%;font-weight:800;font-size:12px;text-transform:uppercase}
+.chip:hover{background:#3a3d40;color:#eceee9}
+.chip.on{background:#c6f500;color:#0d0e0f}
+.tog{display:flex;align-items:center;gap:14px;width:100%;padding:14px;background:#c9cacd;border:1px solid #8e9093;text-align:left}
+.tog .box{width:22px;height:22px;flex:none;display:flex;align-items:center;justify-content:center;background:#0d0e0f;color:#c6f500}
+.cbtn{height:40px;flex:1;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#0d0e0f;color:#f2f3ef;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;text-decoration:none}
+.cbtn:hover{background:#2a2c2f}
+.cbtn.gr{flex:0 0 160px;background:#d9dadc;color:#0d0e0f}
+.cbtn.gr:hover{background:#eceee9}
+.cbtn.hot{color:#c6f500}
+.link{font-family:'JetBrains Mono',monospace;font-size:12px;text-decoration:underline;color:#0d0e0f;padding:0}
+.ferr{display:flex;align-items:center;gap:8px;min-height:30px;padding:6px 10px;background:#ff3f74;color:#0d0e0f;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600}
+.row{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-top:1px solid #9c9ea1;font-family:'JetBrains Mono',monospace;font-size:13px}
+.qr{display:grid;grid-template-columns:repeat(21,6px);grid-auto-rows:6px;padding:10px;background:#f2f3ef;width:146px}
+.qr i{background:transparent}
+.qr i.on{background:#0d0e0f}
+.ccn{position:absolute;width:8px;height:8px;background:#c6f500;border:1px solid #0d0e0f}
+.xh{position:absolute;width:40px;height:40px;background:linear-gradient(#26292c,#26292c) center/1px 40px no-repeat,linear-gradient(#26292c,#26292c) center/40px 1px no-repeat;pointer-events:none}
+@keyframes blink{50%{opacity:0}}
+.live{width:8px;height:8px;background:#c6f500;animation:blink 1.4s steps(1) infinite}
+</style>
+</helmet>
+
+<div style="width:1440px;height:900px;position:relative;overflow:hidden;display:flex;flex-direction:column;background-color:#111214;background-image:repeating-linear-gradient(0deg,rgba(255,255,255,0.012) 0 1px,transparent 1px 3px);color:#eceee9;font-family:'JetBrains Mono',monospace">
+
+  <span class="xh" style="left:60px;top:780px"></span>
+  <span class="xh" style="right:60px;top:130px"></span>
+
+  <!-- TOP -->
+  <div style="height:72px;flex:none;position:relative;display:flex;align-items:center;justify-content:space-between;padding:10px 24px 0 18px">
+    <div class="micro" style="position:absolute;left:470px;top:6px">[nexara nexus first run]<br>hub not claimed · setup mode active<br>grid nodes . . . . . . . [none]</div>
+    <div style="display:flex;align-items:stretch;height:38px">
+      <div class="w" style="display:flex;align-items:center;gap:8px;padding:0 16px 0 14px;background:#c6f500;color:#0d0e0f;border-radius:19px 0 0 19px;font-size:15px;font-weight:900">
+        <svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true"><path d="M58 25V17L32 3L6 17V47L32 61L58 47V39" fill="none" stroke="currentColor" stroke-width="7"/><rect x="42" y="29" width="22" height="6" fill="currentColor"/><path d="M32 23L41 32L32 41L23 32Z" fill="currentColor"/></svg>
+        <span>Nexus</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:0 14px;background:#2a2c2f;border-left:2px solid #111214;font-size:14px;font-weight:600"><span>SETUP</span></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:0 16px 0 14px;background:#b9babd;color:#0d0e0f;border-left:2px solid #111214;border-radius:0 19px 19px 0;font-size:14px;font-weight:500"><span>{{stepNo}}/7</span></div>
+    </div>
+    <div class="micro" style="text-align:right">nexus build 0.1.0<br>host frpi5 · linux/arm64</div>
+  </div>
+
+  <div class="tick"><div class="run"><sc-for list="{{tick}}" as="t" hint-placeholder-count="24"><span>{{t.t}}</span></sc-for></div></div>
+
+  <!-- STAGE -->
+  <div style="flex:1;min-height:0;display:flex;gap:72px;padding:40px 120px 24px 96px">
+
+    <!-- left: lockup + steps -->
+    <div style="width:320px;flex:none;display:flex;flex-direction:column;gap:30px">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:16px">
+          <svg width="52" height="52" viewBox="0 0 64 64" aria-hidden="true"><path d="M58 25V17L32 3L6 17V47L32 61L58 47V39" fill="none" stroke="#c6f500" stroke-width="7"/><rect x="42" y="29" width="22" height="6" fill="#c6f500"/><path d="M32 23L41 32L32 41L23 32Z" fill="#c6f500"/></svg>
+          <span class="s" style="font-size:62px;line-height:.9;color:#f2f3ef">NEXARA</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px"><span class="w" style="font-size:15px;color:#c6f500">Nexus</span><span style="width:32px;height:1px;background:#6f7377"></span><span style="font-size:12px;color:#c9cacc;letter-spacing:.06em">FIRST-RUN SETUP</span></div>
+      </div>
+      <ol aria-label="Setup steps" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">
+        <sc-for list="{{steps}}" as="s" hint-placeholder-count="6">
+          <li class="{{s.cls}}" aria-current="{{s.cur}}"><span class="n">{{s.mark}}</span><span class="l">{{s.label}}</span></li>
+        </sc-for>
+      </ol>
+      <div class="micro" style="margin-top:auto">setup_gate_frpi5<br>[code expires after 60 min]</div>
+    </div>
+
+    <!-- right: card -->
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-start">
+      <div class="card" role="region" aria-labelledby="stepTitle" style="box-shadow:0 0 0 12px rgba(17,18,20,.55)">
+        <span class="ccn" style="left:-5px;top:-5px"></span><span class="ccn" style="right:-5px;top:-5px"></span><span class="ccn" style="left:-5px;bottom:-5px"></span><span class="ccn" style="right:-5px;bottom:-5px"></span>
+        <div class="ch"><span id="stepTitle">{{title}}</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600">STEP {{stepNo}}/7</span></div>
+        <div class="cb">
+          <div class="prog"><sc-for list="{{prog}}" as="p" hint-placeholder-count="6"><i class="{{p.cls}}"></i></sc-for></div>
+          <span class="tag">{{tag}}</span>
+          <p class="ct">{{lead}}</p>
+          <div class="chk"></div>
+
+          <!-- 1 unlock -->
+          <sc-if value="{{s0}}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div class="fld"><span class="sec">Printed by the installer</span><div class="code">✓ Nexus 0.1.0 installed · service running<br>&nbsp;&nbsp;Open&nbsp;&nbsp;https://frpi5.local:8443<br>&nbsp;&nbsp;Code&nbsp;&nbsp;7KQ2-M9XD (valid 60 min)<br>&nbsp;&nbsp;Cert&nbsp;&nbsp;SHA-256 4F:9A:12:C7 … 8E:C2</div><span class="hint">Lost it? <b>sudo nexus setup code</b> prints a new one. Codes renew every 60 minutes.</span></div>
+              <sc-if value="{{notLocked}}" hint-placeholder-val="{{ true }}">
+                <div class="fld"><div style="display:flex;justify-content:space-between"><label for="f-code" class="sec">Setup code</label><span class="hint">{{attemptsText}}</span></div><input id="f-code" class="fin" type="text" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX" value="{{code}}" onChange="{{onCode}}" onKeyDown="{{onEnter}}"></div>
+              </sc-if>
+              <sc-if value="{{locked}}" hint-placeholder-val="{{ false }}">
+                <div role="alert" style="display:flex;gap:14px;align-items:center;padding:14px;background:#0d0e0f;color:#eceee9">
+                  <span style="width:36px;height:36px;flex:none;display:flex;align-items:center;justify-content:center;background:#ff3f74;color:#0d0e0f"><svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2.5" y="6" width="9" height="6.5"/><path d="M4.5 6V4a2.5 2.5 0 0 1 5 0v2"/></svg></span>
+                  <span style="display:flex;flex-direction:column;gap:3px"><span class="sec" style="font-size:13px;color:#ff3f74">Input locked for 15 minutes</span><span style="font-size:12px;color:#c9cacc">5 wrong codes. After the lockout the hub writes a new code to the journal.</span></span>
+                </div>
+              </sc-if>
+              <button class="link" style="align-self:flex-start" onClick="{{startRestore}}">Restore from a backup instead</button>
+            </div>
+          </sc-if>
+
+          <!-- restore -->
+          <sc-if value="{{sR}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div class="fld"><label for="f-bk" class="sec">Backup file (.nxb)</label><input id="f-bk" class="fin" type="file" accept=".nxb" style="padding-top:9px" onChange="{{onBkFile}}"></div>
+              <div class="fld"><label for="f-bkp" class="sec">Backup passphrase</label><input id="f-bkp" class="fin" type="password" autocomplete="off" value="{{bkPass}}" onChange="{{onBkPass}}"></div>
+              <span class="hint">Restores operators, hosts, history, certificates and settings. Grid Agents reconnect on their own.</span>
+              <div style="display:flex;gap:8px"><button class="cbtn gr" onClick="{{cancelRestore}}"><span>Back</span></button><button class="cbtn" onClick="{{doRestore}}"><span>Restore backup</span><svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 6h13M9 1l5 5-5 5"/></svg></button></div>
+            </div>
+          </sc-if>
+
+          <!-- trust -->
+          <sc-if value="{{sT}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:22px;align-items:flex-start">
+              <div style="display:flex;flex-direction:column;gap:6px;align-items:center">
+                <div class="qr" role="img" aria-label="QR code to install the CA on a phone (preview)"><sc-for list="{{qr}}" as="q" hint-placeholder-count="441"><i class="{{q.cls}}"></i></sc-for></div>
+                <span class="hint">Scan on your phone</span>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:12px">
+                <div class="fld"><span class="sec">Install on</span><div style="display:flex;flex-direction:column;gap:6px"><sc-for list="{{trustBtns}}" as="t" hint-placeholder-count="3"><button class="{{t.cls}}" style="justify-content:space-between" onClick="{{t.go}}"><span>{{t.label}}</span><span>{{t.state}}</span></button></sc-for></div></div>
+                <div class="fld"><span class="sec">Fingerprint</span><div class="code" style="color:#eceee9;font-size:12px">SHA-256 4F:9A:12:C7 … 8E:C2</div><span class="hint">Must match the fingerprint the installer printed.</span></div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- 2 operator -->
+          <sc-if value="{{s1}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div class="fld"><label for="f-op" class="sec">Operator ID</label><input id="f-op" class="fin" type="text" autocomplete="username" spellcheck="false" placeholder="fabio" value="{{op}}" onChange="{{onOp}}" onKeyDown="{{onEnter}}"></div>
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+                <div class="fld"><label for="f-p1" class="sec">Passphrase</label><input id="f-p1" class="fin" type="password" autocomplete="new-password" value="{{p1}}" onChange="{{onP1}}" onKeyDown="{{onEnter}}"></div>
+                <div class="fld"><label for="f-p2" class="sec">Repeat passphrase</label><input id="f-p2" class="fin" type="password" autocomplete="new-password" value="{{p2}}" onChange="{{onP2}}" onKeyDown="{{onEnter}}"></div>
+              </div>
+              <div class="fld"><div style="display:flex;justify-content:space-between"><span class="sec">Strength</span><span class="hint">{{strengthText}}</span></div><div class="seg"><sc-for list="{{strength}}" as="k" hint-placeholder-count="5"><i class="{{k.cls}}"></i></sc-for></div><span class="hint">At least 12 characters. Stored as an argon2id hash on the hub only.</span></div>
+            </div>
+          </sc-if>
+
+          <!-- 3 two-factor -->
+          <sc-if value="{{s2}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:22px;align-items:flex-start">
+              <div style="display:flex;flex-direction:column;gap:6px;align-items:center">
+                <div class="qr" role="img" aria-label="QR code for the authenticator app (preview)"><sc-for list="{{qr}}" as="q" hint-placeholder-count="441"><i class="{{q.cls}}"></i></sc-for></div>
+                <span class="hint">Preview only</span>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:14px">
+                <div class="fld"><span class="sec">Or enter the key manually</span><div class="code" style="color:#eceee9;letter-spacing:.08em">JBSW Y3DP EHPK 3PXP</div></div>
+                <div class="fld"><label for="f-totp" class="sec">6-digit code</label><input id="f-totp" class="fin" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" value="{{totp}}" onChange="{{onTotp}}" onKeyDown="{{onEnter}}"></div>
+                <div style="display:flex;align-items:center;gap:10px"><button class="link" onClick="{{skip2fa}}">Skip for now</button><span class="hint">Required from v0.2.</span></div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- 4 hub -->
+          <sc-if value="{{s3}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+                <div class="fld"><label for="f-hn" class="sec">Hub name</label><input id="f-hn" class="fin" type="text" spellcheck="false" value="{{hubName}}" onChange="{{onHubName}}"></div>
+                <div class="fld"><label for="f-tz" class="sec">Time zone</label><input id="f-tz" class="fin" type="text" spellcheck="false" value="{{tz}}" onChange="{{onTz}}"></div>
+                <div class="fld"><label for="f-ad" class="sec">Address for agents</label><input id="f-ad" class="fin" type="text" spellcheck="false" value="{{addr}}" onChange="{{onAddr}}"></div>
+                <div class="fld"><label for="f-po" class="sec">HTTPS port</label><input id="f-po" class="fin" type="text" inputmode="numeric" value="{{port}}" onChange="{{onPort}}"></div>
+              </div>
+              <div class="fld"><span class="sec">Keep hourly history for</span><div style="display:flex;gap:6px"><sc-for list="{{retention}}" as="r" hint-placeholder-count="3"><button class="{{r.cls}}" aria-pressed="{{r.on}}" onClick="{{r.go}}">{{r.label}}</button></sc-for></div><span class="hint">Minute values are always kept for 7 days.</span></div>
+            </div>
+          </sc-if>
+
+          <!-- 5 self-link -->
+          <sc-if value="{{s4}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <button class="tog" aria-pressed="{{self}}" onClick="{{toggleSelf}}">
+                <span class="box"><sc-if value="{{self}}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1.5 6.5 4.5 9.5 10.5 2.5"/></svg></sc-if></span>
+                <span style="display:flex;flex-direction:column;gap:3px"><span class="sec" style="font-size:13px">Manage this Pi as a host</span><span class="hint">Installs a Grid Agent on {{hubName}} so it shows up like every other host.</span></span>
+              </button>
+              <sc-if value="{{self}}" hint-placeholder-val="{{ true }}">
+                <div class="fld"><span class="sec">Capabilities on {{hubName}}</span><div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{caps}}" as="c" hint-placeholder-count="5"><button class="{{c.cls}}" aria-pressed="{{c.on}}" onClick="{{c.go}}">{{c.label}}</button></sc-for></div><span class="hint">Every capability can be changed later in Settings.</span></div>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <!-- 6 done -->
+          <sc-if value="{{s5}}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:14px" aria-live="polite">
+              <div style="height:96px;display:flex;align-items:center;justify-content:center;gap:24px;background:#c6f500">
+                <span style="width:22px;height:22px;background:linear-gradient(#0d0e0f,#0d0e0f) center/1px 22px no-repeat,linear-gradient(#0d0e0f,#0d0e0f) center/22px 1px no-repeat"></span>
+                <span class="s" style="font-size:44px;line-height:1;text-transform:uppercase">Hub online</span>
+                <span style="width:22px;height:22px;background:linear-gradient(#0d0e0f,#0d0e0f) center/1px 22px no-repeat,linear-gradient(#0d0e0f,#0d0e0f) center/22px 1px no-repeat"></span>
+              </div>
+              <div style="display:flex;flex-direction:column">
+                <div class="row"><span>Source</span><b>{{sourceText}}</b></div>
+                <div class="row"><span>Operator</span><b>{{op}}</b></div>
+                <div class="row"><span>Certificate</span><b>{{trustText}}</b></div>
+                <div class="row"><span>Two-factor</span><b>{{tfaText}}</b></div>
+                <div class="row"><span>Hub</span><b>{{hubName}} · {{addr}}:{{port}}</b></div>
+                <div class="row"><span>History</span><b>{{retText}}</b></div>
+                <div class="row"><span>Self-managed</span><b>{{selfText}}</b></div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{hasErr}}" hint-placeholder-val="{{ false }}">
+            <div class="ferr" role="alert"><span>!</span><span>{{err}}</span></div>
+          </sc-if>
+
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <sc-if value="{{showBack}}" hint-placeholder-val="{{ false }}"><button class="cbtn gr" onClick="{{back}}"><span>Back</span></button></sc-if>
+            <sc-if value="{{notDone}}" hint-placeholder-val="{{ true }}"><button class="cbtn" onClick="{{next}}"><span>{{nextLabel}}</span><svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 6h13M9 1l5 5-5 5"/></svg></button></sc-if>
+            <sc-if value="{{s5}}" hint-placeholder-val="{{ false }}">
+              <a class="cbtn gr" style="flex:1" href="Main.dc.html"><span>Link first host</span><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 1v10M1 6h10"/></svg></a>
+              <a class="cbtn hot" href="Main.dc.html"><span>Enter Nexus</span><svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 6h13M9 1l5 5-5 5"/></svg></a>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM -->
+  <div style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:0 24px;border-top:1px solid #1e2023;background:#111214;font-size:13px">
+    <div style="display:flex;align-items:center;gap:10px;color:#c9cacc"><span style="color:#c6f500">&gt;</span><span>{{log}}</span></div>
+    <div style="display:flex;align-items:center;gap:10px;color:#8d9093;white-space:nowrap">
+      <i class="live"></i><span>SETUP MODE · LAN ONLY</span>
+      <span style="width:1px;height:18px;background:#2a2c2f"></span>
+      <svg width="16" height="16" viewBox="0 0 64 64" aria-hidden="true"><path d="M58 25V17L32 3L6 17V47L32 61L58 47V39" fill="none" stroke="#c6f500" stroke-width="7"/><rect x="42" y="29" width="22" height="6" fill="#c6f500"/><path d="M32 23L41 32L32 41L23 32Z" fill="#c6f500"/></svg>
+      <span class="s" style="font-size:20px;line-height:1;color:#eceee9;letter-spacing:.02em">NEXARA</span><span class="w" style="font-size:11px;color:#c6f500">Nexus</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      step: 0, err: '', log: 'Setup mode active · waiting for setup code',
+      code: '', op: '', p1: '', p2: '', totp: '', tfa: 'pending',
+      hubName: 'frpi5', tz: 'Europe/Berlin', addr: 'frpi5.lan', port: '8443', ret: 365,
+      attempts: 0, locked: false, trusted: false, trustOn: {}, restore: false, restored: false, bkFile: '', bkPass: '',
+      self: true, caps: { Monitoring: true, Packages: true, Shell: true, Power: true, Docker: false }
+    };
+  }
+  qr() {
+    const cells = [];
+    const finder = (x, y, ox, oy) => {
+      const dx = x - ox, dy = y - oy;
+      if (dx < 0 || dy < 0 || dx > 6 || dy > 6) return null;
+      const edge = dx === 0 || dy === 0 || dx === 6 || dy === 6;
+      const core = dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4;
+      return edge || core;
+    };
+    for (let y = 0; y < 21; y++) {
+      for (let x = 0; x < 21; x++) {
+        let v = finder(x, y, 0, 0);
+        if (v === null) v = finder(x, y, 14, 0);
+        if (v === null) v = finder(x, y, 0, 14);
+        const inQuiet = (x <= 7 && y <= 7) || (x >= 13 && y <= 7) || (x <= 7 && y >= 13);
+        if (v === null) v = inQuiet ? false : ((x * 7 + y * 13 + x * y) % 5) < 2;
+        cells.push({ cls: v ? 'on' : '' });
+      }
+    }
+    return cells;
+  }
+  renderVals() {
+    const s = this.state;
+    const meta = [
+      { label: 'Unlock', title: 'Claim this hub', tag: 'First run', lead: 'Nexus is running on this Pi and waits to be claimed. Enter the one-time setup code from the hub console so nobody else in the network can take over the installation.' },
+      { label: 'Trust', title: 'Trust this hub', tag: 'Certificate', lead: 'Your browser warned you once because Nexus signs its own certificates. Install the Nexara CA on each device you use and the warning is gone for good, also after renewals.' },
+      { label: 'Operator', title: 'Create operator', tag: 'Account', lead: 'Create the first operator account. It has full access to every host on the grid.' },
+      { label: 'Two-factor', title: 'Two-factor login', tag: 'Recommended', lead: 'Scan the code with an authenticator app and confirm it with the current 6-digit code.' },
+      { label: 'Hub', title: 'Hub settings', tag: 'Configuration', lead: 'How the hub is named and where Grid Agents reach it. These values are written to nexus.yaml.' },
+      { label: 'Self-link', title: 'Manage this Pi', tag: 'Grid', lead: 'The hub can monitor and manage the Pi it runs on, just like any other host.' },
+      { label: 'Ready', title: 'Setup complete', tag: 'Done', lead: 'Setup mode is now closed and the setup code is invalid. Sign in with your operator account from now on.' }
+    ];
+    const m = meta[s.step];
+    const set = (k) => (e) => { const o = {}; o[k] = e.target.value; o.err = ''; this.setState(o); };
+    const go = (n, log) => this.setState({ step: n, err: '', log: log });
+
+    const next = () => {
+      const st = this.state;
+      if (st.step === 0) {
+        if (st.locked) return this.setState({ err: 'Input is locked. Wait for the new setup code.' });
+        const c = st.code.trim().toUpperCase().replace('-', '');
+        if (!/^[A-Z0-9]{8}$/.test(c)) return this.setState({ err: 'Enter the 8-character setup code from the hub console.' });
+        if (c !== '7KQ2M9XD') {
+          const a = st.attempts + 1;
+          if (a >= 5) return this.setState({ attempts: a, locked: true, err: '', log: 'Setup locked for 15 min after 5 wrong codes' });
+          return this.setState({ attempts: a, err: 'Code invalid or expired. ' + (5 - a) + (5 - a === 1 ? ' attempt' : ' attempts') + ' left.', log: 'Setup code rejected' });
+        }
+        return go(1, 'Hub claimed · setup code accepted');
+      }
+      if (st.step === 1) return go(2, st.trusted ? 'Nexara CA installed on this device' : 'Trust step skipped · browser warning stays for now');
+      if (st.step === 2) {
+        if (!/^[a-z0-9._-]{3,32}$/i.test(st.op.trim())) return this.setState({ err: 'Operator ID: 3 to 32 letters, digits, dots, dashes.' });
+        if (st.p1.length < 12) return this.setState({ err: 'The passphrase needs at least 12 characters.' });
+        if (st.p1 !== st.p2) return this.setState({ err: 'The two passphrases do not match.' });
+        return go(3, 'Operator ' + st.op.trim() + ' created');
+      }
+      if (st.step === 3) {
+        if (!/^\d{6}$/.test(st.totp.trim())) return this.setState({ err: 'Enter the 6-digit code from your authenticator app.' });
+        this.setState({ tfa: 'on' });
+        return go(4, 'Two-factor login enabled');
+      }
+      if (st.step === 4) {
+        const p = parseInt(st.port, 10);
+        if (!st.hubName.trim()) return this.setState({ err: 'The hub needs a name.' });
+        if (!st.addr.trim()) return this.setState({ err: 'Enter the address agents use to reach the hub.' });
+        if (!(p >= 1 && p <= 65535)) return this.setState({ err: 'The port must be between 1 and 65535.' });
+        return go(5, 'nexus.yaml written');
+      }
+      if (st.step === 5) return go(6, st.self ? 'Grid Agent installed on ' + st.hubName + ' · setup finished' : 'Setup finished');
+    };
+    const back = () => { if (this.state.step > 0) go(this.state.step - 1, this.state.log); };
+
+    const steps = meta.map((x, i) => ({
+      label: x.label, mark: i < s.step ? '✓' : String(i + 1),
+      cls: 'st' + (i < s.step ? ' done' : (i === s.step ? ' on' : '')), cur: i === s.step ? 'step' : 'false'
+    }));
+    const prog = meta.map((x, i) => ({ cls: i <= s.step ? 'on' : '' }));
+
+    const pw = s.p1;
+    let score = 0;
+    if (pw.length >= 8) score++;
+    if (pw.length >= 12) score++;
+    if (pw.length >= 16) score++;
+    if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+    if (/[0-9]/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++;
+    const strength = [0, 1, 2, 3, 4].map((i) => ({ cls: i < score ? 'on' : '' }));
+    const strengthText = pw ? ['Too weak', 'Weak', 'Fair', 'Good', 'Strong', 'Very strong'].at(score) : '—';
+
+    const retention = [30, 90, 365].map((d) => ({
+      label: d === 365 ? '1 year' : d + ' days', on: s.ret === d, cls: 'chip' + (s.ret === d ? ' on' : ''),
+      go: () => this.setState({ ret: d })
+    }));
+    const caps = Object.keys(s.caps).map((k) => ({
+      label: k, on: !!s.caps[k], cls: 'chip' + (s.caps[k] ? ' on' : ''),
+      go: () => { const c = Object.assign({}, this.state.caps); c[k] = !c[k]; this.setState({ caps: c }); }
+    }));
+    const capsOn = Object.keys(s.caps).filter((k) => s.caps[k]);
+
+    return {
+      tick: Array.from({ length: 24 }, (_, i) => ({ t: i % 2 ? '+' : 'first run · nexara nexus setup' })),
+      stepNo: s.step + 1, steps: steps, prog: prog, title: m.title, tag: m.tag, lead: m.lead,
+      s0: s.step === 0 && !s.restore, sR: s.step === 0 && s.restore, sT: s.step === 1, s1: s.step === 2, s2: s.step === 3, s3: s.step === 4, s4: s.step === 5, s5: s.step === 6,
+      code: s.code, op: s.op, p1: s.p1, p2: s.p2, totp: s.totp, hubName: s.hubName, tz: s.tz, addr: s.addr, port: s.port,
+      onCode: set('code'), onOp: set('op'), onP1: set('p1'), onP2: set('p2'), onTotp: set('totp'),
+      onHubName: set('hubName'), onTz: set('tz'), onAddr: set('addr'), onPort: set('port'),
+      onEnter: (e) => { if (e.key === 'Enter') next(); },
+      strength: strength, strengthText: strengthText, qr: this.qr(),
+      skip2fa: () => { this.setState({ tfa: 'skipped' }); go(4, 'Two-factor login skipped · required from v0.2'); },
+      retention: retention, self: s.self, toggleSelf: () => this.setState({ self: !this.state.self }), caps: caps,
+      tfaText: s.tfa === 'on' ? 'Enabled' : 'Skipped (required from v0.2)',
+      retText: 'Minutes 7 days · hours ' + (s.ret === 365 ? '1 year' : s.ret + ' days'),
+      selfText: s.self ? 'Yes · ' + capsOn.join(', ') : 'No',
+      hasErr: !!s.err, err: s.err, log: s.log,
+      startRestore: () => this.setState({ restore: true, err: '' }), cancelRestore: () => this.setState({ restore: false, err: '' }),
+      bkPass: s.bkPass, onBkPass: (e) => this.setState({ bkPass: e.target.value, err: '' }),
+      onBkFile: (e) => { const fl = e.target.files && e.target.files[0]; this.setState({ bkFile: fl ? fl.name : '', err: '' }); },
+      doRestore: () => {
+        if (!this.state.bkFile) { this.setState({ err: 'Choose a backup file (.nxb).' }); return; }
+        if (this.state.bkPass.length < 12) { this.setState({ err: 'Enter the passphrase of this backup.' }); return; }
+        this.setState({ restored: true, restore: false, op: 'fabio', tfa: 'on', step: 6, err: '', log: 'Backup ' + this.state.bkFile + ' restored · agents reconnecting' });
+      },
+      trustBtns: [['this', 'This computer (.crt)'], ['ios', 'iPhone / iPad (profile)'], ['android', 'Android (.crt)']].map((x) => ({ label: x[1], state: s.trustOn[x[0]] ? 'Downloaded ✓' : 'Download', cls: 'chip' + (s.trustOn[x[0]] ? ' on' : ''),
+        go: () => { const t = Object.assign({}, this.state.trustOn); t[x[0]] = true; this.setState({ trustOn: t, trusted: true, log: 'Nexara CA downloaded for ' + x[1] }); } })),
+      trustText: s.trusted ? 'Nexara CA installed' : 'Not installed yet (Settings › Certificates)',
+      sourceText: s.restored ? 'Restored from ' + s.bkFile : 'New installation',
+      locked: s.locked, notLocked: !s.locked, attemptsText: s.attempts ? (5 - s.attempts) + ' of 5 attempts left' : '5 attempts',
+      showBack: s.step > 0 && s.step < 6, notDone: s.step < 6 && !(s.step === 0 && s.restore),
+      nextLabel: s.step === 0 ? 'Unlock' : (s.step === 5 ? 'Finish setup' : (s.step === 1 && !s.trusted ? 'Skip for now' : 'Continue')),
+      next: next, back: back
+    };
+  }
+}
+</script>
+</body>
+</html>
