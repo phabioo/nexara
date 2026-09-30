@@ -33,7 +33,6 @@ func (h *Hub) OpenShell(_ context.Context, _ grid.Actor, id grid.HostID, cols, r
 		clock: func() string { return h.now().Format("15:04:05") },
 	}
 	s.cond = sync.NewCond(&s.mu)
-	s.banner()
 	s.prompt()
 	return s, nil
 }
@@ -53,16 +52,6 @@ type fakeShell struct {
 	exited bool // shell exited: EOF after the buffer drains
 	cols   int
 	rows   int
-}
-
-func (s *fakeShell) banner() {
-	ver := s.kernel
-	if i := strings.IndexByte(ver, '+'); i >= 0 {
-		ver = ver[:i]
-	}
-	s.printf("nexara.shell.access\r\nSESSION: pi@%s            v.%s.BOOKWORM\r\n", s.host, ver)
-	s.printf("%s\r\n", strings.Repeat("=", 60))
-	s.printf("HOST: %s\r\nADDRESS: %s\r\nPROTOCOL: GRID · mTLS\r\nUSER: pi\r\nSHELL: bash\r\n\r\n", s.host, s.addr)
 }
 
 func (s *fakeShell) printf(format string, a ...any) {
