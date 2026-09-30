@@ -3,6 +3,7 @@ module github.com/phabioo/nexara
 go 1.26.0
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/creack/pty v1.1.24
 	github.com/pquerna/otp v1.5.0
