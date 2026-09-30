@@ -1008,6 +1008,34 @@ svg { flex: none; }
 /* --- end view: setup --- */
 
 /* === view: overview === */
+/* CPU card: per-core bars or the process list, switched by overview.js through .is-procs on the card */
+.ov-cores { display: flex; flex-direction: column; gap: 10px; }
+.ov-procs { display: none; flex-direction: column; }
+.ov-cpu.is-procs .ov-cores { display: none; }
+.ov-cpu.is-procs .ov-procs { display: flex; }
+.ov-procs-head { display: flex; justify-content: space-between; align-items: center; height: 22px; }
+.ov-proc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-proc-num { width: 64px; flex: none; text-align: right; }
+.ov-when-procs { display: none; }
+.ov-cpu.is-procs .ov-when-cores { display: none; }
+.ov-cpu.is-procs .ov-when-procs { display: inline; }
+
+/* informational reboot chip (the reboot action itself is a later version) */
+.ov-reboot { cursor: default; }
+.ov-reboot:hover { background: var(--pink); }
+
+.btn-card[data-ov-restart][disabled] { opacity: .55; cursor: default; }
+.btn-card[data-ov-restart][disabled]:hover { background: var(--ink); }
+
+/* offline host and empty hub: one card in the middle of the main area */
+.ov-offline { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px 12px; }
+.ov-offline-card { flex: none; width: 540px; max-width: 100%; position: relative; box-shadow: 0 0 0 12px rgba(17,18,20,.55); }
+.ov-offline-card .card-body { flex: none; gap: 12px; padding: 14px 16px 16px; }
+@media (max-width: 767.98px) {
+  .ov-offline { padding: 24px 12px; align-items: flex-start; }
+  .ov-offline-card { box-shadow: 0 0 0 10px rgba(17,18,20,.55); }
+  .ov-offline-card .card-body { padding: 14px; }
+}
 /* --- end view: overview --- */
 
 /* === view: packages === */

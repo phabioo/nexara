@@ -1,0 +1,71 @@
+{{/* Overview fragments. The *-body templates are swapped into their card by the SSE events of the overview
+     (ov-cpu, ov-mem, ov-svc), so they must not depend on anything outside their own data. */}}
+
+{{/* Data: views.OverviewCPU. */}}
+{{define "overview-cpu-body"}}{{template "tag" (dict "Tone" "light" "Text" "Live")}}
+{{if .Ready}}<p class="card-text">{{.Text}}</p>{{else}}<p class="card-text">Waiting for the first sample from the agent.</p>{{end}}
+{{template "checker"}}
+{{if .Ready}}<div class="card-foot">
+  <div class="ov-cores">
+    <div class="t-label">Per core:</div>
+    {{range .Cores}}{{template "objective" (dict "Label" .Label "Pct" .Pct "BoxText" (printf "%d" .Pct) "BoxUnit" "%" "Small" true)}}
+    {{end}}
+    {{if .HasTemp}}{{template "objective" (dict "Label" "SoC temperature" "Pct" .TempPct "Bad" .TempHot "BoxText" (printf "%d" .TempInt) "BoxUnit" "°C" "Small" true)}}{{end}}
+  </div>
+  <div class="ov-procs">
+    <div class="t-label ov-procs-head"><span>Top processes</span><span>{{len .Procs}}</span></div>
+    {{range .Procs}}<div class="table-row"><span class="ov-proc-name">{{.Name}}</span><span class="ov-proc-num">{{.CPU}}</span><span class="ov-proc-num">{{.Mem}}</span></div>
+    {{else}}<div class="table-row"><span class="ov-proc-name">No process data.</span></div>
+    {{end}}
+  </div>
+  <button type="button" class="btn-card" data-ov-procs aria-pressed="false"><span class="ov-when-cores">Show processes</span><span class="ov-when-procs">Show cores</span>{{icon "info" 14}}</button>
+</div>{{end}}{{end}}
+
+{{/* Data: views.OverviewMem. */}}
+{{define "overview-mem-body"}}{{template "tag" (dict "Tone" "lime" "Text" (or .Tag "Waiting"))}}
+{{if .Ready}}<div class="chart">
+  <svg viewBox="0 0 300 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="{{.CurveArea}}" fill="#22e06a" fill-opacity="0.22"/><polyline points="{{.CurveLine}}" fill="none" stroke="#35e36a" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+  <span class="chart-label chart-label-l">{{.ChartLabel}}</span><span class="chart-label chart-label-r">{{.CPUNow}}</span>
+</div>
+<p class="card-text">{{.Text}}</p>
+<div class="card-divider">{{icon "database" 10}}<span>RESOURCES</span></div>
+<div class="card-foot is-roomy">
+  <div class="tile-grid">
+    {{range .Tiles}}{{if .Empty}}<div class="tile-empty">NO DISK</div>{{else}}{{template "tile-resource" (dict "Tone" .Tone "Label" .Label "Value" .Value "On" .On)}}{{end}}
+    {{end}}
+  </div>
+  {{with .ShellHref}}{{template "btn-card" (dict "Label" "Open shell" "Variant" "light" "Href" .)}}{{end}}
+</div>{{else}}<p class="card-text">Waiting for the first sample from the agent.</p>
+{{with .ShellHref}}<div class="card-foot">{{template "btn-card" (dict "Label" "Open shell" "Variant" "light" "Href" .)}}</div>{{end}}{{end}}{{end}}
+
+{{/* Data: views.OverviewServices. */}}
+{{define "overview-svc-body"}}{{if .Disabled}}{{template "tag" (dict "Tone" "dark" "Text" "Switched off")}}
+<p class="card-text">Service monitoring is switched off for this host.</p>
+{{else if not .Ready}}{{template "tag" (dict "Tone" "dark" "Text" "Waiting")}}
+<p class="card-text">Waiting for the unit list from the agent.</p>
+{{else}}{{template "tag" (dict "Tone" "dark" "Text" .Tag)}}
+<p class="card-text">{{.Text}}</p>
+{{template "checker"}}
+<div class="card-foot is-tight">
+  {{range .Units}}{{if .Bad}}{{template "objective" (dict "Label" .Name "Value" .State "Pct" 100 "Bad" true "BoxIcon" "close" "Small" true)}}{{else}}{{template "objective" (dict "Label" .Name "Value" .State "Pct" 100 "BoxIcon" "check" "Small" true)}}{{end}}
+  {{end}}
+  <button type="button" class="btn-card" data-ov-restart hx-post="{{.RestartURL}}" hx-swap="none" hx-disabled-elt="this"{{if not .Failed}} disabled{{end}}><span>{{if .Failed}}Restart failed units ({{.Failed}}){{else}}All units running{{end}}</span>{{icon "info" 14}}</button>
+</div>{{end}}{{end}}
+
+{{/* Data: views.OverviewOffline. */}}
+{{define "overview-offline"}}<div class="ov-offline">
+  <div class="card ov-offline-card">
+    {{template "corners"}}
+    {{template "card-head" (dict "Title" .Title "Variant" "bad")}}
+    <div class="card-body">
+      {{template "tag" (dict "Tone" "dark" "Text" .Tag)}}
+      <p class="card-text">{{.Text}}</p>
+      {{template "checker"}}
+      {{template "objective" (dict "Label" "Last seen" "Value" .LastSeen "Strong" true "Pct" 0 "BoxIcon" "power" "BoxUnit" "OFF")}}
+    </div>
+  </div>
+</div>{{end}}
+
+{{/* Toast appended to #toasts by an out-of-band swap. Replacing #toasts itself (the "toasts" partial) would
+     detach the observer nexus.js uses to arm the auto-hide timer. Data: views.Toast. */}}
+{{define "overview-toast"}}<div hx-swap-oob="beforeend:#toasts">{{template "toast" .}}</div>{{end}}
