@@ -24,6 +24,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/phabioo/nexara/internal/hub/agentbin"
@@ -38,6 +39,20 @@ const CodeTTL = 15 * time.Minute
 
 // codeAlphabet has no I, L, O, 0 or 1, which are easily confused when typed.
 const codeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+// Enrollment codes are "GRID-" plus codeGroups groups of codeGroupLen symbols
+// (16 symbols from 31, about 79 bits; S-10). The install script and the agent
+// validate the same shape; a test keeps the three in sync.
+const (
+	codeGroups   = 4
+	codeGroupLen = 4
+)
+
+var codeRE = regexp.MustCompile(`^GRID(-[` + codeAlphabet + `]{4}){4}$`)
+
+// replaceGrantTTL bounds how long an operator's "replace this host" choice
+// stays usable; it matches the token lifetime.
+const replaceGrantTTL = CodeTTL
 
 // Options configures a Service.
 type Options struct {
@@ -60,6 +75,10 @@ type Options struct {
 	// by the last step of the SSH bootstrap; nil skips the wait.
 	WaitOnline func(ctx context.Context, id grid.HostID) error
 
+	// HostOnline reports whether a host's agent is currently connected. If
+	// set, replacing a host is refused while it is online (decision #46).
+	HostOnline func(id grid.HostID) bool
+
 	// SSH replaces the real SSH client (tests). AgentBinary replaces
 	// agentbin.Lookup (tests).
 	SSH         SSHDialer
@@ -81,8 +100,42 @@ type Service struct {
 	binary   func(goos, goarch string) (agentbin.Binary, bool)
 	hubKey   *hubKey
 
-	limiter       *ipLimiter
+	hostOnline func(id grid.HostID) bool
+
+	limiter       *ipLimiter // per client (IPv4 address or IPv6 /64)
+	globalLimiter *ipLimiter // all clients together
 	onlineTimeout time.Duration
+
+	grantMu sync.Mutex
+	grants  map[string]replaceGrant // by enrollment token hash
+}
+
+// replaceGrant is the operator's explicit permission for one enrollment token
+// to replace one existing host.
+type replaceGrant struct {
+	hostID  string
+	actor   grid.Actor
+	expires time.Time
+}
+
+func (s *Service) grantReplace(tokenHash, hostID string, actor grid.Actor, now time.Time) {
+	s.grantMu.Lock()
+	defer s.grantMu.Unlock()
+	for k, g := range s.grants { // drop stale grants
+		if !g.expires.After(now) {
+			delete(s.grants, k)
+		}
+	}
+	s.grants[tokenHash] = replaceGrant{hostID: hostID, actor: actor, expires: now.Add(replaceGrantTTL)}
+}
+
+// takeReplace returns and removes the grant of a token.
+func (s *Service) takeReplace(tokenHash string, now time.Time) (replaceGrant, bool) {
+	s.grantMu.Lock()
+	defer s.grantMu.Unlock()
+	g, ok := s.grants[tokenHash]
+	delete(s.grants, tokenHash)
+	return g, ok && g.expires.After(now)
 }
 
 var _ grid.Enroller = (*Service)(nil)
@@ -123,6 +176,8 @@ func New(o Options) (*Service, error) {
 		log: o.Logger, now: o.Now,
 		enrolled: o.OnEnrolled, waitOn: o.WaitOnline,
 		dialer: o.SSH, binary: o.AgentBinary,
+		hostOnline:    o.HostOnline,
+		grants:        map[string]replaceGrant{},
 		onlineTimeout: 60 * time.Second,
 	}
 	if s.log == nil {
@@ -143,6 +198,7 @@ func New(o Options) (*Service, error) {
 	}
 	s.hubKey = key
 	s.limiter = newIPLimiter(enrollRate, time.Minute)
+	s.globalLimiter = newIPLimiter(enrollGlobalRate, time.Minute)
 	return s, nil
 }
 
@@ -181,9 +237,9 @@ func hashCode(code string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// randomCode returns "GRID-XXXX-XXXX" drawn uniformly from codeAlphabet.
+// randomCode returns "GRID-XXXX-XXXX-XXXX-XXXX" drawn uniformly from codeAlphabet.
 func randomCode() (string, error) {
-	const n = 8
+	const n = codeGroups * codeGroupLen
 	out := make([]byte, 0, n)
 	limit := byte(256 - 256%len(codeAlphabet)) // reject the biased tail
 	buf := make([]byte, 16)
@@ -201,7 +257,13 @@ func randomCode() (string, error) {
 			}
 		}
 	}
-	return "GRID-" + string(out[:4]) + "-" + string(out[4:]), nil
+	var b strings.Builder
+	b.WriteString("GRID")
+	for i := 0; i < n; i += codeGroupLen {
+		b.WriteByte('-')
+		b.Write(out[i : i+codeGroupLen])
+	}
+	return b.String(), nil
 }
 
 // normalizeCaps validates capability names and removes duplicates, keeping

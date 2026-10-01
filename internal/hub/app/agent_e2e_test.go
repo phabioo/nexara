@@ -50,7 +50,7 @@ func TestServeEnrollsAndAcceptsAnAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	const code = "GRID-TEST-CODE"
+	const code = "GRID-ABCD-EFGH-JKMN-PQRS"
 	sum := sha256.Sum256([]byte(code))
 	if err := st.CreateEnrollToken(context.Background(), hex.EncodeToString(sum[:]), time.Now().Add(15*time.Minute), nil); err != nil {
 		t.Fatal(err)

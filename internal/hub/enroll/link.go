@@ -17,6 +17,7 @@ import (
 )
 
 var (
+	hostIDRE  = regexp.MustCompile(`^[0-9a-f]{16}$`)
 	sshUserRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]{0,31}$`)
 	tmpPathRE = regexp.MustCompile(`^/[A-Za-z0-9._/-]{1,200}$`)
 )
@@ -52,6 +53,13 @@ func (l *linkRun) safe(s string) string {
 		s = strings.ReplaceAll(s, string(l.secret), "[redacted]")
 	}
 	return s
+}
+
+// mismatch reports a host key that differs from the confirmed one. Nothing
+// was sent to the host: the handshake ended before authentication.
+func (l *linkRun) mismatch() error {
+	l.emit(grid.StepConnect, grid.LinkFailed, "Host key changed since you confirmed it. Nothing was sent.")
+	return fmt.Errorf("%w at step %s: %w", grid.ErrLinkFailed, grid.StepConnect, grid.ErrHostKeyMismatch)
 }
 
 func (l *linkRun) fail(step grid.LinkStepName, detail string, cause error) error {
@@ -90,6 +98,10 @@ func (s *Service) LinkViaSSH(ctx context.Context, actor grid.Actor, req grid.SSH
 		return grid.HostInfo{}, fmt.Errorf("%w: choose either a password or the hub key", grid.ErrInvalidArgument)
 	case len(display) > 64 || strings.IndexFunc(display, unicode.IsControl) >= 0:
 		return grid.HostInfo{}, fmt.Errorf("%w: invalid display name", grid.ErrInvalidArgument)
+	case !fingerprintRE.MatchString(req.HostKeySHA256):
+		return grid.HostInfo{}, fmt.Errorf("%w: the host key fingerprint must be confirmed first", grid.ErrInvalidArgument)
+	case req.ReplaceHostID != "" && !hostIDRE.MatchString(string(req.ReplaceHostID)):
+		return grid.HostInfo{}, fmt.Errorf("%w: invalid host to replace", grid.ErrInvalidArgument)
 	}
 
 	// The copy can be wiped; the Secret string itself cannot (Go strings are immutable).
@@ -105,16 +117,56 @@ func (s *Service) LinkViaSSH(ctx context.Context, actor grid.Actor, req grid.SSH
 		auth = "hub key"
 	}
 	target := req.User + "@" + req.Address + ":" + strconv.Itoa(port)
-	host, err := l.run(ctx, req, port, display, pw)
+	detail := target + " [" + auth + "] host key " + req.HostKeySHA256
+	host, err := l.run(ctx, actor, req, port, display, pw)
 	if err != nil {
 		name := req.Address
-		s.audit(ctx, actor.Operator, name, "host.link", target+" ["+auth+"] failed", store.AuditError)
+		result := store.AuditError
+		if errors.Is(err, grid.ErrHostKeyMismatch) || errors.Is(err, grid.ErrHostExists) {
+			result = store.AuditDenied
+		}
+		s.audit(ctx, actor.Operator, name, "host.link", detail+" failed: "+auditReason(err), result)
 		s.log.Warn("ssh link failed", "address", req.Address, "user", req.User)
 		return grid.HostInfo{}, err
 	}
-	s.audit(ctx, actor.Operator, host.Name, "host.link", target+" ["+auth+"]", store.AuditOK)
+	s.audit(ctx, actor.Operator, host.Name, "host.link", detail, store.AuditOK)
 	s.log.Info("host linked via ssh", "host", host.Name, "address", req.Address, "user", req.User)
 	return toHostInfo(host), nil
+}
+
+// auditReason is the short, secret-free reason recorded for a failed link.
+func auditReason(err error) string {
+	switch {
+	case errors.Is(err, grid.ErrHostKeyMismatch):
+		return "host key changed"
+	case errors.Is(err, grid.ErrHostExists):
+		return "host name already exists"
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return "canceled or timed out"
+	}
+	return "see progress"
+}
+
+// ProbeSSH implements grid.Enroller: phase 1 of the SSH link. It only
+// receives the host key; no credential is involved.
+func (s *Service) ProbeSSH(ctx context.Context, actor grid.Actor, host string, port int) (grid.HostKeyInfo, error) {
+	if port == 0 {
+		port = 22
+	}
+	switch {
+	case !validSSHTarget(host):
+		return grid.HostKeyInfo{}, fmt.Errorf("%w: invalid address", grid.ErrInvalidArgument)
+	case port < 1 || port > 65535:
+		return grid.HostKeyInfo{}, fmt.Errorf("%w: invalid SSH port", grid.ErrInvalidArgument)
+	}
+	target := net.JoinHostPort(host, strconv.Itoa(port))
+	info, err := s.dialer.Probe(ctx, target, 10*time.Second)
+	if err != nil {
+		s.audit(ctx, actor.Operator, host, "host.probe", target+" failed", store.AuditError)
+		return grid.HostKeyInfo{}, fmt.Errorf("%w: %w", grid.ErrLinkFailed, errors.New(cleanLine(err.Error(), 160)))
+	}
+	s.audit(ctx, actor.Operator, host, "host.probe", target+" host key "+info.SHA256, store.AuditOK)
+	return info, nil
 }
 
 func toHostInfo(h store.Host) grid.HostInfo {
@@ -125,12 +177,15 @@ func toHostInfo(h store.Host) grid.HostInfo {
 	}
 }
 
-func (l *linkRun) run(ctx context.Context, req grid.SSHLinkRequest, port int, display string, pw []byte) (store.Host, error) {
+func (l *linkRun) run(ctx context.Context, actor grid.Actor, req grid.SSHLinkRequest, port int, display string, pw []byte) (store.Host, error) {
 	s := l.s
 
 	// --- connect
 	l.emit(grid.StepConnect, grid.LinkRunning, "")
-	cfg := SSHDialConfig{Addr: net.JoinHostPort(req.Address, strconv.Itoa(port)), User: req.User, Timeout: 10 * time.Second}
+	cfg := SSHDialConfig{
+		Addr: net.JoinHostPort(req.Address, strconv.Itoa(port)), User: req.User, Timeout: 10 * time.Second,
+		HostKeySHA256: req.HostKeySHA256,
+	}
 	if req.UseHubKey {
 		cfg.Signer = s.hubKey.signer
 	} else {
@@ -138,9 +193,15 @@ func (l *linkRun) run(ctx context.Context, req grid.SSHLinkRequest, port int, di
 	}
 	conn, err := s.dialer.Dial(ctx, cfg)
 	if err != nil {
+		if errors.Is(err, grid.ErrHostKeyMismatch) {
+			return store.Host{}, l.mismatch()
+		}
 		return store.Host{}, l.fail(grid.StepConnect, "Could not connect: "+l.describe(err), err)
 	}
 	defer conn.Close()
+	if conn.HostKeyFingerprint() != req.HostKeySHA256 { // the dialer pins already; this guards against a faulty one
+		return store.Host{}, l.mismatch()
+	}
 	defer l.cleanup(ctx, conn) // runs before conn.Close
 	l.emit(grid.StepConnect, grid.LinkDone, "Connected as "+req.User+" · Host key "+conn.HostKeyFingerprint())
 
@@ -160,6 +221,10 @@ func (l *linkRun) run(ctx context.Context, req grid.SSHLinkRequest, port int, di
 	arch, ok := archFromUname(string(machine))
 	if !ok {
 		return store.Host{}, l.fail(grid.StepDetect, "Unsupported architecture: "+l.safe(string(machine)), errors.New("unsupported architecture"))
+	}
+	replacing, err := l.checkName(ctx, conn, req)
+	if err != nil {
+		return store.Host{}, err
 	}
 	osRelease, _ := conn.Run(ctx, "cat /etc/os-release", nil) // optional
 	bin, ok := s.binary("linux", arch)
@@ -202,9 +267,20 @@ func (l *linkRun) run(ctx context.Context, req grid.SSHLinkRequest, port int, di
 		return store.Host{}, l.fail(grid.StepEnroll, "Could not create an enrollment token", err)
 	}
 	tokenHash := hashCode(token)
-	enrollCmd := agentBinaryPath + " enroll --hub " + s.hubURL() + " --token " + token +
+	if replacing != "" {
+		s.grantReplace(tokenHash, replacing, actor, s.now())
+	}
+	// The one-time token goes through a 0600 temp file, not the command line:
+	// arguments show up in ps and in the sudo log (S-19).
+	tokenFile, err := l.upload(ctx, conn, []byte(token+"\n"))
+	if err != nil {
+		return store.Host{}, l.fail(grid.StepEnroll, "Upload failed: "+l.describe(err), err)
+	}
+	enrollCmd := agentBinaryPath + " enroll --hub " + s.hubURL() + " --token-file " + tokenFile +
 		" --ca-fingerprint " + s.ca.Fingerprint() + " --shell-user " + req.User
-	if err := runSudo(enrollCmd); err != nil {
+	err = runSudo(enrollCmd)
+	l.cleanup(ctx, conn) // the token file is not needed any more, whatever happened
+	if err != nil {
 		return store.Host{}, l.fail(grid.StepEnroll, "Enrollment failed: "+l.describe(err), err)
 	}
 	tmpUnit, err := l.upload(ctx, conn, []byte(unitFile))
@@ -234,6 +310,42 @@ func (l *linkRun) run(ctx context.Context, req grid.SSHLinkRequest, port int, di
 	}
 	l.emit(grid.StepOnline, grid.LinkDone, "First sync running")
 	return host, nil
+}
+
+// checkName stops the link early when the device reports a host name the hub
+// already knows (decision #46), before anything is installed. It returns the
+// ID of the host that will be replaced, if the operator explicitly chose that.
+// The enrollment endpoint enforces the same rule; this check only makes the
+// failure visible at the detect step and saves the installation.
+func (l *linkRun) checkName(ctx context.Context, conn SSHConn, req grid.SSHLinkRequest) (replacing string, err error) {
+	s := l.s
+	out, runErr := conn.Run(ctx, "uname -n", nil)
+	name, ok := hostNameFrom(string(out))
+	if runErr != nil || !ok {
+		if req.ReplaceHostID != "" {
+			l.emit(grid.StepDetect, grid.LinkFailed, "Could not read the host name of the device; nothing was replaced.")
+			return "", fmt.Errorf("%w at step %s: %w", grid.ErrLinkFailed, grid.StepDetect, errors.New("host name unknown"))
+		}
+		return "", nil // the enrollment endpoint decides
+	}
+	existing, getErr := s.st.GetHostByName(ctx, name)
+	switch {
+	case errors.Is(getErr, store.ErrNotFound):
+		if req.ReplaceHostID != "" {
+			l.emit(grid.StepDetect, grid.LinkFailed, "This device reports the name "+l.safe(name)+", which is not the host to replace.")
+			return "", fmt.Errorf("%w at step %s: %w", grid.ErrLinkFailed, grid.StepDetect, errors.New("host to replace not found"))
+		}
+		return "", nil
+	case getErr != nil:
+		return "", l.fail(grid.StepDetect, "Could not check existing hosts", getErr)
+	}
+	exists := &grid.HostExistsError{ID: grid.HostID(existing.ID), Name: existing.Name}
+	if existing.Revoked || req.ReplaceHostID != grid.HostID(existing.ID) ||
+		(s.hostOnline != nil && s.hostOnline(grid.HostID(existing.ID))) {
+		l.emit(grid.StepDetect, grid.LinkFailed, "A host named "+existing.Name+" already exists")
+		return "", exists
+	}
+	return existing.ID, nil
 }
 
 // finishHost looks up the host created by the agent's enrollment and applies

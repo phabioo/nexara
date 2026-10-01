@@ -143,14 +143,20 @@ func TestEnrollEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Enrolling again (re-install) re-uses the host and replaces the certificate.
+	// The same host name again (clone, re-install) is refused, not taken over
+	// (decision #46), and says why in words the operator can act on.
 	o2 := hub.options(t, hub.code(t, nil))
-	if err := Enroll(context.Background(), o2); err != nil {
-		t.Fatal(err)
+	o2.ConfigPath, o2.StateDir = filepath.Join(t.TempDir(), "agent.yaml"), filepath.Join(t.TempDir(), "state")
+	err = Enroll(context.Background(), o2)
+	if err == nil || !strings.Contains(err.Error(), "already has a host with this name") {
+		t.Fatalf("second enrollment of the same host name: %v", err)
+	}
+	if _, statErr := os.Stat(o2.StateDir); statErr == nil {
+		t.Fatal("state written for a refused enrollment")
 	}
 	hosts2, _ := hub.st.ListHosts(context.Background())
-	if len(hosts2) != 1 || hosts2[0].ID != hosts[0].ID || hosts2[0].CertFingerprint == hosts[0].CertFingerprint {
-		t.Fatalf("re-enrollment: %+v", hosts2)
+	if len(hosts2) != 1 || hosts2[0].ID != hosts[0].ID || hosts2[0].CertFingerprint != hosts[0].CertFingerprint {
+		t.Fatalf("host changed: %+v", hosts2)
 	}
 }
 
@@ -210,7 +216,7 @@ func TestEnrollRejectsWrongPin(t *testing.T) {
 
 func TestEnrollRejectedToken(t *testing.T) {
 	hub := startHub(t)
-	for _, token := range []string{"GRID-AAAA-BBBB", "1234"} {
+	for _, token := range []string{"GRID-AAAA-BBBB-CCCC-DDDD", "grid-aaaa-bbbb-cccc-dddd"} {
 		o := hub.options(t, token)
 		err := Enroll(context.Background(), o)
 		if !errors.Is(err, ErrTokenRejected) {
@@ -225,8 +231,108 @@ func TestEnrollRejectedToken(t *testing.T) {
 	}
 }
 
+func TestEnrollMalformedCodeNeverReachesTheNetwork(t *testing.T) {
+	hub := startHub(t)
+	for _, token := range []string{"1234", "GRID-AAAA-BBBB", "GRID-AAAA-BBBB-CCCC-DDD0", "GRID-AAAA-BBBB-CCCC-DDDD-EEEE"} {
+		o := hub.options(t, token)
+		err := Enroll(context.Background(), o)
+		if err == nil || errors.Is(err, ErrTokenRejected) || !strings.Contains(err.Error(), "malformed") {
+			t.Fatalf("%q: %v", token, err)
+		}
+		if strings.Contains(err.Error(), token) {
+			t.Fatalf("token in error: %v", err)
+		}
+	}
+}
+
+func TestNormalizeCode(t *testing.T) {
+	tests := []struct {
+		in, want string
+		ok       bool
+	}{
+		{"GRID-ABCD-EFGH-JKMN-PQRS", "GRID-ABCD-EFGH-JKMN-PQRS", true},
+		{"  grid-abcd-efgh-jkmn-pqrs\n", "GRID-ABCD-EFGH-JKMN-PQRS", true},
+		{"GRID-ABCD-EFGH", "", false},
+		{"GRID-ABCD-EFGH-JKMN-PQR1", "", false},
+		{"", "", false},
+		{"GRID-ABCD-EFGH-JKMN-PQRS GRID-ABCD-EFGH-JKMN-PQRS", "", false},
+	}
+	for _, tt := range tests {
+		got, err := NormalizeCode(tt.in)
+		if (err == nil) != tt.ok || got != tt.want {
+			t.Errorf("NormalizeCode(%q) = %q, %v", tt.in, got, err)
+		}
+	}
+}
+
+// S-19: the code can come from a file instead of the command line. The file
+// must be private: a world-readable code file is refused.
+func TestReadTokenFile(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string, mode os.FileMode) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(content), mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(p, mode); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	const code = "GRID-ABCD-EFGH-JKMN-PQRS"
+	tests := []struct {
+		name    string
+		path    string
+		want    string
+		wantErr string
+		unixAll bool // the check only exists on Unix
+	}{
+		{"private file", write("ok", code+"\n", 0o600), code, "", false},
+		{"lower case and spaces", write("lower", " grid-abcd-efgh-jkmn-pqrs \n", 0o600), code, "", false},
+		{"group readable", write("group", code, 0o640), "", "must not be accessible", true},
+		{"world readable", write("world", code, 0o644), "", "must not be accessible", true},
+		{"malformed content", write("bad", "hello", 0o600), "", "malformed", false},
+		{"empty", write("empty", "", 0o600), "", "malformed", false},
+		{"too large", write("big", strings.Repeat("A", maxTokenFile+1), 0o600), "", "too large", false},
+		{"missing", filepath.Join(dir, "missing"), "", "open token file", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.unixAll && runtime.GOOS == "windows" {
+				t.Skip("file modes are not enforced on Windows")
+			}
+			got, err := ReadTokenFile(tt.path)
+			if tt.wantErr == "" {
+				if err != nil || got != tt.want {
+					t.Fatalf("got %q, %v", got, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error %v, want %q", err, tt.wantErr)
+			}
+			if got != "" {
+				t.Fatalf("returned %q together with an error", got)
+			}
+		})
+	}
+}
+
+func TestEnrollConflictMessages(t *testing.T) {
+	tests := []struct{ body, want string }{
+		{`{"error":"host exists"}`, "already has a host with this name"},
+		{`{"error":"host is revoked"}`, "revoked"},
+		{`garbage`, "revoked"},
+	}
+	for _, tt := range tests {
+		if err := conflictError(strings.NewReader(tt.body)); !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s -> %v, want %q", tt.body, err, tt.want)
+		}
+	}
+}
+
 func TestEnrollValidatesInputBeforeNetwork(t *testing.T) {
-	base := Options{Hub: "https://localhost:1", Token: "t", CAFingerprint: strings.Repeat("ab", 32), ConfigPath: "x", StateDir: "y", ShellUser: "pi"}
+	base := Options{Hub: "https://localhost:1", Token: "GRID-AAAA-BBBB-CCCC-DDDD", CAFingerprint: strings.Repeat("ab", 32), ConfigPath: "x", StateDir: "y", ShellUser: "pi"}
 	tests := []struct {
 		name string
 		mod  func(*Options)
@@ -383,7 +489,7 @@ func TestEnrollFromTokenFileFailures(t *testing.T) {
 		t.Fatal("huge file accepted")
 	}
 	// Enrollment failure keeps the file (nothing was consumed) and never writes a config.
-	stale := write("stale.token", `{"token":"GRID-AAAA-BBBB","ca_fingerprint":"`+hub.ca.Fingerprint()+`","hub":"`+hub.url()+`"}`)
+	stale := write("stale.token", `{"token":"GRID-AAAA-BBBB-CCCC-DDDD","ca_fingerprint":"`+hub.ca.Fingerprint()+`","hub":"`+hub.url()+`"}`)
 	if err := EnrollFromTokenFile(context.Background(), cfg, state, stale, "pi"); !errors.Is(err, ErrTokenRejected) {
 		t.Fatalf("got %v", err)
 	}

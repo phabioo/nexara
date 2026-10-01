@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -50,6 +51,48 @@ type Options struct {
 	ConfigPath    string // agent.yaml to write, e.g. /etc/grid-agent/agent.yaml
 	StateDir      string // where key, certificate and CA go, e.g. /var/lib/grid-agent
 	ShellUser     string // the device's normal sudo user; never root
+}
+
+// codeRE is the shape of an enrollment code, "GRID-XXXX-XXXX-XXXX-XXXX". The
+// alphabet has no I, L, O, 0 or 1. It must stay equal to the hub's
+// (internal/hub/enroll, enforced by a test there and in the install script).
+var codeRE = regexp.MustCompile(`^GRID(-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}){4}$`)
+
+// NormalizeCode trims and upper-cases a hand-typed code and checks its shape.
+func NormalizeCode(code string) (string, error) {
+	c := strings.ToUpper(strings.TrimSpace(code))
+	if !codeRE.MatchString(c) {
+		return "", errors.New("the enrollment code is malformed (expected GRID-XXXX-XXXX-XXXX-XXXX)")
+	}
+	return c, nil
+}
+
+// ReadTokenFile reads an enrollment code from a file, so that it does not
+// have to appear on a command line (visible in ps and in the sudo log). On
+// Unix the file must not be readable by group or others.
+func ReadTokenFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("enroll: open token file: %w", err)
+	}
+	defer f.Close()
+	if runtime.GOOS != "windows" {
+		fi, err := f.Stat()
+		if err != nil {
+			return "", fmt.Errorf("enroll: stat token file: %w", err)
+		}
+		if fi.Mode().Perm()&0o077 != 0 {
+			return "", errors.New("enroll: token file must not be accessible by group or others (chmod 600)")
+		}
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxTokenFile+1))
+	if err != nil {
+		return "", fmt.Errorf("enroll: read token file: %w", err)
+	}
+	if len(data) > maxTokenFile {
+		return "", errors.New("enroll: token file is too large")
+	}
+	return NormalizeCode(string(data))
 }
 
 // ErrTokenRejected means the hub refused the token (unknown, expired or used).
@@ -90,6 +133,11 @@ func Enroll(ctx context.Context, o Options) error {
 	if o.Token == "" {
 		return errors.New("enrollment token is required")
 	}
+	token, err := NormalizeCode(o.Token)
+	if err != nil {
+		return err
+	}
+	o.Token = token
 	if o.ConfigPath == "" || o.StateDir == "" {
 		return errors.New("config path and state dir are required")
 	}
@@ -159,7 +207,7 @@ func Enroll(ctx context.Context, o Options) error {
 	case resp.StatusCode == http.StatusTooManyRequests:
 		return errors.New("enroll: the hub is rate limiting enrollment attempts, try again in a minute")
 	case resp.StatusCode == http.StatusConflict:
-		return errors.New("enroll: the hub refused this host (it is revoked there; remove it first)")
+		return conflictError(resp.Body)
 	case resp.StatusCode != http.StatusOK:
 		return fmt.Errorf("enroll: the hub answered with status %d", resp.StatusCode)
 	}
@@ -168,6 +216,19 @@ func Enroll(ctx context.Context, o Options) error {
 		return errors.New("enroll: malformed answer from the hub")
 	}
 	return install(o, wantCA, keyPEM, out)
+}
+
+// conflictError explains a 409 from the hub: the host name is taken, or the
+// host is revoked.
+func conflictError(body io.Reader) error {
+	var e struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(io.LimitReader(body, 4<<10)).Decode(&e)
+	if e.Error == "host exists" {
+		return errors.New("enroll: the hub already has a host with this name; give this device a unique host name, or replace the old host from the hub's Add host dialog")
+	}
+	return errors.New("enroll: the hub refused this host (it is revoked there; remove it first)")
 }
 
 // scrub removes the token from an error text (it should never be in there, but
