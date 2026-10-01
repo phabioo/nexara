@@ -35,6 +35,7 @@ Commands:
   dev --demo [--addr <addr>] [--seed] run the hub with simulated agents (development)
   setup code                          print a new one-time setup code (run locally on the hub)
   user reset                          reset the operator account (run locally on the hub)
+  user unlock                         clear login lockouts (run locally on the hub)
   uninstall [--purge] [--yes]         remove the hub package (--purge also deletes data, CA and keys)
   version                             print version information
 `

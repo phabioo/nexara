@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/phabioo/nexara/internal/hub/setup"
+	"github.com/phabioo/nexara/internal/hub/store"
 )
 
 func newBackend(t *testing.T) (adminBackend, *commitEnv) {
@@ -192,5 +194,85 @@ func TestAdminConnError(t *testing.T) {
 				t.Errorf("%s: %q does not contain %q", tt.name, got, w)
 			}
 		}
+	}
+}
+
+type fakeLimits struct{ cleared int }
+
+func (f *fakeLimits) ClearLoginLimits() { f.cleared++ }
+
+func TestAdminLoginUnlock(t *testing.T) {
+	b, _ := newBackend(t)
+	ctx := context.Background()
+	var entries []store.AuditEntry
+	b.audit = func(_ context.Context, e store.AuditEntry) { entries = append(entries, e) }
+
+	if _, err := b.loginUnlock(ctx); err == nil {
+		t.Fatal("expected an error without login limits")
+	}
+	lim := &fakeLimits{}
+	b.limits = lim
+	msg, err := b.loginUnlock(ctx)
+	if err != nil || lim.cleared != 1 || !strings.Contains(msg, "cleared") {
+		t.Fatalf("msg %q err %v cleared %d", msg, err, lim.cleared)
+	}
+	if b.handlers().LoginUnlock == nil {
+		t.Error("handler not wired")
+	}
+	if len(entries) != 2 || entries[0].Result != store.AuditError ||
+		entries[1].Action != ActionAdminLoginUnlock || entries[1].Result != store.AuditOK || entries[1].User != adminActor {
+		t.Errorf("audit = %+v", entries)
+	}
+}
+
+func TestAdminCommandsAreAudited(t *testing.T) {
+	b, e := newBackend(t)
+	ctx := context.Background()
+	var entries []store.AuditEntry
+	b.audit = func(_ context.Context, en store.AuditEntry) { entries = append(entries, en) }
+
+	if _, _, err := b.setupCode(ctx); err != nil {
+		t.Fatal(err)
+	}
+	createOperator(t, e.st, testOperator, testPass)
+	e.mode.Invalidate()
+	if _, err := b.userReset(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, en := range entries {
+		got = append(got, en.Action+"/"+en.Result)
+		if strings.Contains(en.Detail, e.setupCode) {
+			t.Errorf("audit detail leaks a code: %q", en.Detail)
+		}
+	}
+	want := []string{ActionAdminSetupCode + "/ok", ActionAdminUserReset + "/ok"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("audit = %v, want %v", got, want)
+	}
+}
+
+func TestSetupAuditEntries(t *testing.T) {
+	e := newCommitEnv(t, false)
+	log := slog.New(slog.DiscardHandler)
+	hook := setupAudit(e.st, log)
+	at := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	for _, kind := range []string{setup.EventWrongCode, setup.EventIPLocked, setup.EventAllLocked, setup.EventUnlocked} {
+		hook(setup.CodeEvent{Kind: kind, IP: "192.0.2.9", Time: at})
+	}
+	list, err := e.st.ListAudit(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for i := len(list) - 1; i >= 0; i-- { // oldest first
+		got = append(got, list[i].Action+"/"+list[i].Result)
+		if !strings.Contains(list[i].Detail, "192.0.2.9") {
+			t.Errorf("detail %q lacks the IP", list[i].Detail)
+		}
+	}
+	want := "setup.wrong_code/denied,setup.locked/denied,setup.locked_global/denied,setup.unlock/ok"
+	if strings.Join(got, ",") != want {
+		t.Errorf("audit = %v", got)
 	}
 }

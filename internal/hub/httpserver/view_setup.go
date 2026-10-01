@@ -414,12 +414,12 @@ func (s *Server) setupUnlockPage(w http.ResponseWriter, r *http.Request, hasSess
 	} else {
 		p.NextLabel = "Unlock"
 	}
-	if locked, until := s.setup.Codes.Locked(); locked {
+	if locked, until := s.setup.Codes.LockedFor(ClientIP(r)); locked {
 		p.Locked = true
 		p.LockLeft = setupLockLeft(until.Sub(s.now()))
 		p.Log = "Setup locked after " + strconv.Itoa(setup.MaxAttempts) + " wrong codes"
 	}
-	left := s.setup.Codes.AttemptsLeft()
+	left := s.setup.Codes.AttemptsLeftFor(ClientIP(r))
 	if left >= setup.MaxAttempts {
 		p.AttemptsText = fmt.Sprintf("%d attempts", setup.MaxAttempts)
 	} else {
@@ -781,7 +781,7 @@ func (s *Server) handleSetupUnlock(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, "Enter the 8-character setup code from the hub console.")
 		return
 	}
-	err := s.setup.Codes.Verify(raw)
+	err := s.setup.Codes.VerifyFrom(ip, raw)
 	var ce *setup.CodeError
 	switch {
 	case err == nil:

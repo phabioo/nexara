@@ -3,7 +3,9 @@ package setup
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -89,46 +91,116 @@ func TestRotateInvalidatesOldCode(t *testing.T) {
 	}
 }
 
-func TestAttemptsLockAndFreshCode(t *testing.T) {
+func TestIPLockKeepsCodeValid(t *testing.T) {
 	clk := newClock()
 	var announced []string
 	c := NewCodes(CodeOptions{Now: clk.Now, Announce: func(code string, _ time.Time) { announced = append(announced, code) }})
 	code, _, _ := c.Rotate()
 
 	for i := 1; i < MaxAttempts; i++ {
-		err := c.Verify("WRONGONE")
+		err := c.VerifyFrom("10.0.0.5", "WRONGONE")
 		var ce *CodeError
 		if !errors.As(err, &ce) || ce.Locked || ce.Left != MaxAttempts-i {
 			t.Fatalf("attempt %d: %v", i, err)
 		}
-		if c.AttemptsLeft() != MaxAttempts-i {
-			t.Fatalf("AttemptsLeft = %d", c.AttemptsLeft())
+		if got := c.AttemptsLeftFor("10.0.0.5"); got != MaxAttempts-i {
+			t.Fatalf("AttemptsLeftFor = %d", got)
 		}
 	}
-	if err := c.Verify("WRONGONE"); !isLocked(err) {
+	if got := c.AttemptsLeftFor("10.0.0.6"); got != MaxAttempts {
+		t.Fatalf("other IP attempts = %d", got)
+	}
+	if err := c.VerifyFrom("10.0.0.5", "WRONGONE"); !isLocked(err) {
 		t.Fatalf("expected lock: %v", err)
 	}
-	// Even the right code is refused while locked.
+	// The locked client is refused even with the right code ...
 	clk.Advance(LockDuration - time.Second)
-	if err := c.Verify(code); !isLocked(err) {
+	if err := c.VerifyFrom("10.0.0.5", code); !isLocked(err) {
 		t.Fatalf("locked verify: %v", err)
+	}
+	if ok, _ := c.LockedFor("10.0.0.5"); !ok {
+		t.Fatal("LockedFor false")
+	}
+	// ... while another client still unlocks with the printed code, which
+	// was neither rotated nor invalidated.
+	if ok, _ := c.LockedFor("10.0.0.6"); ok {
+		t.Fatal("other IP locked")
+	}
+	if err := c.VerifyFrom("10.0.0.6", code); err != nil {
+		t.Fatalf("other client with printed code: %v", err)
+	}
+	clk.Advance(2 * time.Second)
+	if err := c.VerifyFrom("10.0.0.5", code); err != nil {
+		t.Fatalf("after lock end: %v", err)
+	}
+	if len(announced) != 1 {
+		t.Fatalf("code rotated by a lock: %v", announced)
+	}
+}
+
+func TestGlobalCeiling(t *testing.T) {
+	clk := newClock()
+	var announced []string
+	c := NewCodes(CodeOptions{Now: clk.Now, GlobalMaxAttempts: 6, Announce: func(code string, _ time.Time) { announced = append(announced, code) }})
+	code, _, _ := c.Rotate()
+	// Distinct IPs never hit the per-IP limit but exhaust the global ceiling.
+	for i := 0; i < 5; i++ {
+		if err := c.VerifyFrom(fmt.Sprintf("10.0.0.%d", i), "WRONGONE"); err == nil || isLocked(err) {
+			t.Fatalf("attempt %d: %v", i, err)
+		}
+	}
+	if err := c.VerifyFrom("10.0.0.9", "WRONGONE"); !isLocked(err) {
+		t.Fatalf("expected global lock: %v", err)
+	}
+	if err := c.VerifyFrom("10.0.0.77", code); !isLocked(err) {
+		t.Fatalf("right code during global lock: %v", err)
 	}
 	if ok, _ := c.Locked(); !ok {
 		t.Fatal("Locked() false")
 	}
-	clk.Advance(2 * time.Second)
+	clk.Advance(LockDuration + time.Second)
+	if err := c.VerifyFrom("10.0.0.77", code); err != nil {
+		t.Fatalf("code after global lock: %v", err)
+	}
 	if len(announced) != 1 {
-		t.Fatalf("announced before lock end: %v", announced)
-	}
-	// Old code stays invalid; a fresh one was generated when the lock ended.
-	if err := c.Verify(code); err == nil {
-		t.Fatal("old code accepted after lock")
-	}
-	if len(announced) != 2 {
 		t.Fatalf("announced = %v", announced)
 	}
-	if err := c.Verify(announced[1]); err != nil {
-		t.Fatalf("fresh code: %v", err)
+}
+
+func TestInvalidateClearsLocks(t *testing.T) {
+	clk := newClock()
+	c := NewCodes(CodeOptions{Now: clk.Now})
+	c.Rotate()
+	for i := 0; i < MaxAttempts; i++ {
+		c.VerifyFrom("10.0.0.5", "WRONGONE")
+	}
+	c.Invalidate()
+	if ok, _ := c.LockedFor("10.0.0.5"); ok {
+		t.Fatal("lock survived Invalidate")
+	}
+	clk.Advance(2 * LockDuration)
+	c.Tick()
+	if _, _, ok := c.Current(); ok {
+		t.Fatal("code resurrected after Invalidate")
+	}
+}
+
+func TestCodeAuditEvents(t *testing.T) {
+	clk := newClock()
+	var kinds []string
+	c := NewCodes(CodeOptions{Now: clk.Now, Audit: func(e CodeEvent) { kinds = append(kinds, e.Kind+"@"+e.IP) }})
+	code, _, _ := c.Rotate()
+	for i := 0; i < MaxAttempts; i++ {
+		c.VerifyFrom("1.2.3.4", "WRONGONE")
+	}
+	c.VerifyFrom("5.6.7.8", code)
+	want := []string{}
+	for i := 1; i < MaxAttempts; i++ {
+		want = append(want, EventWrongCode+"@1.2.3.4")
+	}
+	want = append(want, EventWrongCode+"@1.2.3.4", EventIPLocked+"@1.2.3.4", EventUnlocked+"@5.6.7.8")
+	if !reflect.DeepEqual(kinds, want) {
+		t.Fatalf("events = %v\nwant %v", kinds, want)
 	}
 }
 
@@ -269,5 +341,20 @@ func TestMode(t *testing.T) {
 	fc.err = nil
 	if m.Active(ctx) {
 		t.Fatal("error result must not be cached")
+	}
+}
+
+func TestAdminDispatchLoginUnlock(t *testing.T) {
+	ctx := context.Background()
+	if r := (AdminHandlers{}).dispatch(ctx, CmdLoginUnlock); r.OK {
+		t.Error("unwired login-unlock succeeded")
+	}
+	h := AdminHandlers{LoginUnlock: func(context.Context) (string, error) { return "done", nil }}
+	if r := h.dispatch(ctx, CmdLoginUnlock); !r.OK || r.Message != "done" {
+		t.Errorf("response = %+v", r)
+	}
+	h.LoginUnlock = func(context.Context) (string, error) { return "", errors.New("nope") }
+	if r := h.dispatch(ctx, CmdLoginUnlock); r.OK || r.Message != "nope" {
+		t.Errorf("response = %+v", r)
 	}
 }

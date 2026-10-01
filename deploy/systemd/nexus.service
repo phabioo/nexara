@@ -44,6 +44,12 @@ RestrictNamespaces=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
 LockPersonality=true
+ProtectProc=invisible
+ProcSubset=pid
+# Go does not need writable+executable memory (the hub is pure Go, no CGO/JIT).
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 # The setup commit rewrites /etc/nexus/nexus.yaml (temp file + rename).
 ReadWritePaths=/var/lib/nexus /etc/nexus
 

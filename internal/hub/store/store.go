@@ -28,6 +28,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -61,6 +62,9 @@ type Store struct {
 // Open opens (creating if needed) the SQLite database at path with WAL,
 // foreign keys and a busy timeout, then applies all pending migrations.
 func Open(path string) (*Store, error) {
+	if err := secureDBFiles(path, true); err != nil {
+		return nil, fmt.Errorf("store: open %s: %w", path, err)
+	}
 	dsn := path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -80,7 +84,37 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	// -wal and -shm exist only once SQLite has opened the database.
+	if err := secureDBFiles(path, false); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("store: open %s: %w", path, err)
+	}
 	return s, nil
+}
+
+// secureDBFiles makes the database and its -wal/-shm files owner-only: it
+// holds the sealed secrets and the audit log, and outside systemd the process
+// umask would leave them world-readable. With create the main file is created
+// 0600 first so it is never visible with wider permissions.
+func secureDBFiles(path string, create bool) error {
+	if path == "" || strings.HasPrefix(path, ":memory:") || strings.HasPrefix(path, "file:") {
+		return nil
+	}
+	if create {
+		f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+		if err != nil {
+			return err
+		}
+		if err := f.Close(); err != nil {
+			return err
+		}
+	}
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 // Close closes the database.
