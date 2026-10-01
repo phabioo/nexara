@@ -2,10 +2,10 @@
 
 {{define "topbar"}}<header class="topbar">
   <div class="micro micro-wide" aria-hidden="true">[nexara nexus engaged]<br>grid (mTLS) interface initialized<br>grid nodes 1] 2] . . . . . [secured]</div>
-  {{with .HostIP}}<div class="micro micro-host" aria-hidden="true">nexara grid · remote host · {{.}}</div>
-  <div class="micro micro-short" aria-hidden="true">[nexus link] · {{.}}</div>{{end}}
-  {{with .Latency}}<div class="topbar-latency" id="topbar-latency">{{.}}</div>{{end}}
-  <div class="pill" role="group" aria-label="Status">
+  <div class="micro micro-host" id="nx-micro-host" aria-hidden="true">{{with .HostIP}}nexara grid · remote host · {{.}}{{end}}</div>
+  <div class="micro micro-short" id="nx-micro-short" aria-hidden="true">{{with .HostIP}}[nexus link] · {{.}}{{end}}</div>
+  <div class="topbar-latency" id="topbar-latency">{{.Latency}}</div>
+  <div class="pill" id="nx-pill" role="group" aria-label="Status">
     <div class="pill-seg pill-node t-display">{{icon "mark" 18}}<span>{{.NodeNo}}</span></div>
     <div class="pill-seg pill-dark pill-online" title="Systems online">{{icon "circle" 18}}<span>{{.Online}}</span></div>
     {{with .Packages}}<div id="pill-pkg" class="pill-seg pill-light pill-pkg" title="Packages up to date">{{template "pill-pkg-body" .}}</div>{{end}}
@@ -28,16 +28,16 @@
 <span id="statusbar-log" role="status" hx-swap-oob="true">{{.Log}}</span>{{end}}
 {{define "job-chip"}}<button type="button" class="btn-tool is-hot" hx-get="{{.Href}}" hx-target="#modal-root" hx-swap="innerHTML">{{.Label}}</button>{{end}}
 
-{{define "hosttabs"}}<nav class="hosttabs" aria-label="Hosts" data-host-tabs>
+{{define "hosttabs"}}<nav class="hosttabs" id="nx-tabs" aria-label="Hosts" data-host-tabs>
   {{if gt (len .Hosts) 1}}<button type="button" class="key" data-host-step="-1" aria-label="Previous system">Q</button>{{end}}
-  {{range .Hosts}}<a class="tab{{if .Active}} on{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}}><span class="tab-label">{{if .Offline}}<i class="offline-dot" title="Offline"></i>{{end}}{{.Name}}{{if .Reboot}}<i class="offline-dot reboot-dot" title="Reboot required"></i>{{end}}</span>{{if .Badge}}<span class="tab-count">{{.Badge}}</span>{{end}}</a>
+  {{range .Hosts}}<a class="tab{{if .Active}} on{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}} {{template "nx-boost"}}><span class="tab-label">{{if .Offline}}<i class="offline-dot" title="Offline"></i>{{end}}{{.Name}}{{if .Reboot}}<i class="offline-dot reboot-dot" title="Reboot required"></i>{{end}}</span>{{if .Badge}}<span class="tab-count">{{.Badge}}</span>{{end}}</a>
   {{end}}
   {{if gt (len .Hosts) 1}}<button type="button" class="key" data-host-step="1" aria-label="Next system">E</button>{{end}}
   {{with .AddHostURL}}<button type="button" class="tab tab-add" aria-label="Add host" hx-get="{{.}}" hx-target="#modal-root" hx-swap="innerHTML"><span class="tab-label">{{icon "plus" 11}}Host</span></button>{{end}}
 </nav>{{end}}
 
 {{define "sidebar"}}<aside class="sidebar" aria-label="Sidebar">
-  <div class="node-card">
+  <div class="node-card" id="nx-node">
     <div class="node-card-head">
       <div class="node-card-id"><div class="node-card-title t-display">Node {{.NodeNo}}</div>{{with .Uptime}}<div id="node-card-up" class="node-card-up">{{template "node-up-body" .}}</div>{{end}}</div>
       <div class="node-card-tab"></div>
@@ -47,15 +47,15 @@
       {{icon "mark" 76}}
     </div>
   </div>
-  <nav class="nav" aria-label="Views">
-    {{range .NavItems}}<a class="nav-item{{if .Active}} on{{else if .Badge}} hot{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}}><span class="nav-main">{{if .Icon}}<span class="nav-icon">{{icon .Icon 18}}</span>{{end}}<span class="nav-label">{{.Label}}</span></span>{{if .Badge}}<span class="nav-badge">{{.Badge}}</span>{{end}}</a>
+  <nav class="nav" id="nx-nav" aria-label="Views">
+    {{range .NavItems}}<a class="nav-item{{if .Active}} on{{else if .Badge}} hot{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}} {{template "nx-boost"}}><span class="nav-main">{{if .Icon}}<span class="nav-icon">{{icon .Icon 18}}</span>{{end}}<span class="nav-label">{{.Label}}</span></span>{{if .Badge}}<span class="nav-badge">{{.Badge}}</span>{{end}}</a>
     {{end}}
   </nav>
   {{with .Operator}}<div class="account">
     <div class="account-id"><span class="account-label">Operator</span><b class="account-name" title="{{.}}">{{.}}</b></div>
     {{template "signout-form" $}}
   </div>{{end}}
-  {{with .HostName}}{{template "host-portrait" .}}{{end}}
+  <div class="host-portrait-slot" id="nx-portrait">{{with .HostName}}{{template "host-portrait" .}}{{end}}</div>
 </aside>{{end}}
 
 {{/* POST /logout with the CSRF token in the form (works without JavaScript). Data: views.Layout. */}}
@@ -96,7 +96,7 @@
     <span class="statusbar-prompt" aria-hidden="true">&gt;</span><span id="statusbar-log" role="status">{{.Log}}</span>
   </div>
   <div class="statusbar-right">
-    <div class="statusbar-live"><i class="live" aria-hidden="true"></i><span><span class="live-ok-text">LIVE</span><span class="live-lost-text">RECONNECTING</span>{{with .HostName}} · {{.}}{{end}}{{with .HostIP}} · {{.}}{{end}}</span></div>
+    <div class="statusbar-live"><i class="live" aria-hidden="true"></i><span><span class="live-ok-text">LIVE</span><span class="live-lost-text">RECONNECTING</span><span class="statusbar-host" id="nx-status-host">{{with .HostName}} · {{.}}{{end}}{{with .HostIP}} · {{.}}{{end}}</span></span></div>
     <span class="statusbar-sep" aria-hidden="true"></span>
     {{template "brand"}}
   </div>
@@ -104,8 +104,8 @@
 
 {{define "brand"}}<div class="statusbar-brand">{{icon "mark" 16}}<span class="wordmark">NEXARA</span><span class="wordmark-product t-display">Nexus</span></div>{{end}}
 
-{{define "bottomnav"}}<nav class="bnav" aria-label="Views">
-  {{range .NavItems}}<a class="bnav-item{{if .Active}} on{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}}>{{if .Icon}}<span class="bnav-icon">{{icon .Icon 18}}{{if .Badge}}<span class="bnav-badge">{{.Badge}}</span>{{end}}</span>{{end}}<span>{{.Label}}</span></a>
+{{define "bottomnav"}}<nav class="bnav" id="nx-bnav" aria-label="Views">
+  {{range .NavItems}}<a class="bnav-item{{if .Active}} on{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}} {{template "nx-boost"}}>{{if .Icon}}<span class="bnav-icon">{{icon .Icon 18}}{{if .Badge}}<span class="bnav-badge">{{.Badge}}</span>{{end}}</span>{{end}}<span>{{.Label}}</span></a>
   {{end}}
   {{if .Operator}}<button type="button" class="bnav-item" data-sheet-open="more-sheet" aria-haspopup="dialog" aria-expanded="false" aria-controls="more-sheet"><span class="bnav-icon">{{icon "dots" 18}}</span><span>More</span></button>{{end}}
 </nav>{{end}}

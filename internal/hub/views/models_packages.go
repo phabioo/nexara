@@ -121,7 +121,6 @@ type PackagesMore struct {
 type PackagesModel struct {
 	HostLabel string
 	HostPath  string // "/hosts/alpha"
-	EventsURL string
 	Filter    string
 	Query     string
 	Count     string // "7/10", empty hides it
@@ -143,7 +142,6 @@ type PackagesModel struct {
 type PackagesInput struct {
 	HostLabel string
 	HostPath  string
-	HostName  string // URL name, for the event stream
 	Online    bool
 	Capable   bool // packages capability enabled
 	Data      *protocol.Packages
@@ -192,7 +190,6 @@ func BuildPackages(in PackagesInput) PackagesModel {
 	m := PackagesModel{
 		HostLabel: in.HostLabel,
 		HostPath:  in.HostPath,
-		EventsURL: "/events?host=" + url.QueryEscape(in.HostName) + "&view=packages",
 		Filter:    filter,
 		Query:     q,
 		Count:     in.Count,

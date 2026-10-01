@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"context"
+	"encoding/json"
 	"html"
 	"net"
 	"net/http"
@@ -17,11 +18,10 @@ import (
 // Names of the SSE events of the overview. Each one is swapped into the element carrying the same
 // sse-swap value in pages/overview.html.
 const (
-	sseOverviewLoad  = "ov-load"  // text of the LOAD chip
-	sseOverviewCPU   = "ov-cpu"   // body of the CPU card
-	sseOverviewMem   = "ov-mem"   // body of the Memory & storage card
-	sseOverviewSvc   = "ov-svc"   // body of the Services card
-	sseOverviewState = "ov-state" // a host went online, offline or was removed; overview.js reloads the page
+	sseOverviewLoad = "ov-load" // text of the LOAD chip
+	sseOverviewCPU  = "ov-cpu"  // body of the CPU card
+	sseOverviewMem  = "ov-mem"  // body of the Memory & storage card
+	sseOverviewSvc  = "ov-svc"  // body of the Services card
 )
 
 // overviewServicesTimeout bounds the background services refresh started by a page view.
@@ -41,9 +41,6 @@ func (s *Server) routesOverview(mux *http.ServeMux) {
 	s.sse.Register(grid.EventMetrics, s.renderOverviewCPU)
 	s.sse.Register(grid.EventMetrics, s.renderOverviewMem)
 	s.sse.Register(grid.EventServices, s.renderOverviewServices)
-	s.sse.Register(grid.EventHostOnline, s.renderOverviewState)
-	s.sse.Register(grid.EventHostOffline, s.renderOverviewState)
-	s.sse.Register(grid.EventHostRemoved, s.renderOverviewState)
 }
 
 func (s *Server) handleOverviewDefault(w http.ResponseWriter, r *http.Request) {
@@ -236,12 +233,32 @@ func (s *Server) handleRemoveHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Header.Get("HX-Request") == "true" {
-		// A 303 would be followed by the XHR and its page swapped into the dialog.
-		w.Header().Set("HX-Redirect", next)
+		// A 303 would be followed by the XHR and its page swapped into the dialog. HX-Location moves on to the
+		// next host like a click on its tab: only the main area and the shell regions change, no page load.
+		w.Header().Set("HX-Location", s.navLocation(next))
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	http.Redirect(w, r, next, http.StatusSeeOther)
+}
+
+// navLocation is the value of an HX-Location header that navigates to path the way a boosted link does
+// (see "nx-boost" in partials/components.html): the main area replaces #main and the shell regions are
+// swapped in place.
+func (s *Server) navLocation(path string) string {
+	regions, err := s.partialString("nx-regions", nil)
+	if err != nil {
+		// Without the region list the navigation still works, it just leaves the shell as it was until the
+		// next refresh.
+		s.log.Error("render nav regions", "err", err)
+	}
+	out, err := json.Marshal(map[string]string{
+		"path": path, "target": "#main", "select": "#main", "swap": "outerHTML", "selectOOB": strings.TrimSpace(regions),
+	})
+	if err != nil {
+		return path
+	}
+	return string(out)
 }
 
 // nextHostURL is where the browser goes after host id was removed: the tab to its right, else the one to
@@ -327,31 +344,6 @@ func (s *Server) renderOverviewServices(_ *http.Request, ev grid.Event) (string,
 		return "", "", false
 	}
 	return sseOverviewSvc, out, true
-}
-
-// renderOverviewState tells the open page that a host changed between online and offline. The payload is
-// only a marker; overview.js reloads the page so tabs, pill and sidebar are rebuilt by the server.
-func (s *Server) renderOverviewState(_ *http.Request, ev grid.Event) (string, string, bool) {
-	var info grid.HostInfo
-	switch v := ev.Payload.(type) {
-	case grid.HostInfo:
-		info = v
-	case *grid.HostInfo:
-		if v == nil {
-			return "", "", false
-		}
-		info = *v
-	default:
-		return "", "", false
-	}
-	switch ev.Kind {
-	case grid.EventHostOnline:
-		return sseOverviewState, html.EscapeString(string(ev.Host) + " online"), true
-	case grid.EventHostRemoved:
-		// By name: the open page compares it with its own host (data-ov-host).
-		return sseOverviewState, html.EscapeString(info.Name + " removed"), true
-	}
-	return sseOverviewState, html.EscapeString(string(ev.Host) + " offline"), true
 }
 
 // overviewPartial renders a partial into a string for an SSE payload.

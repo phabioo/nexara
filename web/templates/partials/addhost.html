@@ -105,7 +105,7 @@
   </div>
   {{if .HostKeyTip}}<p class="hint">Only the host key you confirmed was accepted.</p>{{end}}
   {{with .Error}}{{template "form-error" .}}{{end}}
-  {{if .OpenURL}}{{template "btn-card" (dict "Label" (print "Open " .OpenLabel) "Href" .OpenURL "Icon" "arrow-right" "IconSize" 16)}}{{end}}
+  {{if .OpenURL}}{{template "btn-card" (dict "Label" (print "Open " .OpenLabel) "Href" .OpenURL "Boost" true "Icon" "arrow-right" "IconSize" 16)}}{{end}}
   {{if .Retry}}<div class="modal-actions">
     {{template "btn-card" (dict "Label" "Close" "Variant" "grey" "NoIcon" true "Attrs" (attr "data-modal-close"))}}
     {{with $.ReplaceOffer}}{{template "btn-card" (dict "Label" (print "Replace " .Name) "Variant" "grey" "NoIcon" true "Attrs" (attr "hx-get" .URL "hx-target" "#addhost-pane" "hx-swap" "outerHTML"))}}{{end}}

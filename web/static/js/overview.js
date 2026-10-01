@@ -1,10 +1,14 @@
-/* Nexara Nexus overview: the processes toggle and reloads after host or connection changes. Error toasts
-   live in nexus.js. Host switching with Q / E lives in nexus.js. No inline handlers (strict CSP). */
+/* Nexara Nexus overview: the processes toggle. Live values arrive through the event stream (sse-swap on the cards);
+   a host going online or offline, a dropped stream and the like are handled in place by nexus.js, there is no page
+   reload anywhere. Error toasts and host switching with Q / E live in nexus.js. No inline handlers (strict CSP). */
 (function () {
   'use strict';
 
+  // The app layout loads this file on every page; the page template of the overview may load it again.
+  if (window.__nxOverview) { return; }
+  window.__nxOverview = true;
+
   var PROCS_KEY = 'nexus.overview.procs';
-  var RELOAD_DELAY_MS = 400;
 
   function store(fn) {
     try { return fn(window.sessionStorage); } catch (e) { return null; }
@@ -39,41 +43,18 @@
     }
   });
 
-  // --- reload when the server state may have changed behind our back ---
-  var reloadTimer = null;
-  function reloadSoon() {
-    if (reloadTimer) { return; }
-    reloadTimer = setTimeout(function () { window.location.reload(); }, RELOAD_DELAY_MS);
+  // The card is new on every visit of the view (navigation, refresh after a host went online): apply the
+  // remembered state to it. htmx fires htmx:load for the swapped-in element and once for the whole page.
+  function restore(root) {
+    if (!(root instanceof Element)) { return; }
+    var card = root.matches('.ov-cpu') ? root : root.querySelector('.ov-cpu');
+    if (card && store(function (s) { return s.getItem(PROCS_KEY); }) === '1') { setProcs(true); }
   }
-
-  // A host went online or offline: tabs, pill, sidebar and the card set all change. When the host shown
-  // here was removed (payload "<name> removed"), its URL is gone: continue at the overview.
-  var REMOVED = ' removed';
-  document.addEventListener('htmx:sseMessage', function (e) {
-    if (!e.detail || e.detail.type !== 'ov-state') { return; }
-    var data = typeof e.detail.data === 'string' ? e.detail.data : '';
-    var marker = document.querySelector('[data-ov-state]');
-    var own = marker ? marker.getAttribute('data-ov-host') : '';
-    if (own && data === own + REMOVED) {
-      window.location.replace('/');
-      return;
-    }
-    reloadSoon();
-  });
-
-  // Events are only change hints: after the stream dropped and came back, read the state again.
-  var dropped = false;
-  document.addEventListener('htmx:sseError', function () { dropped = true; });
-  document.addEventListener('htmx:sseOpen', function () {
-    if (dropped) { dropped = false; reloadSoon(); }
-  });
-
-  function init() {
-    if (store(function (s) { return s.getItem(PROCS_KEY); }) === '1') { setProcs(true); }
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+  if (window.htmx && htmx.onLoad) {
+    htmx.onLoad(restore);
+  } else if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { restore(document.body); });
   } else {
-    init();
+    restore(document.body);
   }
 })();

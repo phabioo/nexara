@@ -22,7 +22,7 @@ func testPackages() *protocol.Packages {
 
 func baseInput() PackagesInput {
 	return PackagesInput{
-		HostLabel: "pi5", HostPath: "/hosts/pi5", HostName: "pi5",
+		HostLabel: "pi5", HostPath: "/hosts/pi5",
 		Online: true, Capable: true, Data: testPackages(), Filter: "all", Count: "1/3",
 	}
 }
@@ -133,7 +133,7 @@ func TestBuildPackagesTabs(t *testing.T) {
 	if a := string(m.Filters[1].Attrs); !strings.Contains(a, `hx-get="/hosts/pi5/packages?filter=updates"`) || strings.Contains(a, "q=") {
 		t.Errorf("attrs must not carry the search term (hx-include adds it): %s", a)
 	}
-	if m.Query != "a b" || m.Count != "1/3" || m.EventsURL != "/events?host=pi5&view=packages" {
+	if m.Query != "a b" || m.Count != "1/3" {
 		t.Errorf("model = %+v", m)
 	}
 }

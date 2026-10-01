@@ -10,6 +10,11 @@ import (
 	"github.com/phabioo/nexara/internal/protocol"
 )
 
+// eventsURL is the one event stream of every app page. It is not filtered by host: the page keeps a single
+// connection while the operator moves between hosts and views, and nexus.js drops the events of hosts other
+// than the one on screen (the SSE id field names the host, see sse.go).
+const eventsURL = "/events"
+
 // layout builds the app-shell view model for the current request: host tabs
 // with badges, the top-bar pill, navigation, CSRF token and the status bar.
 // active is the nav key ("overview", "packages", "shell"); host is the
@@ -23,6 +28,7 @@ func (s *Server) layout(r *http.Request, active string, host *grid.HostInfo) vie
 		ActiveNav:  active,
 		AddHostURL: "/hosts/new",
 		Operator:   operatorName(r),
+		EventsURL:  eventsURL,
 	}
 	if sess, ok := SessionFrom(r); ok {
 		l.CSRF = s.auth.CSRFToken(sess)
@@ -57,6 +63,7 @@ func (s *Server) layout(r *http.Request, active string, host *grid.HostInfo) vie
 	updates := 0
 	if host != nil {
 		l.HostName = hostLabel(*host)
+		l.HostKey = host.Name
 		l.HostIP = host.Address
 		if host.Latency > 0 {
 			l.Latency = fmt.Sprintf("%d ms", host.Latency.Milliseconds())
@@ -71,7 +78,6 @@ func (s *Server) layout(r *http.Request, active string, host *grid.HostInfo) vie
 				l.Uptime = formatUptime(m.UptimeSeconds)
 			}
 		}
-		l.EventsURL = "/events?host=" + url.QueryEscape(host.Name)
 		jobs := s.hub.Jobs(host.ID)
 		l.Job = views.JobChipFor(hostURL(host.Name), jobs)
 		l.Log = statusLine(*host, jobs)

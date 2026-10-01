@@ -15,10 +15,8 @@
     </div>
   </div>
 </div>{{else if .Offline}}<div class="view">
-  <span hidden sse-swap="ov-state" data-ov-state data-ov-host="{{.Host}}"></span>
   {{template "overview-offline" .Offline}}
 </div>{{else}}<div class="view view-fit">
-  <span hidden sse-swap="ov-state" data-ov-state data-ov-host="{{.Host}}"></span>
   <div class="view-head">
     <span class="view-title">Overview: {{.Label}}</span>
     <div class="view-actions">
@@ -48,4 +46,3 @@
   </div>
 </div>{{end}}{{end}}
 
-{{define "scripts"}}<script src="{{static "js/overview.js"}}" defer></script>{{end}}
