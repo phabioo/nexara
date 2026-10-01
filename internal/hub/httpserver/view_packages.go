@@ -75,7 +75,7 @@ func (s *Server) handlePackages(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	model := s.packagesModel(r, host, q.Get("filter"), q.Get("q"))
 
-	w.Header().Add("Vary", "HX-Request")
+	w.Header().Add("Vary", "HX-Request, HX-Target")
 	if isHTMXFragment(r) {
 		s.packagesWrite(w, r, http.StatusOK, func(rd *views.Renderer, w http.ResponseWriter) error {
 			return rd.RenderPartial(w, "packages-fragment", model)
@@ -84,16 +84,22 @@ func (s *Server) handlePackages(w http.ResponseWriter, r *http.Request) {
 	}
 	l := s.layout(r, "packages", &host)
 	l.Title = "Packages"
-	l.EventsURL = model.EventsURL // the same stream, plus the events of the job dialog
 	s.packagesWrite(w, r, http.StatusOK, func(rd *views.Renderer, w http.ResponseWriter) error {
 		return rd.Render(w, "packages", packagesPage{Layout: l, P: model})
 	})
 }
 
-// isHTMXFragment reports whether the request wants a fragment: an HTMX request
-// that is not the full-page fetch htmx does when restoring history.
+// packagesResultsTarget is the id htmx sends as HX-Target when the filter tabs, the search box and the live
+// refresh of the packages view ask for the fragment.
+const packagesResultsTarget = "pkg-results"
+
+// isHTMXFragment reports whether the request wants the results fragment: an HTMX request that targets
+// #pkg-results. Boosted navigation and the refresh after an event target #main and get the full page (htmx
+// selects #main and the shell regions from it), and so does the full-page fetch htmx does when restoring history.
 func isHTMXFragment(r *http.Request) bool {
-	return r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true"
+	return r.Header.Get("HX-Request") == "true" &&
+		r.Header.Get("HX-History-Restore-Request") != "true" &&
+		r.Header.Get("HX-Target") == packagesResultsTarget
 }
 
 // packagesModel reads the host state and builds the view model.
@@ -131,7 +137,6 @@ func (s *Server) packagesModel(r *http.Request, host grid.HostInfo, filter, quer
 	return views.BuildPackages(views.PackagesInput{
 		HostLabel: hostLabel(host),
 		HostPath:  hostURL(host.Name),
-		HostName:  host.Name,
 		Online:    host.Online,
 		Capable:   capable,
 		Data:      snap.Packages,
@@ -303,13 +308,9 @@ func (s *Server) packagesWrite(w http.ResponseWriter, r *http.Request, status in
 
 // --- event stream --------------------------------------------------------------
 
-// onPackagesStream reports whether the event stream belongs to the packages
-// page (its URL carries view=packages). Only that page reloads its fragment on
-// "pkg-changed"; the job events go to every page, because the status-bar chip
-// opens the job dialog from anywhere.
-func onPackagesStream(r *http.Request) bool {
-	return r != nil && r.URL.Query().Get("view") == "packages"
-}
+// The job events go to every page, because the status-bar chip opens the job dialog from anywhere. The
+// stream is the same for every page and every host; "pkg-changed" is tagged with its host (sse.go) and
+// reaches the fragment of the packages page only while that host is on screen (nexus.js).
 
 // renderPackagesJob turns job_queued, job_started and job_done into one "pkg-job"
 // event whose payload is a set of hx-swap-oob elements: the dialog regions (if
@@ -365,8 +366,8 @@ func (s *Server) renderPackagesJobOutput(_ *http.Request, ev grid.Event) (string
 	return packagesEventJob, html, true
 }
 
-// renderPackagesChanged tells the open packages page to reload its fragment;
-// the page knows its own filter and search term.
-func (s *Server) renderPackagesChanged(r *http.Request, _ grid.Event) (string, string, bool) {
-	return packagesEventChanged, "", onPackagesStream(r)
+// renderPackagesChanged tells an open packages page to reload its fragment; the page knows its own filter
+// and search term. Pages without #pkg-results ignore it.
+func (s *Server) renderPackagesChanged(_ *http.Request, _ grid.Event) (string, string, bool) {
+	return packagesEventChanged, "", true
 }

@@ -27,7 +27,8 @@ func sampleLayout() Layout {
 		ActiveNav: "overview",
 		CSRF:      "csrf-token-value",
 		Operator:  "frank",
-		EventsURL: "/events?host=pi5-media",
+		EventsURL: "/events",
+		HostKey:   "pi5-media",
 		NodeNo:    "01",
 		Uptime:    "41D 06H",
 		HostName:  "pi5-media",
@@ -111,7 +112,12 @@ func TestRenderAppLayout(t *testing.T) {
 		`<span id="job-chip-slot" class="job-chip-slot"><button type="button" class="btn-tool is-hot" hx-get="/jobs/1"`,
 		`JOB · apt upgrade · 42%`,
 		`id="pill-pkg"`, `id="pill-temp"`, `<div id="node-card-up" class="node-card-up">41D 06H <span>UP</span></div>`,
-		`hx-ext="sse" sse-connect="/events?host=pi5-media"`, `sse-swap="nx-live,pkg-job" hx-swap="none" data-oob-sink`,
+		`hx-ext="sse"`, `sse-connect="/events"`, `sse-swap="nx-live,pkg-job,nx-hosts" hx-swap="none" data-oob-sink`,
+		// navigation without page loads: regions, the main area's identity, boosted links
+		`data-regions="#nx-micro-host,`, `id="nx-tabs"`, `id="nx-pill"`, `id="nx-node"`, `id="nx-nav"`, `id="nx-bnav"`, `id="nx-portrait"`,
+		`id="nx-status-host"`, `id="topbar-latency"`, `<main class="main" id="main" tabindex="-1" hx-history-elt data-host="pi5-media" data-view="overview">`,
+		`hx-boost="true" hx-target="#main" hx-select="#main" hx-swap="outerHTML" hx-sync="body:replace" hx-select-oob="#nx-micro-host,`,
+		`id="nx-announce"`,
 		// operator and sign out: sidebar block and More sheet, both POST /logout with the CSRF token
 		`<b class="account-name" title="frank">frank</b>`,
 		`<form class="signout" method="post" action="/logout">`, `<form class="sheet-signout" method="post" action="/logout">`,
@@ -168,7 +174,7 @@ func TestRenderConnectionLostAndNoOptionalParts(t *testing.T) {
 	if !strings.Contains(out, `class=" is-lost"`) {
 		t.Error("connection lost body class missing")
 	}
-	for _, unwanted := range []string{"tab-add", "pill-pkg", "pill-temp", "nav-badge", "host-portrait", "JOB"} {
+	for _, unwanted := range []string{"tab-add", "pill-pkg", "pill-temp", "nav-badge", "host-portrait-title", "JOB"} {
 		if strings.Contains(out, unwanted) {
 			t.Errorf("optional part %q rendered without data", unwanted)
 		}

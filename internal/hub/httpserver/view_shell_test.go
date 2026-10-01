@@ -73,7 +73,7 @@ func TestShellPageStates(t *testing.T) {
 		},
 		{
 			name: "offline host shows the offline card and never connects", path: "/hosts/beta/shell", wantState: "offline",
-			contains: []string{`data-state="offline"`, "Beta Pi · Offline", "sse-connect=\"/events?host=beta\"", "Back to overview", "js/shell.js"},
+			contains: []string{`data-state="offline"`, "Beta Pi · Offline", "sse-connect=\"/events\"", `data-host="beta"`, "Back to overview", "js/shell.js"},
 			absent:   []string{"data-ws=", "xterm-6.0.0.js", "data-shell-term"},
 		},
 		{
@@ -160,44 +160,6 @@ func TestShellPageState(t *testing.T) {
 		if got := shellPageState(tc.host); got != tc.want {
 			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
 		}
-	}
-}
-
-func TestRenderShellHostState(t *testing.T) {
-	tests := []struct {
-		name   string
-		ev     grid.Event
-		wantOK bool
-		want   string
-	}{
-		{"online", grid.Event{Kind: grid.EventHostOnline, Payload: grid.HostInfo{Name: "alpha"}}, true, `<i data-host="alpha" data-online="true"></i>`},
-		{"offline", grid.Event{Kind: grid.EventHostOffline, Payload: grid.HostInfo{Name: "alpha", Online: true}}, true, `<i data-host="alpha" data-online="false"></i>`},
-		{"name is escaped", grid.Event{Kind: grid.EventHostOnline, Payload: grid.HostInfo{Name: `a"b`}}, true, `data-host="a&#34;b"`},
-		{"foreign payload", grid.Event{Kind: grid.EventHostOnline, Payload: 42}, false, ""},
-	}
-	for _, tc := range tests {
-		name, html, ok := renderShellHostState(nil, tc.ev)
-		if ok != tc.wantOK {
-			t.Errorf("%s: ok = %v", tc.name, ok)
-			continue
-		}
-		if !ok {
-			continue
-		}
-		if name != shellStateEvent || !strings.Contains(html, tc.want) {
-			t.Errorf("%s: %q %q", tc.name, name, html)
-		}
-	}
-}
-
-func TestShellHostStateReachesTheEventStream(t *testing.T) {
-	e := viewTestEnv(t)
-	got := map[grid.EventKind]bool{}
-	for _, k := range []grid.EventKind{grid.EventHostOnline, grid.EventHostOffline} {
-		got[k] = len(e.srv.sse.renderers(k)) > 0
-	}
-	if !got[grid.EventHostOnline] || !got[grid.EventHostOffline] {
-		t.Errorf("renderers registered: %v", got)
 	}
 }
 

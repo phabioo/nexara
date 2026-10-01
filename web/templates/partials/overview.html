@@ -34,9 +34,9 @@
     {{range .Tiles}}{{if .Empty}}<div class="tile-empty">NO DISK</div>{{else}}{{template "tile-resource" (dict "Tone" .Tone "Label" .Label "Value" .Value "On" .On)}}{{end}}
     {{end}}
   </div>
-  {{with .ShellHref}}{{template "btn-card" (dict "Label" "Open shell" "Variant" "light" "Href" .)}}{{end}}
+  {{with .ShellHref}}{{template "btn-card" (dict "Label" "Open shell" "Variant" "light" "Href" . "Boost" true)}}{{end}}
 </div>{{else}}<p class="card-text">Waiting for the first sample from the agent.</p>
-{{with .ShellHref}}<div class="card-foot">{{template "btn-card" (dict "Label" "Open shell" "Variant" "light" "Href" .)}}</div>{{end}}{{end}}{{end}}
+{{with .ShellHref}}<div class="card-foot">{{template "btn-card" (dict "Label" "Open shell" "Variant" "light" "Href" . "Boost" true)}}</div>{{end}}{{end}}{{end}}
 
 {{/* Data: views.OverviewServices. */}}
 {{define "overview-svc-body"}}{{if .Disabled}}{{template "tag" (dict "Tone" "dark" "Text" "Switched off")}}

@@ -130,7 +130,7 @@ func TestAppPagesCarryTheLiveShell(t *testing.T) {
 				t.Fatalf("status %d", rec.Code)
 			}
 			body := rec.Body.String()
-			mustContain(t, body, `hx-ext="sse" sse-connect="/events?host=alpha`, `sse-swap="nx-live,pkg-job" hx-swap="none" data-oob-sink`,
+			mustContain(t, body, `hx-ext="sse"`, `sse-connect="/events"`, `sse-swap="nx-live,pkg-job,nx-hosts" hx-swap="none" data-oob-sink`,
 				`id="job-chip-slot"`, `id="statusbar-log"`, `action="/logout"`, `name="csrf_token" value="`+token+`"`,
 				`data-sheet-open="more-sheet"`, `frank`)
 			if n := strings.Count(body, "sse-connect="); n != 1 {

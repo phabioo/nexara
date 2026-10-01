@@ -1357,3 +1357,7 @@ svg { flex: none; }
   .shell-keys { display: flex; }
 }
 /* --- end view: shell + add host --- */
+
+/* view: nav — navigation without page loads (layouts/app.html, partials/shell.html, js/nexus.js) */
+.host-portrait-slot { display: contents; }
+.main:focus, .main [tabindex="-1"]:focus { outline: none; }

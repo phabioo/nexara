@@ -16,6 +16,7 @@ type Layout struct {
 	Uptime   string // "41D 06H"; empty hides the line
 	HostName string // selected host, shown in the portrait card and the status bar
 	HostIP   string
+	HostKey  string // short name of the selected host (URL segment); <main data-host>, empty without a host
 
 	Online   int    // hosts online
 	Packages string // "7/10" up-to-date packages, empty hides the pill segment
@@ -28,7 +29,7 @@ type Layout struct {
 
 	Log            string   // last action, left side of the status bar
 	Job            *JobChip // running background job, left of the log line
-	EventsURL      string   // SSE stream of the page (sse-connect on <body>); empty: no live updates
+	EventsURL      string   // SSE stream (sse-connect on <body>, the same for every page: it carries all hosts); empty: no live updates
 	BodyClass      string
 	ConnectionLost bool   // renders the reconnecting state from the start
 	Toast          *Toast // server-rendered banner, hidden again by nexus.js

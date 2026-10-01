@@ -14,18 +14,20 @@ import (
 
 func TestFormatSSE(t *testing.T) {
 	tests := []struct {
-		name, event, data, want string
+		name, event, id, data, want string
 	}{
-		{"single line", "metrics", "<b>1</b>", "event: metrics\ndata: <b>1</b>\n\n"},
-		{"multi line", "x", "a\nb\n\nc", "event: x\ndata: a\ndata: b\ndata: \ndata: c\n\n"},
-		{"crlf", "x", "a\r\nb\rc", "event: x\ndata: a\ndata: b\ndata: c\n\n"},
-		{"trailing newline", "x", "a\n", "event: x\ndata: a\ndata: \n\n"},
-		{"event name injection", "a\r\nb: evil", "d", "event: ab: evil\ndata: d\n\n"},
-		{"no event name", "", "d", "data: d\n\n"},
+		{"single line", "metrics", "", "<b>1</b>", "event: metrics\nid: \ndata: <b>1</b>\n\n"},
+		{"host id", "nx-live", "alpha", "x", "event: nx-live\nid: alpha\ndata: x\n\n"},
+		{"multi line", "x", "", "a\nb\n\nc", "event: x\nid: \ndata: a\ndata: b\ndata: \ndata: c\n\n"},
+		{"crlf", "x", "", "a\r\nb\rc", "event: x\nid: \ndata: a\ndata: b\ndata: c\n\n"},
+		{"trailing newline", "x", "", "a\n", "event: x\nid: \ndata: a\ndata: \n\n"},
+		{"event name injection", "a\r\nb: evil", "", "d", "event: ab: evil\nid: \ndata: d\n\n"},
+		{"id injection", "x", "a\r\ndata: evil\x00", "d", "event: x\nid: adata: evil\ndata: d\n\n"},
+		{"no event name", "", "", "d", "id: \ndata: d\n\n"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := string(formatSSE(tc.event, tc.data)); got != tc.want {
+			if got := string(formatSSE(tc.event, tc.id, tc.data)); got != tc.want {
 				t.Errorf("got %q, want %q", got, tc.want)
 			}
 		})
@@ -147,11 +149,11 @@ func TestSSEDeliversFilteredEvents(t *testing.T) {
 	e.hub.emit(grid.Event{Kind: grid.EventMetrics, Host: "a1"})
 
 	ev := c.nextEvent(t)
-	if strings.Join(ev, "|") != "event: tabs|data: offline b2" {
+	if strings.Join(ev, "|") != "event: tabs|id: beta|data: offline b2" {
 		t.Fatalf("first event = %q", ev)
 	}
 	ev = c.nextEvent(t)
-	want := "event: metrics|data: <div>|data:   cpu a1|data: </div>"
+	want := "event: metrics|id: alpha|data: <div>|data:   cpu a1|data: </div>"
 	if strings.Join(ev, "|") != want {
 		t.Fatalf("second event = %q, want %q", ev, want)
 	}

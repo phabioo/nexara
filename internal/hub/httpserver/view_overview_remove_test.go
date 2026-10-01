@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
@@ -48,7 +49,7 @@ func TestRemoveHostPost(t *testing.T) {
 		removeFn func(grid.HostID) error
 		hosts    func(h *fakeHub)
 		status   int
-		location string // Location (303) or HX-Redirect (htmx)
+		location string // Location (303) or the "path" of HX-Location (htmx)
 		removed  []string
 	}{
 		{name: "online host, next tab", path: "/hosts/alpha/remove", csrf: true, status: 303, location: "/hosts/beta", removed: []string{"a1"}},
@@ -57,7 +58,7 @@ func TestRemoveHostPost(t *testing.T) {
 			name: "only host leads to the empty state", path: "/hosts/alpha/remove", csrf: true, status: 303, location: "/", removed: []string{"a1"},
 			hosts: func(h *fakeHub) { h.hosts = h.hosts[:1] },
 		},
-		{name: "htmx gets HX-Redirect, not a 303 the XHR would follow", path: "/hosts/beta/remove", csrf: true, htmx: true, status: 204, location: "/hosts/alpha", removed: []string{"b2"}},
+		{name: "htmx gets HX-Location, not a 303 the XHR would follow", path: "/hosts/beta/remove", csrf: true, htmx: true, status: 204, location: "/hosts/alpha", removed: []string{"b2"}},
 		{name: "no csrf token", path: "/hosts/alpha/remove", csrf: false, status: 403},
 		{name: "unknown host", path: "/hosts/nope/remove", csrf: true, status: 404},
 		{
@@ -93,10 +94,20 @@ func TestRemoveHostPost(t *testing.T) {
 			if tc.location != "" {
 				got := rec.Header().Get("Location")
 				if tc.htmx {
-					got = rec.Header().Get("HX-Redirect")
-					if rec.Header().Get("Location") != "" {
-						t.Errorf("htmx answer carries Location %q", rec.Header().Get("Location"))
+					if rec.Header().Get("Location") != "" || rec.Header().Get("HX-Redirect") != "" {
+						t.Errorf("htmx answer carries Location %q / HX-Redirect %q, a page load is what it must avoid",
+							rec.Header().Get("Location"), rec.Header().Get("HX-Redirect"))
 					}
+					var loc map[string]string
+					if err := json.Unmarshal([]byte(rec.Header().Get("HX-Location")), &loc); err != nil {
+						t.Fatalf("HX-Location %q: %v", rec.Header().Get("HX-Location"), err)
+					}
+					// Navigates like a boosted link: only #main and the shell regions change.
+					if loc["target"] != "#main" || loc["select"] != "#main" || loc["swap"] != "outerHTML" ||
+						!strings.Contains(loc["selectOOB"], "#nx-tabs") || !strings.Contains(loc["selectOOB"], "#nx-nav") {
+						t.Errorf("HX-Location does not navigate like a boosted link: %v", loc)
+					}
+					got = loc["path"]
 				}
 				if got != tc.location {
 					t.Errorf("redirect to %q, want %q", got, tc.location)
@@ -237,13 +248,5 @@ func TestNextHostURL(t *testing.T) {
 	}
 	if got := nextHostURL(hosts[:1], "a"); got != "/" {
 		t.Errorf("last host: %q", got)
-	}
-}
-
-func TestRemoveStateEventPayload(t *testing.T) {
-	e, _ := newOverviewEnv(t)
-	name, out, ok := e.srv.renderOverviewState(nil, grid.Event{Kind: grid.EventHostRemoved, Host: "a1", Payload: grid.HostInfo{ID: "a1", Name: "alpha"}})
-	if !ok || name != sseOverviewState || !strings.Contains(out, "alpha removed") {
-		t.Errorf("removed event: %q %q %v", name, out, ok)
 	}
 }

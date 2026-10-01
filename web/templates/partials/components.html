@@ -20,9 +20,19 @@
   <div class="value-box{{if .Small}} sm{{end}}{{if .Bad}} bad{{end}}">{{with .BoxIcon}}{{icon . 14}}{{end}}{{with .BoxText}}<b>{{.}}</b>{{end}}{{with .BoxUnit}}<span>{{.}}</span>{{end}}</div>
 </div>{{end}}
 
+{{/* In-app navigation without a page load. A link that carries {{template "nx-boost"}} is fetched with htmx; the
+     response is a normal full page of which only #main replaces the current main area, and the regions of the app
+     shell that depend on the host or the view (tabs, pills, nav, node card, status bar) are swapped in place
+     (hx-select-oob), so the top bar, its animations and the event stream stay as they are. nexus.js owns the rest
+     (history, focus, errors). The list of regions is the single source for the links, for <body data-regions>
+     (used by nexus.js to refresh them) and for the Go side (HX-Location after removing a host). */}}
+{{define "nx-regions"}}#nx-micro-host,#nx-micro-short,#topbar-latency,#nx-pill,#nx-tabs,#nx-node,#nx-nav,#nx-portrait,#nx-bnav,#job-chip-slot,#statusbar-log,#nx-status-host{{end}}
+{{define "nx-boost"}}hx-boost="true" hx-target="#main" hx-select="#main" hx-swap="outerHTML" hx-sync="body:replace" hx-select-oob="{{template "nx-regions"}}"{{end}}
+
 {{/* Full-width card button. Label, Icon (default "info"), Variant: "", "light", "grey", "lime",
-     Href (renders a link), Type, Attrs, IconSize (default 14), NoIcon (true drops the icon). */}}
-{{define "btn-card"}}{{if .Href}}<a class="btn-card{{with .Variant}} btn-card-{{.}}{{end}}" href="{{.Href}}"{{with .Attrs}} {{.}}{{end}}><span>{{.Label}}</span>{{template "btn-card-icon" .}}</a>{{else}}<button type="{{if .Type}}{{.Type}}{{else}}button{{end}}" class="btn-card{{with .Variant}} btn-card-{{.}}{{end}}"{{with .Attrs}} {{.}}{{end}}><span>{{.Label}}</span>{{template "btn-card-icon" .}}</button>{{end}}{{end}}
+     Href (renders a link), Boost (the link navigates inside the app, see "nx-boost"), Type, Attrs,
+     IconSize (default 14), NoIcon (true drops the icon). */}}
+{{define "btn-card"}}{{if .Href}}<a class="btn-card{{with .Variant}} btn-card-{{.}}{{end}}" href="{{.Href}}"{{if .Boost}} {{template "nx-boost"}}{{end}}{{with .Attrs}} {{.}}{{end}}><span>{{.Label}}</span>{{template "btn-card-icon" .}}</a>{{else}}<button type="{{if .Type}}{{.Type}}{{else}}button{{end}}" class="btn-card{{with .Variant}} btn-card-{{.}}{{end}}"{{with .Attrs}} {{.}}{{end}}><span>{{.Label}}</span>{{template "btn-card-icon" .}}</button>{{end}}{{end}}
 {{define "btn-card-icon"}}{{if not .NoIcon}}{{icon (or .Icon "info") (or .IconSize 14)}}{{end}}{{end}}
 
 {{/* Item tile: Tone ("lime", "green", "blue", "purple", "pink", "grey"), Glyph (icon name), Label,

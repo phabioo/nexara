@@ -1,11 +1,12 @@
-{{/* Nexara Shell. Data: views.ShellPage. The terminal is xterm.js (js/shell.js) on the WebSocket in data-ws. */}}
+{{/* Nexara Shell. Data: views.ShellPage. The terminal is xterm.js (js/shell.js, loaded by the app layout; the
+     xterm files below only save a request on a direct load, shell.js loads them itself after in-app navigation)
+     on the WebSocket in data-ws. */}}
 {{define "head"}}<link rel="stylesheet" href="{{static "css/xterm-6.0.0.css"}}">{{end}}
 
 {{define "scripts"}}{{if eq .State "ready"}}<script src="{{static "js/vendor/xterm-6.0.0.js"}}" defer></script>
-<script src="{{static "js/vendor/xterm-addon-fit-0.11.0.js"}}" defer></script>{{end}}
-<script src="{{static "js/shell.js"}}" defer></script>{{end}}
+<script src="{{static "js/vendor/xterm-addon-fit-0.11.0.js"}}" defer></script>{{end}}{{end}}
 
-{{define "content"}}<section class="view shell-view" data-shell data-state="{{.State}}" data-host="{{.Host}}" data-label="{{.Label}}"{{with .WSURL}} data-ws="{{.}}"{{end}}>
+{{define "content"}}<section class="view shell-view" data-shell data-state="{{.State}}" data-host="{{.Host}}" data-label="{{.Label}}"{{with .WSURL}} data-ws="{{.}}" data-xterm-css="{{static "css/xterm-6.0.0.css"}}" data-xterm-js="{{static "js/vendor/xterm-6.0.0.js"}}" data-xterm-fit="{{static "js/vendor/xterm-addon-fit-0.11.0.js"}}"{{end}}>
   <div class="view-head">
     <span class="view-title">Nexara Shell: Session 1</span>
     {{if eq .State "ready"}}<button type="button" class="shell-clear" data-shell-clear>Clear</button>{{end}}
@@ -58,16 +59,15 @@
         {{template "tag" (dict "Tone" "dark" "Text" "Offline")}}
         <p class="card-text">The Grid Agent on {{.Label}} is not connected, so no shell session can be opened. This page returns to the terminal as soon as the agent reconnects.</p>
         {{template "checker"}}
-        {{template "btn-card" (dict "Label" "Back to overview" "Href" .BackURL "Icon" "arrow-right")}}
+        {{template "btn-card" (dict "Label" "Back to overview" "Href" .BackURL "Boost" true "Icon" "arrow-right")}}
       </div>
-      <div class="visually-hidden" hidden data-shell-watch sse-swap="shell-host-state"></div>
       {{else}}
       {{template "card-head" (dict "Title" "Shell disabled")}}
       <div class="card-body">
         {{template "tag" (dict "Tone" "light" "Text" "Disabled")}}
         <p class="card-text">Nexara Shell is turned off for {{.Label}}. Enable the shell capability in the Grid Agent configuration on the host to use it.</p>
         {{template "checker"}}
-        {{template "btn-card" (dict "Label" "Back to overview" "Href" .BackURL "Icon" "arrow-right")}}
+        {{template "btn-card" (dict "Label" "Back to overview" "Href" .BackURL "Boost" true "Icon" "arrow-right")}}
       </div>
       {{end}}
     </div>

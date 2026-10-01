@@ -63,7 +63,10 @@ func TestLayoutModel(t *testing.T) {
 	if got.Log != "apt upgrade · done" {
 		t.Errorf("Log = %q", got.Log)
 	}
-	if got.EventsURL != "/events?host=alpha" || none.EventsURL != "" {
+	if got.HostKey != "alpha" || none.HostKey != "" {
+		t.Errorf("HostKey = %q / %q, want the short name of the host on screen", got.HostKey, none.HostKey)
+	}
+	if got.EventsURL != "/events" || none.EventsURL != "/events" {
 		t.Errorf("EventsURL = %q / %q", got.EventsURL, none.EventsURL)
 	}
 	if got.Job != nil {
