@@ -292,6 +292,17 @@ func TestRealDialerProbeFailures(t *testing.T) {
 	}
 }
 
+// oneCharOff changes the last character of a fingerprint. The last base64
+// character of a SHA-256 fingerprint carries only 4 bits, so a fixed
+// replacement would equal the original about once in 16 runs.
+func oneCharOff(fp string) string {
+	last := "A"
+	if strings.HasSuffix(fp, "A") {
+		last = "E"
+	}
+	return fp[:len(fp)-1] + last
+}
+
 func TestRealDialerPinsTheConfirmedHostKey(t *testing.T) {
 	srv := startSSHServer(t, nil, func(string, []byte) (string, string, int) { return "", "", 0 })
 	other := startSSHServer(t, nil, func(string, []byte) (string, string, int) { return "", "", 0 })
@@ -302,7 +313,7 @@ func TestRealDialerPinsTheConfirmedHostKey(t *testing.T) {
 	}{
 		{"confirmed key", srv.fingerprint(), nil},
 		{"another host's key", other.fingerprint(), grid.ErrHostKeyMismatch},
-		{"one character off", srv.fingerprint()[:len(srv.fingerprint())-1] + "A", grid.ErrHostKeyMismatch},
+		{"one character off", oneCharOff(srv.fingerprint()), grid.ErrHostKeyMismatch},
 		{"no fingerprint given", "", errors.New("any")},
 		{"malformed fingerprint", "SHA256:short", errors.New("any")},
 	}
