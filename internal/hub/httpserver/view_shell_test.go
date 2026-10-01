@@ -69,7 +69,7 @@ func TestShellPageStates(t *testing.T) {
 				"v.6.6.51", "js/vendor/xterm-6.0.0.js", "js/vendor/xterm-addon-fit-0.11.0.js", "css/xterm-6.0.0.css",
 				"js/shell.js", `data-key="esc"`, `data-key="ctrl"`, `data-text="|"`, "Nexara Shell: Session 1",
 			},
-			absent: []string{"SSH", "· Offline", "Shell disabled"},
+			absent: []string{"SSH.SESSION", "PROTOCOL: SSH", "(SSH KEY)", "· Offline", "Shell disabled"},
 		},
 		{
 			name: "offline host shows the offline card and never connects", path: "/hosts/beta/shell", wantState: "offline",
