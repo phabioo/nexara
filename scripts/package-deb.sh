@@ -60,10 +60,16 @@ for s in postinst prerm postrm; do
 	fi
 done
 
+# Debian sorts 0.1.0~rc1 before 0.1.0; the file name keeps the plain version.
+case "$version" in
+*-*) deb_version="${version%%-*}~${version#*-}" ;;
+*) deb_version=$version ;;
+esac
+
 size=$(du -sk "$pkg/usr" "$pkg/lib" | awk '{s += $1} END {print s}')
 cat >"$pkg/DEBIAN/control" <<CTRL
 Package: nexus
-Version: $version
+Version: $deb_version
 Architecture: $arch
 Maintainer: phabioo <phabioo@users.noreply.github.com>
 Installed-Size: $size

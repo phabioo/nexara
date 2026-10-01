@@ -36,26 +36,29 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           version="${TAG#v}"
-          case "$version" in
-            [0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "::error::tag '$TAG' is not vX.Y.Z"; exit 1 ;;
-          esac
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::tag is not vX.Y.Z[-suffix]"
+            exit 1
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           case "$version" in
             *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
             *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
           esac
       - name: build
-        run: scripts/build.sh --version "${{ steps.ver.outputs.version }}" --out dist
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: scripts/build.sh --version "$VERSION" --out dist
       - name: package and sign
         env:
           NEXARA_RELEASE_SIGNING_KEY: ${{ secrets.NEXARA_RELEASE_SIGNING_KEY }}
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           if [ -z "$NEXARA_RELEASE_SIGNING_KEY" ]; then
             echo "::error::secret NEXARA_RELEASE_SIGNING_KEY is not set"
             exit 1
           fi
-          scripts/release.sh "${{ steps.ver.outputs.version }}" dist
+          scripts/release.sh "$VERSION" dist
       - name: verify signature
         run: |
           openssl pkeyutl -verify -pubin -inkey deploy/keys/nexara-release.pub \
@@ -65,9 +68,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ steps.ver.outputs.prerelease }}
         run: |
           flags=""
-          if [ "${{ steps.ver.outputs.prerelease }}" = "true" ]; then
+          if [ "$PRERELEASE" = "true" ]; then
             flags="--prerelease"
           fi
           # shellcheck disable=SC2086
