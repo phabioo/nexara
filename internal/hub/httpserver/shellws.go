@@ -95,8 +95,14 @@ func (s *Server) handleShellWS(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close(code, reason)
 		return
 	}
-	guard, _ := s.guardFor(r) // the session is known (checked above)
 	actor := ActorFrom(r)
+	guard, ok := s.guardFor(r)
+	if !ok { // the session ended while the shell was being opened
+		_ = shell.Close()
+		s.auth.AuditShellSessionEnded(context.Background(), actor.Operator, host.Name, actor.IP)
+		_ = conn.Close(websocket.StatusPolicyViolation, shellReasonSessionEnded)
+		return
+	}
 	s.proxyShell(ctx, conn, shell, guard, func(ctx context.Context) {
 		s.auth.AuditShellSessionEnded(ctx, actor.Operator, host.Name, actor.IP)
 	})

@@ -205,8 +205,8 @@ func TestCommitSealsTOTP(t *testing.T) {
 	if strings.Contains(string(u.TOTPSecretEnc), enr.Secret) {
 		t.Error("TOTP secret stored in clear")
 	}
-	plain, err := auth.Open(testKey(), u.TOTPSecretEnc, auth.AADTOTP)
-	if err != nil || string(plain) != enr.Secret {
+	plain, err := e.auth.OpenTOTPSecret(u.ID, u.TOTPSecretEnc)
+	if err != nil || plain != enr.Secret {
 		t.Errorf("sealed secret does not open: %q %v", plain, err)
 	}
 	// Sign-in now asks for the second factor.

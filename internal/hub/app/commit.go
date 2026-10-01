@@ -79,13 +79,6 @@ func (c *committer) Commit(ctx context.Context, res setup.Result, clientIP strin
 		}
 		return httpserver.SetupOutcome{}, fmt.Errorf("app: hash passphrase: %w", err)
 	}
-	var sealed []byte
-	if res.TOTPSecret != "" {
-		if sealed, err = c.auth.SealTOTPSecret(res.TOTPSecret); err != nil {
-			return httpserver.SetupOutcome{}, fmt.Errorf("app: seal TOTP secret: %w", err)
-		}
-	}
-
 	var newCfg config.HubConfig
 	written := false
 	if c.configPath != "" {
@@ -113,15 +106,27 @@ func (c *committer) Commit(ctx context.Context, res setup.Result, clientIP strin
 		written = true
 	}
 
-	user, err := c.st.CreateUser(ctx, store.User{
-		OperatorID: res.OperatorID, PassHash: hash,
-		TOTPSecretEnc: sealed, TOTPEnabled: sealed != nil,
-	})
+	user, err := c.st.CreateUser(ctx, store.User{OperatorID: res.OperatorID, PassHash: hash})
 	if errors.Is(err, store.ErrExists) {
 		return httpserver.SetupOutcome{}, httpserver.ErrSetupDone
 	}
 	if err != nil {
 		return httpserver.SetupOutcome{}, fmt.Errorf("app: create operator: %w", err)
+	}
+	if res.TOTPSecret != "" {
+		// The sealed blob is bound to the user ID, which exists only now. If
+		// storing it fails the operator is removed again (no users existed
+		// before this commit), so nobody ends up without the 2FA they chose.
+		sealed, err := c.auth.SealTOTPSecret(user.ID, res.TOTPSecret)
+		if err == nil {
+			err = c.st.SetTOTP(ctx, user.ID, sealed, true)
+		}
+		if err != nil {
+			if _, derr := c.st.DeleteAllUsers(ctx); derr != nil {
+				c.log.Error("setup commit: roll back operator", "err", derr)
+			}
+			return httpserver.SetupOutcome{}, fmt.Errorf("app: store TOTP secret: %w", err)
+		}
 	}
 
 	// --- point of no return: the operator exists ---
@@ -161,7 +166,7 @@ func (c *committer) Commit(ctx context.Context, res setup.Result, clientIP strin
 	}
 
 	twoFactor := "skipped"
-	if sealed != nil {
+	if res.TOTPSecret != "" {
 		twoFactor = "on"
 	}
 	cfgState := "unchanged"

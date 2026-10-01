@@ -240,7 +240,7 @@ func TestServeWithOperatorSignsIn(t *testing.T) {
 	u, _ := url.Parse(h.base)
 	var csrf string
 	for _, c := range h.client.Jar.Cookies(u) {
-		if c.Name == auth.CSRFCookieName {
+		if c.Name == auth.CookieName(auth.CSRFCookieName, true) {
 			csrf = c.Value
 		}
 	}
@@ -258,7 +258,7 @@ func TestServeWithOperatorSignsIn(t *testing.T) {
 	}
 	var session *http.Cookie
 	for _, c := range resp.Cookies() {
-		if c.Name == auth.SessionCookieName {
+		if c.Name == auth.CookieName(auth.SessionCookieName, true) {
 			session = c
 		}
 	}
