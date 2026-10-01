@@ -52,3 +52,7 @@ No Critical or High findings; no remote code execution or authentication bypass 
 - Real agent on a Pi (mTLS, shell, apt) end to end; reviewed by code only.
 - Timing side channels measured (reviewed in code only).
 - GitHub repository settings (secret scope, tag protection).
+
+## Resolution (wave 5)
+
+All findings S-01 to S-18 were fixed in wave 5, S-19 (a, c, e, h) as well; S-19 (b, d, f, g, j) remain notes for later. Design decisions: #41 (two-phase SSH link), #45 (CA name constraints; the setup wizard only accepts agent addresses the CA covers), #46 (no silent host replacement), #47 (host removal now, agent certificate renewal in v0.2). S-14 also needs the repository settings (environment `release` with required reviewer, tag ruleset for `v*`), which the owner configures.

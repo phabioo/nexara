@@ -1,8 +1,8 @@
 # Umsetzungsstand v0.1
 
-Stand: 01.10.2026 · nach Welle 4 · CI grün (Linux amd64 + arm64, `go test -race`)
+Stand: 01.10.2026 · nach Welle 5 · CI grün (Linux amd64 + arm64, `go test -race`)
 
-Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbeitenden Sonnet-Agents, jedes Ergebnis vom Orchestrator geprüft, gemergt und per GitHub Actions getestet. **Pausiert nach Welle 4** auf Wunsch. Welle 4 liegt auf dem Session-Branch `claude/zealous-wozniak-26b1q7` (PR nach `main`).
+Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbeitenden Sonnet-Agents, jedes Ergebnis vom Orchestrator geprüft, gemergt und per GitHub Actions getestet. **Pausiert nach Welle 5** (Sicherheits-Fixes) auf Wunsch. Welle 5 liegt auf dem Session-Branch `claude/zealous-wozniak-26b1q7` (PR nach `main`).
 
 ## Fertig
 
@@ -30,22 +30,25 @@ Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbei
 | 3 | Querschnitt | Layout, `nexus.js`, `layout_live.go` | Abmelden, Job-Chip auf allen Seiten, eine SSE-Verbindung pro Seite, Live-Topbar, Fehler-Toasts mit echten Statuscodes, Session-Ablauf → Login |
 | 4 | Build & Release | `scripts/`, `.github/workflows/release.yml`, `internal/release` | `build.sh` (Agents vor dem Hub, `CGO_ENABLED=0`, Version per ldflags), `package-deb.sh`, `release.sh` (`SHA256SUMS` + ed25519-Signatur), Release-Workflow bei `v*.*.*` (Tag streng geprüft, Secret nur im Signierschritt), Go-Prüfung der Signatur für das Selbst-Update in v0.2 |
 | 4 | Install & Paket | `deploy/`, `cmd/nexus/uninstall.go`, `internal/hub/app/uninstall.go` | systemd-Units (Hub gehärtet, `RuntimeDirectory=nexus`), Maintainer-Skripte (Benutzer `nexus`, Verzeichnisse, Configs, Self-Link-Agent), `install.sh` (Signatur + Prüfsumme, Ausgabe URL, Setup-Code, Fingerprint), `nexus uninstall [--purge]` |
+| 5 | Sicherheits-Fixes | siehe `docs/security-review-v0.1.md` | Review ohne kritische/hohe Befunde; behoben: Streams enden mit der Session, Body-Zeitlimit, Login-Sperre pro Konto+IP, HSTS, `__Host-`-Cookies, HKDF-Teilschlüssel; zweistufiger SSH-Link mit Fingerprint-Bestätigung (#41), keine stille Host-Übernahme (#46), längere Codes, Token nicht mehr in `ps`; CA mit NameConstraints, 5 Jahre (#45); Host entfernen mit Widerruf (#47); Go 1.26.8 + `govulncheck` in CI, Release-Environment, `nexus.db` 0600, kein Self-Update paketierter Agents, Setup-Sperre pro IP, mehr Audit, `nexus user unlock`, mehr systemd-Härtung |
 
 Zusätzlich vom Orchestrator: `internal/hub/agentbin` (eingebettete Agent-Binaries), CI-Workflow `.github/workflows/ci.yml`, Entscheidungen #27–#42 in `decisions.md`.
 
-Umfang: 201 Go-Dateien, davon 82 Testdateien.
+Umfang: 224 Go-Dateien, davon 98 Testdateien.
 
 ## Nächste Schritte
 
-1. **Erstes Release:** Tag `v0.1.0-rc1` setzen → Release-Workflow baut, signiert und veröffentlicht. Voraussetzung: Secret `NEXARA_RELEASE_SIGNING_KEY` ist angelegt (öffentlicher Schlüssel: `deploy/keys/nexara-release.pub`, #43).
-2. **Sicherheits-Review** durch einen read-only Agenten.
-3. **Test auf den Pis** durch den Nutzer: `curl -fsSL https://github.com/phabioo/nexara/releases/latest/download/install.sh | sudo sh` (bei einem Pre-Release die URL des Tags verwenden), Gate: 2 Wochen stabil.
+1. **Erstes Release:** Nach dem Merge Tag `v0.1.0-rc1` vom eigenen Rechner pushen (die Session darf keine Tags pushen). Der Release-Job wartet auf die Freigabe im Environment `release` (Secret `NEXARA_RELEASE_SIGNING_KEY` liegt dort, #43).
+2. **Test auf den Pis** durch den Nutzer: `curl -fsSL https://github.com/phabioo/nexara/releases/download/v0.1.0-rc1/install.sh | NEXARA_BASE_URL=https://github.com/phabioo/nexara/releases/download/v0.1.0-rc1 sudo -E sh` (Pre-Releases zählen nicht als „latest“), Gate: 2 Wochen stabil.
+3. **v0.2:** Agent-Zertifikate über den mTLS-Kanal erneuern (#47, vor Ablauf nach 1 Jahr), Audit-Ansicht, Backup/Restore, Selbst-Update, TOTP verpflichtend.
 
-## Offene Punkte aus Welle 4
+## Offene Punkte
 
-- Der Hub-eigene Agent liegt als `/usr/bin/grid-agent` im Paket; die Unit stammt aus `script.go` (`/usr/local/bin/grid-agent`), ein Drop-in `/etc/systemd/system/grid-agent.service.d/10-package-binary.conf` setzt `ExecStart` auf `/usr/bin/grid-agent`. Auto-Update des Hub-eigenen Agenten würde eine dpkg-Datei überschreiben; da Hub und Agent aus demselben Build stammen, tritt es nur bei Versionsabweichung auf – im Review prüfen.
-- `nexus.db` entsteht mit 0644 (Verzeichnis 0750 schützt); im Review auf 0600 setzen.
-- `install.sh` braucht OpenSSL ≥ 3 (`-rawin`), also Raspberry Pi OS/Debian Bookworm oder neuer.
+- Hub-eigener Agent: Unit aus `script.go` (`/usr/local/bin/grid-agent`) plus Drop-in auf `/usr/bin/grid-agent`; Self-Update verweigert paketierte Binaries (S-13), Update kommt mit dem Paket.
+- `install.sh` braucht OpenSSL ≥ 3 (Bookworm oder neuer).
+- Setup-Session-Cookie: das `__Host-`-Präfix setzt ein Shim in `httpserver/cookies.go`; sauberer wäre eine Namensoption in `setup.SessionOptions`.
+- Bei der Kopplung per Code gibt es kein „Ersetzen“ (nur beim SSH-Link); ein abgelehnter Code ist verbraucht.
+- `govulncheck` lief noch nie (Datenbank aus der Session nicht erreichbar) – erster CI-Lauf zeigt es.
 
 ## UI ausprobieren
 
