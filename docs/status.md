@@ -64,10 +64,6 @@ Die Session, die weitermacht, arbeitet als **Orchestrator**: Sie schreibt selbst
 4. Mängel als konkrete Liste an denselben Agenten zurück; erst nach erneuter Prüfung mergen (`--no-ff`).
 5. Nach der Welle: alle Branches nach `main` mergen, CI grün abwarten, pushen, `docs/status.md` aktualisieren, **pausieren** und auf Freigabe warten.
 
-**Pakete der nächsten Schritte**
-
-Danach: Sicherheits-Review durch einen read-only Agenten, dann Test auf den Pis durch den Nutzer.
-
 ## Rahmenbedingungen der Arbeitsumgebung
 
 - **Cloud/Linux-Session:** Tests inkl. `-race` laufen direkt; kein Sonderfall nötig.
