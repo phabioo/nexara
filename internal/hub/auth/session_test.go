@@ -263,7 +263,11 @@ func TestCookieAttributes(t *testing.T) {
 
 	check := func(t *testing.T, c *http.Cookie, secure bool) {
 		t.Helper()
-		if c.Name != "nexus_session" || c.Path != "/" || !c.HttpOnly || c.SameSite != http.SameSiteStrictMode || c.Secure != secure {
+		wantName := "nexus_session"
+		if secure {
+			wantName = "__Host-nexus_session"
+		}
+		if c.Name != wantName || c.Path != "/" || !c.HttpOnly || c.SameSite != http.SameSiteStrictMode || c.Secure != secure {
 			t.Fatalf("cookie %+v", c)
 		}
 		if c.Domain != "" {
@@ -319,11 +323,11 @@ func TestCookieAttributes(t *testing.T) {
 	})
 	t.Run("csrf cookie", func(t *testing.T) {
 		c := e.svc.Cookies().CSRF("tok")
-		if c.Name != "nexus_csrf" || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteStrictMode || c.MaxAge != 0 || c.Path != "/" {
+		if c.Name != "__Host-nexus_csrf" || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteStrictMode || c.MaxAge != 0 || c.Path != "/" {
 			t.Fatalf("csrf cookie %+v", c)
 		}
-		if cc := NewCookies(WithSecure(false)).CSRF("tok"); cc.Secure {
-			t.Fatal("WithSecure(false) must apply to the CSRF cookie too")
+		if cc := NewCookies(WithSecure(false)).CSRF("tok"); cc.Secure || cc.Name != "nexus_csrf" {
+			t.Fatalf("WithSecure(false) must apply to the CSRF cookie too and drop the prefix: %+v", cc)
 		}
 		if c := e.svc.Cookies().ClearCSRF(); c.MaxAge >= 0 {
 			t.Fatal("ClearCSRF must delete")

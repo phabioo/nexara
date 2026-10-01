@@ -358,66 +358,189 @@ func TestRateLimitPerAccount(t *testing.T) {
 	e := newEnv(t)
 	e.addUser("alice", testPass)
 
-	for i := 0; i < 5; i++ {
+	// The account-wide threshold is ten times the per-IP one: it only
+	// slows a distributed guess (S-08).
+	for i := 0; i < 50; i++ {
 		ip := fmt.Sprintf("198.51.100.%d", i+1) // a different IP every time
 		if _, err := e.svc.Login(e.ctx, "alice", "wrong", ip, testUA, false); !errors.Is(err, ErrInvalidCredentials) {
 			t.Fatalf("attempt %d: %v", i, err)
 		}
 	}
-	// A sixth IP cannot even try: the account is locked, also for the right passphrase.
-	_, err := e.svc.Login(e.ctx, "alice", testPass, "198.51.100.200", testUA, false)
+	// A new IP cannot even try: the account is locked, also for the right passphrase.
+	_, err := e.svc.Login(e.ctx, "alice", testPass, "203.0.113.200", testUA, false)
 	if !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("err = %v, want ErrRateLimited", err)
 	}
 	// Case variants hit the same account counter.
-	if _, err := e.svc.Login(e.ctx, "ALICE", testPass, "198.51.100.201", testUA, false); !errors.Is(err, ErrRateLimited) {
+	if _, err := e.svc.Login(e.ctx, "ALICE", testPass, "203.0.113.201", testUA, false); !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("case variant: %v", err)
 	}
 	// Retry-after shrinks with time, and unlocks at the end of the window.
 	e.clock.Advance(10 * time.Minute)
-	_, err = e.svc.Login(e.ctx, "alice", testPass, "198.51.100.202", testUA, false)
+	_, err = e.svc.Login(e.ctx, "alice", testPass, "203.0.113.202", testUA, false)
 	if d := RetryAfter(err); !errors.Is(err, ErrRateLimited) || d != 5*time.Minute {
 		t.Fatalf("err = %v, retry %v; want 5m", err, d)
 	}
 	e.clock.Advance(5 * time.Minute)
-	if _, err := e.svc.Login(e.ctx, "alice", testPass, "198.51.100.203", testUA, false); err != nil {
+	if _, err := e.svc.Login(e.ctx, "alice", testPass, "203.0.113.203", testUA, false); err != nil {
 		t.Fatalf("after window: %v", err)
 	}
 }
 
 func TestRateLimitUnknownAccountsAreLimitedToo(t *testing.T) {
 	e := newEnv(t)
+	// Same rules as for a real account (no enumeration): the pair limit ...
 	for i := 0; i < 5; i++ {
-		_, _ = e.svc.Login(e.ctx, "ghost", "x", fmt.Sprintf("198.51.100.%d", i+1), testUA, false)
+		_, _ = e.svc.Login(e.ctx, "ghost", "x", testIP, testUA, false)
 	}
-	_, err := e.svc.Login(e.ctx, "ghost", "x", "198.51.100.99", testUA, false)
-	if !errors.Is(err, ErrRateLimited) {
+	if _, err := e.svc.Login(e.ctx, "ghost", "x", testIP, testUA, false); !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("unknown accounts must lock like real ones (no enumeration): %v", err)
+	}
+	// ... and the account-wide limit.
+	for i := 0; i < 50; i++ {
+		_, _ = e.svc.Login(e.ctx, "phantom", "x", fmt.Sprintf("198.51.100.%d", i+1), testUA, false)
+	}
+	if _, err := e.svc.Login(e.ctx, "phantom", "x", "203.0.113.99", testUA, false); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("unknown accounts must lock account-wide like real ones: %v", err)
 	}
 }
 
 func TestRateLimitResetOnSuccess(t *testing.T) {
 	e := newEnv(t)
 	e.addUser("alice", testPass)
-	fail := func(i int) {
+	n := 0
+	fail := func() {
 		t.Helper()
-		ip := fmt.Sprintf("198.51.100.%d", i)
+		n++
+		ip := fmt.Sprintf("10.%d.%d.1", n/250, n%250)
 		if _, err := e.svc.Login(e.ctx, "alice", "wrong", ip, testUA, false); !errors.Is(err, ErrInvalidCredentials) {
-			t.Fatalf("failure %d: %v", i, err)
+			t.Fatalf("failure %d: %v", n, err)
 		}
 	}
-	for i := 1; i <= 4; i++ {
-		fail(i)
+	for i := 0; i < 49; i++ {
+		fail()
 	}
 	if _, err := e.svc.Login(e.ctx, "alice", testPass, "198.51.100.50", testUA, false); err != nil {
 		t.Fatal(err)
 	}
-	// With the counter reset, four more failures are still not a lock-out.
-	for i := 51; i <= 54; i++ {
-		fail(i)
+	// With the counter reset, 49 more failures are still not a lock-out.
+	for i := 0; i < 49; i++ {
+		fail()
 	}
 	if _, err := e.svc.Login(e.ctx, "alice", testPass, "198.51.100.60", testUA, false); err != nil {
 		t.Fatalf("account locked although the counter was reset: %v", err)
+	}
+}
+
+// S-08: guessing against the operator's ID must not lock the operator out.
+func TestLockoutCannotLockOutTheOperator(t *testing.T) {
+	e := newEnv(t)
+	e.addUser("alice", testPass)
+	const attacker, operator = "198.51.100.66", "192.0.2.10"
+
+	for i := 0; i < 5; i++ {
+		if _, err := e.svc.Login(e.ctx, "alice", "wrong", attacker, testUA, false); !errors.Is(err, ErrInvalidCredentials) {
+			t.Fatalf("attempt %d: %v", i, err)
+		}
+	}
+	// The attacker's address is locked, even with the right passphrase ...
+	if _, err := e.svc.Login(e.ctx, "alice", testPass, attacker, testUA, false); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("attacker: %v, want ErrRateLimited", err)
+	}
+	// ... but the operator on another address gets in.
+	if _, err := e.svc.Login(e.ctx, "alice", testPass, operator, testUA, false); err != nil {
+		t.Fatalf("operator locked out by someone else's failures: %v", err)
+	}
+}
+
+func TestAccountWideLimitExemptsKnownIPs(t *testing.T) {
+	const operator, stranger = "192.0.2.10", "203.0.113.77"
+	signIn := func(e *testEnv) {
+		t.Helper()
+		if _, err := e.svc.Login(e.ctx, "alice", testPass, operator, testUA, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		name  string
+		setup func(e *testEnv) // before the flood
+		want  bool             // operator gets in
+	}{
+		{"unknown address is held back", func(*testEnv) {}, false},
+		{"address with a recent success is exempt", signIn, true},
+		{"success 31 days ago no longer counts", func(e *testEnv) {
+			signIn(e)
+			e.clock.Advance(31 * 24 * time.Hour)
+		}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			e.addUser("alice", testPass)
+			tc.setup(e)
+			for i := 0; i < 50; i++ { // from 50 different addresses: only the account-wide limit can react
+				_, _ = e.svc.Login(e.ctx, "alice", "wrong", fmt.Sprintf("198.51.100.%d", i+1), testUA, false)
+			}
+			// A stranger never gets past the account-wide limit.
+			if _, err := e.svc.Login(e.ctx, "alice", testPass, stranger, testUA, false); !errors.Is(err, ErrRateLimited) {
+				t.Fatalf("stranger: %v, want ErrRateLimited", err)
+			}
+			_, err := e.svc.Login(e.ctx, "alice", testPass, operator, testUA, false)
+			if got := err == nil; got != tc.want {
+				t.Fatalf("operator signed in = %v (%v), want %v", got, err, tc.want)
+			}
+		})
+	}
+}
+
+// The exemption is rebuilt from the audit log, so it survives a restart.
+func TestKnownIPsSurviveRestart(t *testing.T) {
+	e := newEnv(t)
+	e.addUser("alice", testPass)
+	if _, err := e.svc.Login(e.ctx, "alice", testPass, "192.0.2.10", testUA, false); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := NewService(Config{
+		Store: e.store, SecretKey: e.key, RateAttempts: 5, RateWindow: 15 * time.Minute,
+		HashParams: testParams, Now: e.clock.Now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 50; i++ {
+		_, _ = restarted.Login(e.ctx, "alice", "wrong", fmt.Sprintf("198.51.100.%d", i+1), testUA, false)
+	}
+	if _, err := restarted.Login(e.ctx, "alice", testPass, "203.0.113.77", testUA, false); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("unknown address: %v, want ErrRateLimited", err)
+	}
+	if _, err := restarted.Login(e.ctx, "alice", testPass, "192.0.2.10", testUA, false); err != nil {
+		t.Fatalf("known address locked out after restart: %v", err)
+	}
+}
+
+func TestAccountRateAttemptsConfig(t *testing.T) {
+	e := newEnv(t, func(c *Config) { c.AccountRateAttempts = 7 })
+	e.addUser("alice", testPass)
+	for i := 0; i < 7; i++ {
+		_, _ = e.svc.Login(e.ctx, "alice", "wrong", fmt.Sprintf("198.51.100.%d", i+1), testUA, false)
+	}
+	if _, err := e.svc.Login(e.ctx, "alice", testPass, "203.0.113.1", testUA, false); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("err = %v, want ErrRateLimited at the configured threshold", err)
+	}
+}
+
+func TestClearLoginLimits(t *testing.T) {
+	e := newEnv(t)
+	e.addUser("alice", testPass)
+	for i := 0; i < 5; i++ {
+		_, _ = e.svc.Login(e.ctx, "alice", "wrong", testIP, testUA, false)
+	}
+	if _, err := e.svc.Login(e.ctx, "alice", testPass, testIP, testUA, false); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("not locked: %v", err)
+	}
+	e.svc.ClearLoginLimits()
+	if _, err := e.svc.Login(e.ctx, "alice", testPass, testIP, testUA, false); err != nil {
+		t.Fatalf("still locked after ClearLoginLimits: %v", err)
 	}
 }
 
@@ -440,8 +563,8 @@ func TestRateLimitTOTPFailuresCount(t *testing.T) {
 	if _, err := e.svc.Login(e.ctx, "alice", testPass, testIP, testUA, false); !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("err = %v, want ErrRateLimited after 5 wrong codes", err)
 	}
-	// And from another IP the account is locked as well.
-	if _, err := e.svc.Login(e.ctx, "alice", testPass, "198.51.100.1", testUA, false); !errors.Is(err, ErrRateLimited) {
+	// Another IP is not locked (S-08): the operator can still get in.
+	if _, err := e.svc.Login(e.ctx, "alice", testPass, "198.51.100.1", testUA, false); !errors.Is(err, ErrSecondFactorRequired) {
 		t.Fatalf("other IP: %v", err)
 	}
 }
@@ -450,9 +573,9 @@ func TestRateLimitBlocksSecondFactorStep(t *testing.T) {
 	e := newEnv(t)
 	_, secret := e.addTOTPUser("alice", testPass)
 	res, _ := e.svc.Login(e.ctx, "alice", testPass, testIP, testUA, false)
-	// Lock the account through failures from elsewhere.
+	// Lock the address through failures from the same IP (another operator ID, so the challenge survives).
 	for i := 0; i < 5; i++ {
-		_, _ = e.svc.Login(e.ctx, "alice", "wrong", fmt.Sprintf("198.51.100.%d", i+1), testUA, false)
+		_, _ = e.svc.Login(e.ctx, "bob", "wrong", testIP, testUA, false)
 	}
 	_, err := e.svc.VerifySecondFactor(e.ctx, res.Challenge, codeAt(t, secret, e.clock.Now()), testIP)
 	if !errors.Is(err, ErrRateLimited) {

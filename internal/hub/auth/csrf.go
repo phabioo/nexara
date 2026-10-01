@@ -15,7 +15,8 @@ const (
 	CSRFHeader = "X-CSRF-Token"
 	// CSRFFormField is the hidden form field name for plain form posts.
 	CSRFFormField = "csrf_token"
-	// CSRFCookieName is the pre-session double-submit cookie (login, TOTP step).
+	// CSRFCookieName is the base name of the pre-session double-submit cookie
+	// (login, TOTP step); Cookies.CSRFName gives the name on the wire.
 	CSRFCookieName = "nexus_csrf"
 
 	maxCSRFTokenLen = 256
@@ -33,7 +34,7 @@ func csrfToken(key []byte, idHash string) string {
 // CSRFToken returns the token to embed in pages of the session (meta tag /
 // hx-headers); the browser sends it back in CSRFHeader.
 func (s *Service) CSRFToken(sess store.Session) string {
-	return csrfToken(s.key, sess.IDHash)
+	return csrfToken(s.csrfKey, sess.IDHash)
 }
 
 // CheckCSRF verifies a submitted token against the session in constant time.
@@ -42,7 +43,7 @@ func (s *Service) CheckCSRF(sess store.Session, token string) bool {
 	if token == "" || len(token) > maxCSRFTokenLen || sess.IDHash == "" {
 		return false
 	}
-	want := csrfToken(s.key, sess.IDHash)
+	want := csrfToken(s.csrfKey, sess.IDHash)
 	return subtle.ConstantTimeCompare([]byte(want), []byte(token)) == 1
 }
 

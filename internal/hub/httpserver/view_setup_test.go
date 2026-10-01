@@ -124,14 +124,14 @@ func (b *setupBrowser) get(target string) *httptest.ResponseRecorder {
 // first if the browser has none yet).
 func (b *setupBrowser) post(target string, v url.Values) *httptest.ResponseRecorder {
 	b.t.Helper()
-	if b.j[auth.CSRFCookieName] == nil {
+	if b.j[csrfCookieName] == nil {
 		b.get("/setup")
 	}
 	if v == nil {
 		v = url.Values{}
 	}
 	if v.Get(auth.CSRFFormField) == "" {
-		v.Set(auth.CSRFFormField, b.j[auth.CSRFCookieName].Value)
+		v.Set(auth.CSRFFormField, b.j[csrfCookieName].Value)
 	}
 	return b.do(http.MethodPost, target, v)
 }
@@ -144,7 +144,7 @@ func (b *setupBrowser) unlock() {
 	}
 }
 
-func (b *setupBrowser) token() string { return b.j[setup.SessionCookie].Value }
+func (b *setupBrowser) token() string { return b.j[setupCookieName].Value }
 
 func wantRedirect(t *testing.T, rec *httptest.ResponseRecorder, loc string) {
 	t.Helper()
@@ -212,7 +212,7 @@ func TestSetupUnlockPage(t *testing.T) {
 			wantNoBody(t, rec, "Restore", "backup")
 			// The real code must never be on the page.
 			wantNoBody(t, rec, e.code, setup.FormatCode(e.code))
-			if c := findCookie(rec, auth.CSRFCookieName); c == nil {
+			if c := findCookie(rec, csrfCookieName); c == nil {
 				t.Error("no CSRF cookie")
 			} else {
 				assertCookieAttrs(t, c)
@@ -262,7 +262,7 @@ func TestSetupUnlockPost(t *testing.T) {
 			v := strings.NewReplacer("{code}", code, "{code-lower}", strings.ToLower(code)).Replace(form)
 			rec := b.post("/setup/unlock", url.Values{"code": {v}})
 			wantRedirect(t, rec, "/setup/trust")
-			c := findCookie(rec, setup.SessionCookie)
+			c := findCookie(rec, setupCookieName)
 			assertCookieAttrs(t, c)
 			if c.MaxAge != 0 || c.Path != "/" {
 				t.Errorf("cookie = %+v", c)
@@ -299,7 +299,7 @@ func TestSetupUnlockPost(t *testing.T) {
 				t.Fatalf("try %d: status %d", i+1, rec.Code)
 			}
 			wantBody(t, rec, "Code invalid or expired. "+want+".", strconv.Itoa(setup.MaxAttempts-i-1)+" of 5 attempts left")
-			if findCookie(rec, setup.SessionCookie) != nil {
+			if findCookie(rec, setupCookieName) != nil {
 				t.Error("session cookie set after a wrong code")
 			}
 		}
@@ -361,7 +361,7 @@ func TestSetupUnlockPost(t *testing.T) {
 func TestSetupCSRF(t *testing.T) {
 	e := newSetupEnv(t)
 	good := func(b *setupBrowser) url.Values {
-		return url.Values{auth.CSRFFormField: {b.j[auth.CSRFCookieName].Value}}
+		return url.Values{auth.CSRFFormField: {b.j[csrfCookieName].Value}}
 	}
 	for _, path := range []string{"/setup/unlock", "/setup/trust", "/setup/operator", "/setup/two-factor", "/setup/hub", "/setup/self-link", "/setup/ready"} {
 		t.Run(path, func(t *testing.T) {
@@ -774,7 +774,7 @@ func TestSetupReadyAndCommit(t *testing.T) {
 				t.Errorf("result = %+v", r)
 			}
 			// The setup cookie is gone exactly when the commit succeeded.
-			cleared := findCookie(rec, setup.SessionCookie)
+			cleared := findCookie(rec, setupCookieName)
 			wantCleared := tt.wantCode == 200 || tt.wantLoc == "/login?setup=done"
 			if wantCleared != (cleared != nil && cleared.MaxAge < 0) {
 				t.Errorf("setup cookie cleared = %v, want %v", cleared != nil, wantCleared)

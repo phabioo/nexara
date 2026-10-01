@@ -62,16 +62,14 @@ type LoginResult struct {
 // thief cannot reset it by repeating step one.
 func (s *Service) Login(ctx context.Context, operatorID, passphrase, ip, userAgent string, persistent bool) (LoginResult, error) {
 	operatorID = strings.TrimSpace(operatorID)
-	ipKey, acctKey := limiterKey(limiterKeyIP, ip), limiterKey(limiterKeyAccount, operatorID)
-
-	if err := s.rateCheck(ctx, operatorID, ip, ipKey, acctKey); err != nil {
+	if err := s.rateCheck(ctx, operatorID, ip); err != nil {
 		return LoginResult{}, err
 	}
 
 	// Cheap rejections that must not reach argon2: empty input and inputs
 	// that can never be a valid passphrase.
 	if operatorID == "" || passphrase == "" || utf8.RuneCountInString(passphrase) > MaxPassphraseLength {
-		s.loginFailed(ctx, operatorID, ip, "invalid_input", ipKey, acctKey)
+		s.loginFailed(ctx, operatorID, ip, "invalid_input")
 		return LoginResult{}, ErrInvalidCredentials
 	}
 
@@ -81,7 +79,7 @@ func (s *Service) Login(ctx context.Context, operatorID, passphrase, ip, userAge
 		if err := s.burnPasswordHash(ctx, passphrase); err != nil {
 			return LoginResult{}, err
 		}
-		s.loginFailed(ctx, operatorID, ip, "unknown_user", ipKey, acctKey)
+		s.loginFailed(ctx, operatorID, ip, "unknown_user")
 		return LoginResult{}, ErrInvalidCredentials
 	case err != nil:
 		return LoginResult{}, fmt.Errorf("auth: look up operator: %w", err)
@@ -93,7 +91,7 @@ func (s *Service) Login(ctx context.Context, operatorID, passphrase, ip, userAge
 		return LoginResult{}, fmt.Errorf("auth: verify passphrase: %w", err)
 	}
 	if !ok {
-		s.loginFailed(ctx, user.OperatorID, ip, "bad_passphrase", ipKey, acctKey)
+		s.loginFailed(ctx, user.OperatorID, ip, "bad_passphrase")
 		return LoginResult{}, ErrInvalidCredentials
 	}
 
@@ -120,13 +118,12 @@ func (s *Service) VerifySecondFactor(ctx context.Context, challengeID, code, ip 
 	if !ok {
 		return LoginResult{}, ErrInvalidChallenge
 	}
-	ipKey, acctKey := limiterKey(limiterKeyIP, ip), limiterKey(limiterKeyAccount, ch.operatorID)
-	if err := s.rateCheck(ctx, ch.operatorID, ip, ipKey, acctKey); err != nil {
+	if err := s.rateCheck(ctx, ch.operatorID, ip); err != nil {
 		return LoginResult{}, err
 	}
 	if ch.ip != ip {
 		s.dropChallenge(challengeID)
-		s.limiter.fail(ipKey)
+		s.limiter.failIP(ip)
 		s.audit(ctx, ch.operatorID, ActionSecondFact, store.AuditDenied, "ip="+cleanText(ip, maxIPLen)+" reason=challenge_ip_mismatch")
 		return LoginResult{}, ErrInvalidChallenge
 	}
@@ -139,14 +136,14 @@ func (s *Service) VerifySecondFactor(ctx context.Context, challengeID, code, ip 
 	if err != nil {
 		return LoginResult{}, fmt.Errorf("auth: look up operator: %w", err)
 	}
-	secret, err := Open(s.key, user.TOTPSecretEnc, AADTOTP)
+	secret, err := s.OpenTOTPSecret(user.ID, user.TOTPSecretEnc)
 	if err != nil {
 		s.audit(ctx, user.OperatorID, ActionSecondFact, store.AuditError, "ip="+cleanText(ip, maxIPLen)+" reason=totp_secret_unusable")
 		return LoginResult{}, fmt.Errorf("auth: open TOTP secret: %w", err)
 	}
 
-	if !s.totp.VerifyTOTP(user.ID, string(secret), code, s.now()) {
-		s.limiter.fail(ipKey, acctKey)
+	if !s.totp.VerifyTOTP(user.ID, secret, code, s.now()) {
+		s.limiter.fail(ch.operatorID, ip)
 		s.challengeFailed(challengeID)
 		s.audit(ctx, user.OperatorID, ActionSecondFact, store.AuditDenied, "ip="+cleanText(ip, maxIPLen)+" reason=bad_code")
 		return LoginResult{}, ErrInvalidCode
@@ -172,7 +169,9 @@ func (s *Service) Logout(ctx context.Context, rawSessionID, ip string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.store.DeleteSession(ctx, hash); err != nil {
+	err = s.store.DeleteSession(ctx, hash)
+	s.sessions.rev.notify() // open streams of this session end now
+	if err != nil {
 		return err
 	}
 	name := ""
@@ -190,7 +189,7 @@ func (s *Service) finishLogin(ctx context.Context, user store.User, ip, userAgen
 	if err != nil {
 		return LoginResult{}, err
 	}
-	s.limiter.reset(limiterKey(limiterKeyAccount, user.OperatorID))
+	s.limiter.succeed(user.OperatorID, ip)
 	detail := "ip=" + cleanText(ip, maxIPLen)
 	if persistent {
 		detail += " persistent"
@@ -204,8 +203,8 @@ func (s *Service) finishLogin(ctx context.Context, user store.User, ip, userAgen
 
 // rateCheck returns a *RateLimitedError if the IP or account is blocked, and
 // audits the first blocked attempt of each block.
-func (s *Service) rateCheck(ctx context.Context, operatorID, ip string, keys ...string) error {
-	blocked, retry, first := s.limiter.check(keys...)
+func (s *Service) rateCheck(ctx context.Context, operatorID, ip string) error {
+	blocked, retry, first := s.limiter.check(operatorID, ip)
 	if !blocked {
 		return nil
 	}
@@ -216,8 +215,8 @@ func (s *Service) rateCheck(ctx context.Context, operatorID, ip string, keys ...
 	return &RateLimitedError{RetryAfter: retry}
 }
 
-func (s *Service) loginFailed(ctx context.Context, attempted, ip, reason string, keys ...string) {
-	s.limiter.fail(keys...)
+func (s *Service) loginFailed(ctx context.Context, attempted, ip, reason string) {
+	s.limiter.fail(attempted, ip)
 	s.audit(ctx, attempted, ActionLogin, store.AuditDenied, "ip="+cleanText(ip, maxIPLen)+" reason="+reason)
 }
 

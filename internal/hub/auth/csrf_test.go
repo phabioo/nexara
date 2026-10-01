@@ -45,7 +45,7 @@ func TestCSRFSessionBound(t *testing.T) {
 
 	// A session without an ID hash never validates.
 	s1.IDHash = ""
-	if e.svc.CheckCSRF(s1, csrfToken(e.key, "")) {
+	if e.svc.CheckCSRF(s1, csrfToken(e.svc.csrfKey, "")) {
 		t.Fatal("empty session must not validate")
 	}
 }
