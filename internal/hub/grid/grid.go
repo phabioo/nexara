@@ -246,6 +246,10 @@ func (g *Grid) Remove(id HostID) {
 	}
 	info := st.infoLocked()
 	c := st.conn
+	// Detach first: connClosed must not report a removed host as offline or
+	// write its last-seen time.
+	st.conn = nil
+	st.online = false
 	delete(g.hosts, id)
 	delete(g.byFP, st.host.CertFingerprint)
 	g.order = slices.DeleteFunc(g.order, func(x HostID) bool { return x == id })
@@ -260,6 +264,46 @@ func (g *Grid) Remove(id HostID) {
 	if c != nil {
 		c.close()
 	}
+}
+
+// RemoveHost implements Hub (decision #47): the host is revoked in the
+// database first, so a handshake racing with the removal is refused by
+// identifyTLS even before the registry entry is gone, then it leaves the
+// registry (IsRevoked turns true for its certificate) and its live connection
+// is closed. The row stays, revoked and with a freed name, for the audit trail.
+//
+// TODO(v0.2, decision #47): agent certificate renewal over the mTLS channel.
+func (g *Grid) RemoveHost(ctx context.Context, actor Actor, id HostID) error {
+	g.mu.Lock()
+	st, ok := g.hosts[id]
+	var name string
+	if ok {
+		name = st.name
+	}
+	g.mu.Unlock()
+	if !ok {
+		return ErrHostNotFound
+	}
+	err := g.opts.Store.RetireHost(ctx, string(id))
+	if err != nil {
+		g.audit(store.AuditEntry{User: actor.Operator, Host: name, Action: "host.remove", Detail: auditDetailIP(actor), Result: store.AuditError})
+		if errors.Is(err, store.ErrNotFound) {
+			g.Remove(id) // registry and database disagree; the registry entry is stale
+			return ErrHostNotFound
+		}
+		return fmt.Errorf("grid: remove host: %w", err)
+	}
+	g.Remove(id)
+	g.audit(store.AuditEntry{User: actor.Operator, Host: name, Action: "host.remove", Detail: auditDetailIP(actor), Result: store.AuditOK})
+	g.log.Info("host removed", "host", name)
+	return nil
+}
+
+func auditDetailIP(a Actor) string {
+	if a.IP == "" {
+		return ""
+	}
+	return "from " + a.IP
 }
 
 // IsRevoked reports whether a certificate fingerprint must be rejected in the

@@ -103,7 +103,11 @@ func Serve(ctx context.Context, o ServeOptions) error {
 	if err != nil {
 		return err
 	}
-	ca, err := pki.LoadOrCreateCA(cfg.TLS.Dir)
+	// A new CA is name-constrained (decision #45); the configured agent host is
+	// part of the permitted names. The wizard sets it only after the CA exists,
+	// so a later public DNS name is not covered (pki.CA.Permits tells).
+	caHost, _ := resolveAgentAddress(cfg.Hub.AgentAddress, defaultAgentHost(), 0)
+	ca, err := pki.LoadOrCreateCA(cfg.TLS.Dir, caHost)
 	if err != nil {
 		return err
 	}
