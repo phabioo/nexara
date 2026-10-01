@@ -473,14 +473,18 @@ func TestAddHostLinkFailures(t *testing.T) {
 				return grid.HostInfo{}, tc.fn(p)
 			}
 			rec := a.hx(http.MethodPost, "/hosts/new", sshForm())
-			poll := pollURL(t, rec.Body.String())
-			deadline := time.Now().Add(2 * time.Second)
-			var body string
-			for !strings.Contains(body, "Failed") && time.Now().Before(deadline) {
-				time.Sleep(time.Millisecond)
-				body = a.hx(http.MethodGet, poll, nil).Body.String()
-				if m := pollURLRE.FindStringSubmatch(body); m != nil {
-					poll = strings.ReplaceAll(m[1], "&amp;", "&")
+			// A link that fails at once may already render the final state,
+			// which carries no poll URL.
+			body := rec.Body.String()
+			if !strings.Contains(body, "Failed") {
+				poll := pollURL(t, body)
+				deadline := time.Now().Add(2 * time.Second)
+				for !strings.Contains(body, "Failed") && time.Now().Before(deadline) {
+					time.Sleep(time.Millisecond)
+					body = a.hx(http.MethodGet, poll, nil).Body.String()
+					if m := pollURLRE.FindStringSubmatch(body); m != nil {
+						poll = strings.ReplaceAll(m[1], "&amp;", "&")
+					}
 				}
 			}
 			for _, want := range tc.want {
@@ -555,13 +559,15 @@ func TestAddHostTooManyLinks(t *testing.T) {
 
 func TestAddHostAttemptsBelongToTheOperator(t *testing.T) {
 	a := newAddHostEnv(t)
-	done := make(chan struct{})
+	done, release := make(chan struct{}), make(chan struct{})
 	a.enr.linkFn = func(context.Context, grid.SSHLinkRequest, func(grid.LinkStep)) (grid.HostInfo, error) {
 		defer close(done)
+		<-release // finish only after the response (with its poll URL) is rendered
 		return grid.HostInfo{Name: "pi4", Online: true}, nil
 	}
 	rec := a.hx(http.MethodPost, "/hosts/new", sshForm())
 	poll := pollURL(t, rec.Body.String())
+	close(release)
 	<-done
 	id := strings.TrimPrefix(strings.SplitN(poll, "?", 2)[0], "/hosts/new/link/")
 	reg := a.srv.addHost

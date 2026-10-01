@@ -97,8 +97,13 @@ func (s *session) handshake() (protocol.HelloAck, error) {
 	if err := s.conn.Write(ctx, websocket.MessageText, b); err != nil {
 		return protocol.HelloAck{}, fmt.Errorf("send hello: %w", err)
 	}
+	// Waiting for the ack follows the session, so a shutdown during the
+	// handshake ends it at once instead of after ackTimeout (the reader holds
+	// the lock Close needs for its close handshake).
+	rctx, rcancel := context.WithTimeout(s.ctx, ackTimeout)
+	defer rcancel()
 	for {
-		_, data, err := s.conn.Read(ctx)
+		_, data, err := s.conn.Read(rctx)
 		if err != nil {
 			return protocol.HelloAck{}, fmt.Errorf("wait for hello.ack: %w", err)
 		}
@@ -129,7 +134,10 @@ func (s *session) writeLoop() {
 		case <-s.ctx.Done():
 			return
 		case b := <-s.out:
-			ctx, cancel := context.WithTimeout(s.ctx, writeTimeout)
+			// Not derived from s.ctx: coder/websocket tears the connection down
+			// when a write's context is cancelled, so a shutdown racing an
+			// in-flight write would skip the normal close handshake.
+			ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
 			err := s.conn.Write(ctx, websocket.MessageText, b)
 			cancel()
 			if err != nil {

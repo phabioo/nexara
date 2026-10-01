@@ -1,0 +1,218 @@
+#!/bin/sh
+# Nexara Nexus .deb: post-installation.
+# Creates the nexus user and directories, writes the configuration files on the
+# first install (never overwrites existing ones) and starts the services.
+# Idempotent; safe for configure after a fresh install and after an upgrade.
+set -e
+
+NEXUS_USER=nexus
+NEXUS_CONF=/etc/nexus/nexus.yaml
+AGENT_CONF=/etc/grid-agent/agent.yaml
+DROPIN_DIR=/etc/systemd/system/grid-agent.service.d
+DROPIN="$DROPIN_DIR/10-package-binary.conf"
+
+# --- helpers -----------------------------------------------------------------
+
+have_systemd() { [ -d /run/systemd/system ]; }
+
+# enable_unit <unit>: enable now (symlinks), also without a running systemd.
+enable_unit() {
+	if command -v deb-systemd-helper >/dev/null 2>&1; then
+		deb-systemd-helper unmask "$1" >/dev/null 2>&1 || true
+		deb-systemd-helper enable "$1" >/dev/null 2>&1 || true
+	elif have_systemd; then
+		systemctl enable "$1" >/dev/null 2>&1 || true
+	fi
+}
+
+# start_unit <unit>: (re)start when systemd runs; a failure only warns, the
+# installer script reports whether the hub came up.
+start_unit() {
+	have_systemd || return 0
+	if command -v deb-systemd-invoke >/dev/null 2>&1; then
+		deb-systemd-invoke restart "$1" >/dev/null || echo "nexus: warning: could not start $1; see: journalctl -u ${1%.service}" >&2
+	else
+		systemctl restart "$1" || echo "nexus: warning: could not start $1; see: journalctl -u ${1%.service}" >&2
+	fi
+}
+
+# valid_shell_user <name>: an existing, ordinary, non-root login user.
+valid_shell_user() {
+	case "$1" in
+	'' | root | *[!A-Za-z0-9._-]*) return 1 ;;
+	esac
+	uid=$(getent passwd "$1" | cut -d: -f3)
+	[ -n "$uid" ] && [ "$uid" -ge 1000 ] && [ "$uid" -lt 65534 ]
+}
+
+# find_shell_user prints the user for Nexara Shell: NEXARA_SHELL_USER (passed by
+# install.sh from SUDO_USER), else the first ordinary user in group sudo.
+find_shell_user() {
+	if valid_shell_user "${NEXARA_SHELL_USER:-}"; then
+		echo "$NEXARA_SHELL_USER"
+		return 0
+	fi
+	for u in $(getent group sudo | cut -d: -f4 | tr ',' ' '); do
+		if valid_shell_user "$u"; then
+			echo "$u"
+			return 0
+		fi
+	done
+	return 1
+}
+
+# host_name prints the short host name if it is a valid hub.name, else "nexus".
+host_name() {
+	h=$(hostname -s 2>/dev/null || hostname 2>/dev/null || true)
+	case "$h" in
+	'' | [!A-Za-z0-9]* | *[!A-Za-z0-9._-]*) h=nexus ;;
+	esac
+	echo "$h" | cut -c1-63
+}
+
+# time_zone prints the system IANA timezone, else UTC.
+time_zone() {
+	tz=
+	if [ -r /etc/timezone ]; then
+		tz=$(head -n 1 /etc/timezone | tr -d ' \t\r')
+	fi
+	if [ -z "$tz" ] && [ -L /etc/localtime ]; then
+		tz=$(readlink /etc/localtime | sed 's|.*/zoneinfo/||')
+	fi
+	case "$tz" in
+	'' | *[!A-Za-z0-9/_+-]* | .* | */..*) tz=UTC ;;
+	esac
+	[ -f "/usr/share/zoneinfo/$tz" ] || tz=UTC
+	echo "$tz"
+}
+
+# --- configure -----------------------------------------------------------------
+
+case "$1" in
+configure) ;;
+abort-upgrade | abort-remove | abort-deconfigure) exit 0 ;;
+*)
+	echo "postinst called with unknown argument '$1'" >&2
+	exit 1
+	;;
+esac
+
+if ! getent passwd "$NEXUS_USER" >/dev/null 2>&1; then
+	adduser --system --group --quiet --home /var/lib/nexus --no-create-home \
+		--gecos "Nexara Nexus hub" "$NEXUS_USER"
+fi
+
+# /etc/nexus belongs to nexus: the setup commit replaces nexus.yaml by writing a
+# temp file and renaming it, which needs a writable directory.
+install -d -m 0750 -o "$NEXUS_USER" -g "$NEXUS_USER" /etc/nexus
+install -d -m 0750 -o "$NEXUS_USER" -g "$NEXUS_USER" /var/lib/nexus
+install -d -m 0700 -o root -g root /etc/grid-agent
+install -d -m 0700 -o root -g root /var/lib/grid-agent
+
+if [ ! -e "$NEXUS_CONF" ]; then
+	umask 027
+	cat >"$NEXUS_CONF" <<CONF
+# Nexara Nexus hub configuration. The setup wizard writes hub.*; edit with care.
+# Example with all options: /usr/share/nexara/nexus.example.yaml
+hub:
+  name: $(host_name)
+  timezone: $(time_zone)
+  listen: ":8443"
+tls:
+  mode: self
+  dir: /var/lib/nexus/pki
+storage:
+  database: /var/lib/nexus/nexus.db
+  history:
+    minute_days: 7
+    hour_days: 365
+security:
+  session_idle_hours: 12
+  totp_required: false
+  login_rate_limit:
+    attempts: 5
+    window_minutes: 15
+alerts:
+  cpu_temp_c: 75
+  disk_used_percent: 90
+  host_offline_seconds: 60
+CONF
+fi
+chown "$NEXUS_USER:$NEXUS_USER" "$NEXUS_CONF"
+chmod 0640 "$NEXUS_CONF"
+
+# The hub's own agent (self-link). Without a valid shell user the agent stays
+# off: its configuration would not validate and the unit would restart-loop.
+AGENT_OK=
+if [ -e "$AGENT_CONF" ]; then
+	AGENT_OK=1
+elif shell_user=$(find_shell_user); then
+	umask 077
+	cat >"$AGENT_CONF" <<CONF
+# Nexara Grid Agent of the hub device (self-link). Enrollment rewrites this file.
+hub:
+  url: wss://127.0.0.1:8443/grid/connect
+tls:
+  ca: /var/lib/grid-agent/ca.pem
+  cert: /var/lib/grid-agent/agent.pem
+  key: /var/lib/grid-agent/agent.key
+metrics:
+  interval_seconds: 2
+shell:
+  user: $shell_user
+capabilities:
+  monitoring: true
+  packages: true
+  services: true
+  shell: true
+  power: true
+  docker: false
+enroll:
+  token_file: /var/lib/nexus/self-enroll.token
+CONF
+	AGENT_OK=1
+else
+	cat >&2 <<MSG
+nexus: the hub's own Grid Agent is NOT enabled: no user for Nexara Shell found
+       (NEXARA_SHELL_USER is unset or invalid and no ordinary user is in group sudo).
+       To enable it later: copy /usr/share/nexara/agent.example.yaml to
+       $AGENT_CONF, set shell.user to your login, set hub.url to
+       wss://127.0.0.1:8443/grid/connect, uncomment the enroll block, then run:
+       sudo systemctl enable --now grid-agent
+MSG
+fi
+if [ -e "$AGENT_CONF" ]; then
+	chown root:root "$AGENT_CONF"
+	chmod 0600 "$AGENT_CONF"
+fi
+
+# The unit shared with SSH-enrolled hosts points to /usr/local/bin/grid-agent;
+# the package installs the binary to /usr/bin.
+umask 022
+mkdir -p "$DROPIN_DIR"
+cat >"$DROPIN" <<'DROPIN_CONF'
+# Written by the nexus package: the hub device runs the packaged binary.
+[Service]
+ExecStart=
+ExecStart=/usr/bin/grid-agent run --config /etc/grid-agent/agent.yaml
+DROPIN_CONF
+chmod 0644 "$DROPIN"
+
+if have_systemd; then
+	systemctl daemon-reload || true
+fi
+
+# Fresh install: enable and start. Upgrade: only units that were enabled, so an
+# operator's `systemctl disable` survives updates.
+activate() {
+	if [ -z "$2" ] || { command -v deb-systemd-helper >/dev/null 2>&1 && deb-systemd-helper --quiet was-enabled "$1"; }; then
+		enable_unit "$1"
+		start_unit "$1"
+	fi
+}
+activate nexus.service "$2"
+if [ -n "$AGENT_OK" ]; then
+	activate grid-agent.service "$2"
+fi
+
+exit 0

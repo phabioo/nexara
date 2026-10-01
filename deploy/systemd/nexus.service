@@ -1,6 +1,8 @@
-# Nexara Nexus hub (draft)
+# Nexara Nexus hub. Shipped in the .deb as /lib/systemd/system/nexus.service.
+# Local changes belong in a drop-in: sudo systemctl edit nexus
 [Unit]
 Description=Nexara Nexus hub
+Documentation=https://github.com/phabioo/nexara
 After=network-online.target
 Wants=network-online.target
 
@@ -8,14 +10,41 @@ Wants=network-online.target
 Type=simple
 User=nexus
 Group=nexus
-ExecStart=/usr/local/bin/nexus serve --config /etc/nexus/nexus.yaml
+ExecStart=/usr/bin/nexus serve --config /etc/nexus/nexus.yaml
 Restart=on-failure
+RestartSec=5
+# Files created by the hub are private to the nexus user and group.
+UMask=0027
+
+# /var/lib/nexus: database, CA, keys. /run/nexus: admin socket for
+# `sudo nexus setup code` (0660, group nexus; root always gets in).
 StateDirectory=nexus
+RuntimeDirectory=nexus
+RuntimeDirectoryMode=0750
 ConfigurationDirectory=nexus
+
+# Hardening. The hub listens on 8443 (>1024), so it needs no capabilities.
+# Move the port below 1024 only together with AmbientCapabilities=CAP_NET_BIND_SERVICE
+# and CapabilityBoundingSet=CAP_NET_BIND_SERVICE in a drop-in.
 NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# The setup commit rewrites /etc/nexus/nexus.yaml (temp file + rename).
 ReadWritePaths=/var/lib/nexus /etc/nexus
 
 [Install]

@@ -1,5 +1,9 @@
-# Nexara Grid Agent configuration (example, draft)
-# Written by the hub during enrollment to /etc/grid-agent/agent.yaml.
+# Nexara Grid Agent configuration (example).
+# Installed as /usr/share/nexara/agent.example.yaml. Hosts enrolled through the
+# hub get /etc/grid-agent/agent.yaml written during enrollment. On the hub device
+# the .deb writes it on the first install only (root, 0600): hub.url is the
+# placeholder wss://127.0.0.1:8443/grid/connect, shell.user is the installing sudo
+# user, and the enroll block below is active.
 
 hub:
   url: wss://frpi5.local:8443/grid/connect
@@ -23,6 +27,7 @@ capabilities:
   power: true
   docker: false
 
-# Hub device only: the installer sets this so the agent enrolls itself (self-link).
+# Hub device only: until the agent has a certificate it waits for this one-time
+# token, which the hub writes when the setup wizard finishes (self-link).
 # enroll:
 #   token_file: /var/lib/nexus/self-enroll.token

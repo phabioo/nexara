@@ -23,6 +23,11 @@ import (
 
 const testTimeout = 5 * time.Second
 
+// stopTimeout bounds how long Run may take to return after cancel. It must
+// exceed coder/websocket's own 5 s wait for the peer's close frame: fake hubs
+// that stopped reading never answer it.
+const stopTimeout = 10 * time.Second
+
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(testTimeout)
@@ -432,7 +437,7 @@ func (h *harness) start(opt func(*Options)) {
 		cancel()
 		select {
 		case <-h.done:
-		case <-time.After(testTimeout):
+		case <-time.After(stopTimeout):
 			h.t.Error("agent did not stop")
 		}
 	})
@@ -446,7 +451,7 @@ func (h *harness) stop() error {
 	case err := <-h.done:
 		h.done <- err // keep for cleanup
 		return err
-	case <-time.After(testTimeout):
+	case <-time.After(stopTimeout):
 		h.t.Fatal("agent did not stop")
 		return nil
 	}
