@@ -141,6 +141,13 @@ func (l *rateLimiter) reset(key string) {
 	l.mu.Unlock()
 }
 
+// clear forgets all failures (an operator cleared the lock-outs).
+func (l *rateLimiter) clear() {
+	l.mu.Lock()
+	clear(l.entries)
+	l.mu.Unlock()
+}
+
 func (l *rateLimiter) size() int {
 	l.mu.Lock()
 	defer l.mu.Unlock()

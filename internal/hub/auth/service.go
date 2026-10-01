@@ -20,9 +20,13 @@ type Config struct {
 	SecretKey   []byte        // from LoadOrCreateSecretKey
 	IdleTimeout time.Duration // session idle timeout (12 h by default)
 
-	// RateAttempts failures within RateWindow block an IP or an account.
-	RateAttempts int
-	RateWindow   time.Duration
+	// RateAttempts failures within RateWindow block an IP, and an (account,
+	// IP) pair. AccountRateAttempts is the higher threshold for the account
+	// as a whole (zero: ten times RateAttempts); IPs that signed in as the
+	// account during the last 30 days are exempt from it (see loginLimits).
+	RateAttempts        int
+	AccountRateAttempts int
+	RateWindow          time.Duration
 
 	HashParams    HashParams // zero value means DefaultHashParams
 	CookieOptions []CookieOption
@@ -47,12 +51,13 @@ func ConfigFromHub(c config.HubConfig, st *store.Store, secretKey []byte) Config
 // Service is the auth facade used by the HTTP layer.
 type Service struct {
 	store      *store.Store
-	key        []byte
+	csrfKey    []byte // HKDF subkey of secret.key for the CSRF HMAC
+	sealKey    []byte // HKDF subkey of secret.key for AES-GCM sealing
 	params     HashParams
 	now        func() time.Time
 	sessions   *Manager
 	cookies    *Cookies
-	limiter    *rateLimiter
+	limiter    *loginLimits
 	totp       *TOTPVerifier
 	onAuditErr func(error)
 
@@ -83,6 +88,9 @@ func NewService(cfg Config) (*Service, error) {
 	if cfg.RateAttempts < 1 {
 		cfg.RateAttempts = 5
 	}
+	if cfg.AccountRateAttempts < cfg.RateAttempts {
+		cfg.AccountRateAttempts = cfg.RateAttempts * accountLimitFactor
+	}
 	if cfg.RateWindow <= 0 {
 		cfg.RateWindow = 15 * time.Minute
 	}
@@ -95,20 +103,29 @@ func NewService(cfg Config) (*Service, error) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	key := append([]byte(nil), cfg.SecretKey...)
+	csrfKey, err := deriveKey(cfg.SecretKey, hkdfInfoCSRF)
+	if err != nil {
+		return nil, err
+	}
+	sealKey, err := deriveKey(cfg.SecretKey, hkdfInfoSeal)
+	if err != nil {
+		return nil, err
+	}
 	s := &Service{
 		store:      cfg.Store,
-		key:        key,
+		csrfKey:    csrfKey,
+		sealKey:    sealKey,
 		params:     cfg.HashParams,
 		now:        cfg.Now,
 		sessions:   NewManager(cfg.Store, cfg.IdleTimeout, cfg.Now),
 		cookies:    NewCookies(append([]CookieOption{WithCookieClock(cfg.Now)}, cfg.CookieOptions...)...),
-		limiter:    newRateLimiter(cfg.Now, cfg.RateAttempts, cfg.RateWindow),
+		limiter:    newLoginLimits(cfg.Now, cfg.RateAttempts, cfg.AccountRateAttempts, cfg.RateWindow),
 		totp:       NewTOTPVerifier(),
 		onAuditErr: cfg.OnAuditError,
 		challenges: map[string]*challenge{},
 		hashSem:    make(chan struct{}, 2),
 	}
+	s.limiter.load = s.knownLoginsFromAudit
 	// The store has no bulk user delete yet; use it as soon as it grows one.
 	if d, ok := any(cfg.Store).(interface {
 		DeleteAllUsers(ctx context.Context) (int64, error)
@@ -137,9 +154,19 @@ func (s *Service) HashPassphrase(ctx context.Context, pass string) (string, erro
 	return HashPassword(pass, s.params)
 }
 
-// SealTOTPSecret encrypts a TOTP secret for users.totp_secret_enc.
-func (s *Service) SealTOTPSecret(secret string) ([]byte, error) {
-	return Seal(s.key, []byte(secret), AADTOTP)
+// SealTOTPSecret encrypts a TOTP secret for users.totp_secret_enc, bound to
+// the user's ID (so the user row must exist first). Open it with OpenTOTPSecret.
+func (s *Service) SealTOTPSecret(userID int64, secret string) ([]byte, error) {
+	return Seal(s.sealKey, []byte(secret), TOTPAAD(userID))
+}
+
+// OpenTOTPSecret decrypts a blob made by SealTOTPSecret for the same user.
+func (s *Service) OpenTOTPSecret(userID int64, sealed []byte) (string, error) {
+	pt, err := Open(s.sealKey, sealed, TOTPAAD(userID))
+	if err != nil {
+		return "", err
+	}
+	return string(pt), nil
 }
 
 // ConfirmTOTP checks the first code during 2FA enrollment (no replay state).
@@ -147,6 +174,12 @@ func (s *Service) ConfirmTOTP(secret, code string) bool {
 	_, ok := MatchTOTP(secret, code, s.now())
 	return ok
 }
+
+// ClearLoginLimits forgets all failed-sign-in counters, so an operator who
+// is locked out can try again at once. It backs a command on the admin
+// socket (`sudo nexus user unlock`); the caller audits it. Sessions and the
+// list of known IPs stay untouched.
+func (s *Service) ClearLoginLimits() { s.limiter.clear() }
 
 // TOTPReset clears replay state for a user whose 2FA was changed.
 func (s *Service) TOTPReset(userID int64) { s.totp.Forget(userID) }
@@ -189,6 +222,10 @@ const (
 	ActionSecondFact  = "login.2fa"
 	ActionLogout      = "logout"
 	ActionUserReset   = "user.reset"
+
+	// ActionShellSessionEnded records that an open shell was closed by the
+	// hub because the operator's session ended (the grid writes shell.close).
+	ActionShellSessionEnded = "shell.session_ended"
 )
 
 const maxAuditUserLen = 64
@@ -229,6 +266,22 @@ func (s *Service) audit(ctx context.Context, user, action, result, detail string
 	}
 }
 
+// AuditShellSessionEnded records that the hub closed an open shell of host
+// because the operator's session ended (logout, expiry, reset).
+func (s *Service) AuditShellSessionEnded(ctx context.Context, operatorID, host, ip string) {
+	_, err := s.store.AppendAudit(ctx, store.AuditEntry{
+		Time:   s.now().UTC(),
+		User:   cleanText(operatorID, maxAuditUserLen),
+		Host:   cleanText(host, maxAuditUserLen),
+		Action: ActionShellSessionEnded,
+		Detail: "session ended; ip=" + cleanText(ip, maxIPLen),
+		Result: store.AuditOK,
+	})
+	if err != nil && s.onAuditErr != nil {
+		s.onAuditErr(fmt.Errorf("auth: write audit entry %q: %w", ActionShellSessionEnded, err))
+	}
+}
+
 // --- operator reset ----------------------------------------------------------
 
 // ResetOperators deletes all users (their sessions cascade), which returns
@@ -251,6 +304,7 @@ func (s *Service) ResetOperators(ctx context.Context) (int64, error) {
 	clear(s.challenges)
 	s.chMu.Unlock()
 	s.totp.Reset()
+	s.sessions.rev.notify() // the sessions went with the users: end their open streams now
 	s.audit(ctx, "system", ActionUserReset, store.AuditOK, fmt.Sprintf("operators removed: %d", n))
 	return n, nil
 }

@@ -68,11 +68,14 @@ func remoteHost(r *http.Request) string {
 
 // chain wraps the mux. Order, outermost first: recovery and logging (so a
 // panic anywhere still yields a 500 that carries the security headers),
-// security headers, client IP, setup gate, authentication, CSRF.
+// security headers, client IP, setup cookie names, body limits, setup gate,
+// authentication, CSRF.
 func (s *Server) chain(h http.Handler) http.Handler {
 	h = s.csrf(h)
 	h = s.authenticate(h)
 	h = s.setupGate(h)
+	h = s.bodyLimits(h)
+	h = s.setupCookieShim(h)
 	h = s.clientIP(h)
 	h = s.securityHeaders(h)
 	h = s.recoverAndLog(h)
@@ -119,6 +122,11 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Cross-Origin-Opener-Policy", "same-origin")
 		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		if r.TLS != nil {
+			// Only on TLS responses: browsers ignore it on plain HTTP, and the demo must stay reachable. No
+			// includeSubDomains: other services on the host are not ours to pin.
+			h.Set("Strict-Transport-Security", "max-age=15552000")
+		}
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/static/") && r.URL.Query().Get("v") != "":
 			// Versioned asset URL: the version changes with the content.
@@ -185,7 +193,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		c, err := r.Cookie(auth.SessionCookieName)
+		c, err := r.Cookie(s.auth.Cookies().SessionName())
 		if err != nil {
 			s.unauthenticated(w, r, false)
 			return
@@ -237,7 +245,7 @@ func (s *Server) csrf(next http.Handler) http.Handler {
 		ok := false
 		switch {
 		case usesDoubleSubmit(p):
-			if c, err := r.Cookie(auth.CSRFCookieName); err == nil {
+			if c, err := r.Cookie(s.auth.Cookies().CSRFName()); err == nil {
 				ok = auth.CheckDoubleSubmit(c.Value, submitted)
 			}
 		default:

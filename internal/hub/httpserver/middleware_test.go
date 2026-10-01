@@ -159,11 +159,11 @@ func TestAuthentication(t *testing.T) {
 		}
 	})
 	t.Run("garbage cookie is rejected and cleared", func(t *testing.T) {
-		rec := e.get("/", withCookies(&http.Cookie{Name: auth.SessionCookieName, Value: "garbage"}))
+		rec := e.get("/", withCookies(&http.Cookie{Name: sessionCookieName, Value: "garbage"}))
 		if rec.Code != 303 {
 			t.Fatalf("status %d", rec.Code)
 		}
-		c := findCookie(rec, auth.SessionCookieName)
+		c := findCookie(rec, sessionCookieName)
 		if c == nil || c.MaxAge >= 0 {
 			t.Errorf("session cookie not cleared: %+v", c)
 		}
@@ -288,7 +288,7 @@ func TestCSRF(t *testing.T) {
 func TestPreSessionCSRFDoubleSubmit(t *testing.T) {
 	e := newEnv(t)
 	getRec := e.get("/login")
-	csrf := findCookie(getRec, auth.CSRFCookieName)
+	csrf := findCookie(getRec, csrfCookieName)
 	assertCookieAttrs(t, csrf)
 	bad := url.Values{fieldOperator: {"nobody"}, fieldPass: {"wrong"}}
 

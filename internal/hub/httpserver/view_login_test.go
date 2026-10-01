@@ -51,7 +51,7 @@ func loginForm(t *testing.T, e *env) (jar, string) {
 		t.Fatalf("GET /login = %d", rec.Code)
 	}
 	j.absorb(rec)
-	c := j[auth.CSRFCookieName]
+	c := j[csrfCookieName]
 	if c == nil {
 		t.Fatal("no csrf cookie on the login page")
 	}
@@ -69,19 +69,19 @@ func creds(token, op, pass string, extra ...string) url.Values {
 func TestLoginPageSetsCSRFCookie(t *testing.T) {
 	e := newLoginEnv(t)
 	rec := e.get("/login")
-	c := findCookie(rec, auth.CSRFCookieName)
+	c := findCookie(rec, csrfCookieName)
 	assertCookieAttrs(t, c)
 	if len(c.Value) != 43 {
 		t.Errorf("token length %d", len(c.Value))
 	}
 	// An existing valid cookie is reused, not rotated.
 	rec2 := e.get("/login", withCookies(c))
-	if findCookie(rec2, auth.CSRFCookieName) != nil {
+	if findCookie(rec2, csrfCookieName) != nil {
 		t.Error("valid csrf cookie was replaced")
 	}
 	// A garbage cookie is replaced.
-	rec3 := e.get("/login", withCookies(&http.Cookie{Name: auth.CSRFCookieName, Value: "x"}))
-	if findCookie(rec3, auth.CSRFCookieName) == nil {
+	rec3 := e.get("/login", withCookies(&http.Cookie{Name: csrfCookieName, Value: "x"}))
+	if findCookie(rec3, csrfCookieName) == nil {
 		t.Error("garbage csrf cookie was kept")
 	}
 }
@@ -104,12 +104,12 @@ func TestLoginWithoutTOTP(t *testing.T) {
 		if rec.Code != 303 || rec.Header().Get("Location") != "/" {
 			t.Fatalf("got %d %q", rec.Code, rec.Header().Get("Location"))
 		}
-		sc := findCookie(rec, auth.SessionCookieName)
+		sc := findCookie(rec, sessionCookieName)
 		assertCookieAttrs(t, sc)
 		if sc.MaxAge != 0 || sc.Path != "/" || sc.Value == "" {
 			t.Errorf("session cookie: maxage=%d path=%q value-empty=%v", sc.MaxAge, sc.Path, sc.Value == "")
 		}
-		if c := findCookie(rec, auth.CSRFCookieName); c == nil || c.MaxAge >= 0 {
+		if c := findCookie(rec, csrfCookieName); c == nil || c.MaxAge >= 0 {
 			t.Errorf("csrf cookie not cleared: %+v", c)
 		}
 		if _, _, err := e.svc.Sessions().Validate(context.Background(), sc.Value); err != nil {
@@ -124,7 +124,7 @@ func TestLoginWithoutTOTP(t *testing.T) {
 	t.Run("keep me signed in gives a persistent cookie", func(t *testing.T) {
 		j, token := loginForm(t, e)
 		rec := e.post("/login", withJar(j), withForm(creds(token, testOperator, testPass, fieldKeep, "on")))
-		sc := findCookie(rec, auth.SessionCookieName)
+		sc := findCookie(rec, sessionCookieName)
 		assertCookieAttrs(t, sc)
 		if sc.MaxAge <= 0 {
 			t.Errorf("persistent cookie has Max-Age %d", sc.MaxAge)
@@ -137,7 +137,7 @@ func TestLoginWithoutTOTP(t *testing.T) {
 		if rec.Code != 401 {
 			t.Fatalf("status %d", rec.Code)
 		}
-		if findCookie(rec, auth.SessionCookieName) != nil {
+		if findCookie(rec, sessionCookieName) != nil {
 			t.Error("session cookie set on failure")
 		}
 		if !strings.Contains(rec.Body.String(), "Invalid operator ID or passphrase.") {
@@ -190,12 +190,12 @@ func TestLoginWithTOTP(t *testing.T) {
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Step 2 of 2") {
 		t.Fatalf("step one: %d %q", rec.Code, rec.Body.String())
 	}
-	if findCookie(rec, auth.SessionCookieName) != nil {
+	if findCookie(rec, sessionCookieName) != nil {
 		t.Fatal("session issued before the second factor")
 	}
-	ch := findCookie(rec, loginChallengeCookie)
+	ch := findCookie(rec, challengeCookieName)
 	assertCookieAttrs(t, ch)
-	if ch.Path != "/login" || ch.MaxAge <= 0 || ch.MaxAge > int(auth.ChallengeTTL.Seconds()) || ch.Value == "" {
+	if ch.Path != "/" || ch.MaxAge <= 0 || ch.MaxAge > int(auth.ChallengeTTL.Seconds()) || ch.Value == "" {
 		t.Errorf("challenge cookie: path=%q maxage=%d", ch.Path, ch.MaxAge)
 	}
 	j.absorb(rec)
@@ -206,10 +206,10 @@ func TestLoginWithTOTP(t *testing.T) {
 		if rec.Code != 401 || !strings.Contains(rec.Body.String(), "Invalid authentication code.") {
 			t.Fatalf("%d %q", rec.Code, rec.Body.String())
 		}
-		if findCookie(rec, auth.SessionCookieName) != nil {
+		if findCookie(rec, sessionCookieName) != nil {
 			t.Error("session on wrong code")
 		}
-		if c := findCookie(rec, loginChallengeCookie); c != nil && c.MaxAge < 0 {
+		if c := findCookie(rec, challengeCookieName); c != nil && c.MaxAge < 0 {
 			t.Error("challenge dropped after one wrong code")
 		}
 	})
@@ -224,7 +224,7 @@ func TestLoginWithTOTP(t *testing.T) {
 		mustContain(t, rec.Body.String(), "Access granted", "Welcome back, <b>"+testOperator+"</b>",
 			`<meta http-equiv="refresh" content="2;url=/">`, `href="/"`, "Enter Nexus")
 		mustNotContain(t, rec.Body.String(), "<form", "<script>")
-		sc := findCookie(rec, auth.SessionCookieName)
+		sc := findCookie(rec, sessionCookieName)
 		assertCookieAttrs(t, sc)
 		if sc.MaxAge <= 0 {
 			t.Errorf("persistent choice lost: Max-Age %d", sc.MaxAge)
@@ -232,7 +232,7 @@ func TestLoginWithTOTP(t *testing.T) {
 		if rec := e.get("/", withCookies(sc)); rec.Code != http.StatusOK {
 			t.Errorf("GET / with the new session = %d", rec.Code)
 		}
-		if c := findCookie(rec, loginChallengeCookie); c == nil || c.MaxAge >= 0 {
+		if c := findCookie(rec, challengeCookieName); c == nil || c.MaxAge >= 0 {
 			t.Errorf("challenge cookie not cleared: %+v", c)
 		}
 	})
@@ -247,7 +247,7 @@ func TestLoginVerifyWithoutChallenge(t *testing.T) {
 	if rec.Code != 401 || !strings.Contains(rec.Body.String(), "Sign-in timed out") {
 		t.Errorf("%d %q", rec.Code, rec.Body.String())
 	}
-	if c := findCookie(rec, loginChallengeCookie); c == nil || c.MaxAge >= 0 {
+	if c := findCookie(rec, challengeCookieName); c == nil || c.MaxAge >= 0 {
 		t.Errorf("challenge cookie not cleared: %+v", c)
 	}
 }
@@ -285,7 +285,7 @@ func TestLogout(t *testing.T) {
 		if rec.Code != 303 || rec.Header().Get("Location") != "/login" {
 			t.Fatalf("%d %q", rec.Code, rec.Header().Get("Location"))
 		}
-		sc := findCookie(rec, auth.SessionCookieName)
+		sc := findCookie(rec, sessionCookieName)
 		assertCookieAttrs(t, sc)
 		if sc.MaxAge >= 0 || sc.Value != "" {
 			t.Errorf("cookie not cleared: %+v", sc)
@@ -316,7 +316,7 @@ func TestLoginPageContent(t *testing.T) {
 		t.Fatalf("%d %q", rec.Code, rec.Header().Get("Content-Type"))
 	}
 	body := rec.Body.String()
-	csrf := findCookie(rec, auth.CSRFCookieName)
+	csrf := findCookie(rec, csrfCookieName)
 	mustContain(t, body,
 		`<title>Sign in · Nexara Nexus</title>`,
 		`action="/login"`, `method="post"`,
@@ -403,11 +403,11 @@ func TestLoginErrorStates(t *testing.T) {
 			if op := strings.TrimSpace(form.Get(fieldOperator)); op != "" {
 				mustContain(t, body, `value="`+op+`"`)
 			}
-			if findCookie(rec, auth.SessionCookieName) != nil {
+			if findCookie(rec, sessionCookieName) != nil {
 				t.Error("session cookie on failure")
 			}
 			// The re-rendered form carries a token that still works.
-			if c := findCookie(rec, auth.CSRFCookieName); c != nil && !strings.Contains(body, c.Value) {
+			if c := findCookie(rec, csrfCookieName); c != nil && !strings.Contains(body, c.Value) {
 				t.Error("new csrf cookie not in the form")
 			}
 		})
@@ -479,7 +479,7 @@ func TestLoginTOTPStep(t *testing.T) {
 			body := rec.Body.String()
 			// Stays on the second step with the operator still named.
 			mustContain(t, body, tc.want, `role="alert"`, "Step 2 of 2", "<b>"+testOperator+"</b>")
-			if findCookie(rec, auth.SessionCookieName) != nil {
+			if findCookie(rec, sessionCookieName) != nil {
 				t.Error("session cookie on a bad code")
 			}
 		})
@@ -516,14 +516,14 @@ func TestLoginBackDropsChallenge(t *testing.T) {
 	j, token := loginForm(t, e)
 	rec := e.post("/login", withJar(j), withForm(creds(token, testOperator, testPass)))
 	j.absorb(rec)
-	if j[loginChallengeCookie] == nil {
+	if j[challengeCookieName] == nil {
 		t.Fatal("no challenge cookie")
 	}
 	rec = e.get("/login", withJar(j))
 	if rec.Code != 200 {
 		t.Fatalf("status %d", rec.Code)
 	}
-	if c := findCookie(rec, loginChallengeCookie); c == nil || c.MaxAge >= 0 {
+	if c := findCookie(rec, challengeCookieName); c == nil || c.MaxAge >= 0 {
 		t.Errorf("challenge cookie not cleared: %+v", c)
 	}
 	mustContain(t, rec.Body.String(), `name="passphrase"`)

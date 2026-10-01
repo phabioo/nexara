@@ -56,39 +56,41 @@ func TestLoadSecretKeyRefusesWrongSize(t *testing.T) {
 	}
 }
 
+var aadTest = TOTPAAD(1)
+
 func TestSealOpen(t *testing.T) {
 	key := bytes.Repeat([]byte{7}, SecretKeyLen)
 	otherKey := bytes.Repeat([]byte{8}, SecretKeyLen)
 	plain := []byte("JBSWY3DPEHPK3PXP")
 
-	sealed, err := Seal(key, plain, AADTOTP)
+	sealed, err := Seal(key, plain, aadTest)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(sealed, plain) {
 		t.Fatal("ciphertext contains the plaintext")
 	}
-	got, err := Open(key, sealed, AADTOTP)
+	got, err := Open(key, sealed, aadTest)
 	if err != nil || !bytes.Equal(got, plain) {
 		t.Fatalf("Open = %q, %v", got, err)
 	}
-	sealed2, _ := Seal(key, plain, AADTOTP)
+	sealed2, _ := Seal(key, plain, aadTest)
 	if bytes.Equal(sealed, sealed2) {
 		t.Fatal("two seals of the same data must differ (random nonce)")
 	}
 
 	t.Run("empty plaintext", func(t *testing.T) {
-		s, err := Seal(key, nil, AADTOTP)
+		s, err := Seal(key, nil, aadTest)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if g, err := Open(key, s, AADTOTP); err != nil || len(g) != 0 {
+		if g, err := Open(key, s, aadTest); err != nil || len(g) != 0 {
 			t.Fatalf("Open = %q, %v", g, err)
 		}
 	})
 
 	t.Run("wrong key", func(t *testing.T) {
-		if _, err := Open(otherKey, sealed, AADTOTP); err == nil {
+		if _, err := Open(otherKey, sealed, aadTest); err == nil {
 			t.Fatal("expected error")
 		}
 	})
@@ -101,14 +103,14 @@ func TestSealOpen(t *testing.T) {
 		for i := range sealed {
 			mod := append([]byte(nil), sealed...)
 			mod[i] ^= 0x01
-			if _, err := Open(key, mod, AADTOTP); err == nil {
+			if _, err := Open(key, mod, aadTest); err == nil {
 				t.Fatalf("flipping byte %d went unnoticed", i)
 			}
 		}
 	})
 	t.Run("truncated or empty", func(t *testing.T) {
 		for _, b := range [][]byte{nil, {}, {1}, sealed[:5], sealed[:len(sealed)-1]} {
-			if _, err := Open(key, b, AADTOTP); err == nil {
+			if _, err := Open(key, b, aadTest); err == nil {
 				t.Fatalf("Open(%x) succeeded", b)
 			}
 		}

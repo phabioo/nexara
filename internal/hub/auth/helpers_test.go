@@ -103,7 +103,7 @@ func (e *testEnv) addTOTPUser(operatorID, pass string) (store.User, string) {
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	sealed, err := e.svc.SealTOTPSecret(enr.Secret)
+	sealed, err := e.svc.SealTOTPSecret(u.ID, enr.Secret)
 	if err != nil {
 		e.t.Fatal(err)
 	}

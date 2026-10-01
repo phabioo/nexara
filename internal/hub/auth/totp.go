@@ -20,7 +20,7 @@ const (
 
 // TOTPEnrollment is a freshly generated TOTP secret.
 type TOTPEnrollment struct {
-	Secret string // base32; encrypt with Seal(key, []byte(Secret), AADTOTP) before storing
+	Secret string // base32; encrypt with Service.SealTOTPSecret before storing
 	URL    string // otpauth:// URL for the QR code
 }
 

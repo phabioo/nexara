@@ -13,7 +13,7 @@ import (
 // and setting the cookie if the browser has none. Render the returned value
 // into the form's hidden csrf_token field.
 func (s *Server) ensureCSRFCookie(w http.ResponseWriter, r *http.Request) (string, error) {
-	if c, err := r.Cookie(auth.CSRFCookieName); err == nil && validPreSessionToken(c.Value) {
+	if c, err := r.Cookie(s.auth.Cookies().CSRFName()); err == nil && validPreSessionToken(c.Value) {
 		return c.Value, nil
 	}
 	tok, err := auth.NewPreSessionCSRF()

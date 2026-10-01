@@ -23,10 +23,6 @@ const (
 	fieldCode     = "code"           // TOTP code
 )
 
-// loginChallengeCookie carries the TOTP challenge ID between the two sign-in
-// steps. HttpOnly, Strict, scoped to /login and /login/verify, short-lived.
-const loginChallengeCookie = "nexus_login"
-
 // loginPage is the state of one render of the login view.
 type loginPage struct {
 	Status       int
@@ -147,7 +143,7 @@ func (b *loginBuffer) Write(p []byte) (int, error) { return b.body.Write(p) }
 func (b *loginBuffer) WriteHeader(int)             {}
 
 func (s *Server) handleLoginGet(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie(auth.SessionCookieName); err == nil {
+	if c, err := r.Cookie(s.auth.Cookies().SessionName()); err == nil {
 		if _, _, err := s.auth.Sessions().Validate(r.Context(), c.Value); err == nil {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
@@ -159,7 +155,7 @@ func (s *Server) handleLoginGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Coming back from the TOTP step ("Back") abandons its challenge.
-	if _, err := r.Cookie(loginChallengeCookie); err == nil {
+	if _, err := r.Cookie(s.loginChallengeName()); err == nil {
 		http.SetCookie(w, s.clearChallengeCookie())
 	}
 	// The box is checked by default, as in the design.
@@ -192,7 +188,7 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLoginVerify(w http.ResponseWriter, r *http.Request) {
 	var challenge string
-	if c, err := r.Cookie(loginChallengeCookie); err == nil {
+	if c, err := r.Cookie(s.loginChallengeName()); err == nil {
 		challenge = c.Value
 	}
 	code := strings.ReplaceAll(r.PostFormValue(fieldCode), " ", "")
@@ -224,7 +220,7 @@ func (s *Server) handleLoginVerify(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie(auth.SessionCookieName); err == nil {
+	if c, err := r.Cookie(s.auth.Cookies().SessionName()); err == nil {
 		if err := s.auth.Logout(r.Context(), c.Value, ClientIP(r)); err != nil {
 			// Still drop the cookie; the session expires on its own.
 			s.log.Error("logout failed", "err", err)
@@ -307,20 +303,22 @@ func (s *Server) csrfFor(w http.ResponseWriter, r *http.Request) string {
 	return tok
 }
 
+// challengeCookie carries the TOTP challenge ID between the two sign-in
+// steps: HttpOnly, Strict, short-lived (naming and path: cookies.go).
 func (s *Server) challengeCookie(id string, expires time.Time) *http.Cookie {
 	maxAge := int(expires.Sub(s.now()) / time.Second)
 	if maxAge < 1 {
 		maxAge = 1
 	}
 	return &http.Cookie{
-		Name: loginChallengeCookie, Value: id, Path: "/login", MaxAge: maxAge,
+		Name: s.loginChallengeName(), Value: id, Path: s.loginChallengePath(), MaxAge: maxAge,
 		HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteStrictMode,
 	}
 }
 
 func (s *Server) clearChallengeCookie() *http.Cookie {
 	return &http.Cookie{
-		Name: loginChallengeCookie, Value: "", Path: "/login", MaxAge: -1,
+		Name: s.loginChallengeName(), Value: "", Path: s.loginChallengePath(), MaxAge: -1,
 		HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteStrictMode,
 	}
 }

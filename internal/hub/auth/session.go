@@ -21,7 +21,8 @@ const (
 	// TouchInterval is the minimum time between two last_seen updates.
 	TouchInterval = time.Minute
 
-	// SessionCookieName is the cookie carrying the raw session ID.
+	// SessionCookieName is the base name of the cookie carrying the raw
+	// session ID. Use Cookies.SessionName for the name on the wire.
 	SessionCookieName = "nexus_session"
 
 	maxSessionIDLen = 128 // raw IDs are 43 characters; anything longer is garbage
@@ -36,6 +37,7 @@ type Manager struct {
 	store *store.Store
 	idle  time.Duration
 	now   func() time.Time
+	rev   *revocations
 }
 
 // NewManager returns a Manager. idle is the idle timeout (config
@@ -44,7 +46,7 @@ func NewManager(st *store.Store, idle time.Duration, now func() time.Time) *Mana
 	if now == nil {
 		now = time.Now
 	}
-	return &Manager{store: st, idle: idle, now: now}
+	return &Manager{store: st, idle: idle, now: now, rev: newRevocations()}
 }
 
 // HashSessionID returns the hex SHA-256 under which a raw session ID is stored.
@@ -102,7 +104,20 @@ func (m *Manager) Validate(ctx context.Context, raw string) (store.User, store.S
 	if raw == "" || len(raw) > maxSessionIDLen {
 		return store.User{}, store.Session{}, ErrSessionExpired
 	}
-	hash := HashSessionID(raw)
+	return m.validate(ctx, HashSessionID(raw), true)
+}
+
+// CheckHash is Validate for a session that is already known by its stored
+// hash (open SSE and shell streams re-check their session on every
+// heartbeat). It does not refresh last_seen: a stream that only keeps
+// beating must not keep an idle session alive, or the 12 h idle timeout
+// would never fire for an open browser tab.
+func (m *Manager) CheckHash(ctx context.Context, idHash string) error {
+	_, _, err := m.validate(ctx, idHash, false)
+	return err
+}
+
+func (m *Manager) validate(ctx context.Context, hash string, touch bool) (store.User, store.Session, error) {
 	sess, err := m.store.GetSession(ctx, hash)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.User{}, store.Session{}, ErrSessionExpired
@@ -124,7 +139,7 @@ func (m *Manager) Validate(ctx context.Context, raw string) (store.User, store.S
 	if err != nil {
 		return store.User{}, store.Session{}, err
 	}
-	if now.Sub(sess.LastSeenAt) >= TouchInterval {
+	if touch && now.Sub(sess.LastSeenAt) >= TouchInterval {
 		if err := m.store.TouchSession(ctx, hash, now); err != nil && !errors.Is(err, store.ErrNotFound) {
 			return store.User{}, store.Session{}, err
 		}
@@ -133,18 +148,30 @@ func (m *Manager) Validate(ctx context.Context, raw string) (store.User, store.S
 	return user, sess, nil
 }
 
+// Revoked returns a channel that is closed the next time any session is
+// ended on purpose (logout, Delete, DeleteAllForUser, ResetOperators).
+// Long-lived streams take the channel first, then check their own session
+// (CheckHash), then wait on it: a revocation between the check and the wait
+// is never lost. Expiry by time is not signalled; streams find it with their
+// periodic CheckHash.
+func (m *Manager) Revoked() <-chan struct{} { return m.rev.wait() }
+
 // Delete ends the session with the given raw ID (logout). Unknown IDs are not an error.
 func (m *Manager) Delete(ctx context.Context, raw string) error {
 	if raw == "" || len(raw) > maxSessionIDLen {
 		return nil
 	}
-	return m.store.DeleteSession(ctx, HashSessionID(raw))
+	err := m.store.DeleteSession(ctx, HashSessionID(raw))
+	m.rev.notify()
+	return err
 }
 
 // DeleteAllForUser ends every session of a user ("sign out everywhere",
 // password change, 2FA reset) and returns how many there were.
 func (m *Manager) DeleteAllForUser(ctx context.Context, userID int64) (int64, error) {
-	return m.store.DeleteUserSessions(ctx, userID)
+	n, err := m.store.DeleteUserSessions(ctx, userID)
+	m.rev.notify()
+	return n, err
 }
 
 // Cleanup removes expired sessions and returns how many were removed.
@@ -167,6 +194,22 @@ func (m *Manager) RunCleanup(ctx context.Context, interval time.Duration, onErr 
 			}
 		}
 	}
+}
+
+// hostPrefix makes the browser enforce Secure, Path=/ and no Domain, and
+// refuse a cookie of that name set over plain HTTP by another service on the
+// same host (cookie tossing, security review S-17).
+const hostPrefix = "__Host-"
+
+// CookieName is the one place that decides how a cookie is named on the
+// wire: with the __Host- prefix when secure (TLS), plain otherwise. The
+// plain-HTTP demo cannot use the prefix because browsers reject it without
+// Secure. A prefixed cookie must be set with Path=/ and without Domain.
+func CookieName(base string, secure bool) string {
+	if secure {
+		return hostPrefix + base
+	}
+	return base
 }
 
 // Cookies builds the session and pre-session CSRF cookies.
@@ -197,6 +240,18 @@ func NewCookies(opts ...CookieOption) *Cookies {
 	return c
 }
 
+// Secure reports whether cookies carry the Secure flag and the __Host- prefix.
+func (c *Cookies) Secure() bool { return c.secure }
+
+// Name returns the wire name of the cookie with the given base name.
+func (c *Cookies) Name(base string) string { return CookieName(base, c.secure) }
+
+// SessionName is the wire name of the session cookie.
+func (c *Cookies) SessionName() string { return c.Name(SessionCookieName) }
+
+// CSRFName is the wire name of the pre-session double-submit cookie.
+func (c *Cookies) CSRFName() string { return c.Name(CSRFCookieName) }
+
 // Session returns the session cookie: HttpOnly, SameSite=Strict, Path=/.
 // A persistent session gets Max-Age equal to its remaining absolute
 // lifetime (a fixed end, survives browser restarts); otherwise no
@@ -204,7 +259,7 @@ func NewCookies(opts ...CookieOption) *Cookies {
 // The server enforces idle and absolute limits either way.
 func (c *Cookies) Session(raw string, sess store.Session) *http.Cookie {
 	ck := &http.Cookie{
-		Name:     SessionCookieName,
+		Name:     c.SessionName(),
 		Value:    raw,
 		Path:     "/",
 		HttpOnly: true,
@@ -224,7 +279,7 @@ func (c *Cookies) Session(raw string, sess store.Session) *http.Cookie {
 // ClearSession returns a cookie that deletes the session cookie.
 func (c *Cookies) ClearSession() *http.Cookie {
 	return &http.Cookie{
-		Name: SessionCookieName, Value: "", Path: "/", MaxAge: -1,
+		Name: c.SessionName(), Value: "", Path: "/", MaxAge: -1,
 		HttpOnly: true, Secure: c.secure, SameSite: http.SameSiteStrictMode,
 	}
 }
@@ -232,7 +287,7 @@ func (c *Cookies) ClearSession() *http.Cookie {
 // CSRF returns the double-submit cookie for pre-session forms (browser-session cookie).
 func (c *Cookies) CSRF(token string) *http.Cookie {
 	return &http.Cookie{
-		Name: CSRFCookieName, Value: token, Path: "/",
+		Name: c.CSRFName(), Value: token, Path: "/",
 		HttpOnly: true, Secure: c.secure, SameSite: http.SameSiteStrictMode,
 	}
 }
@@ -240,7 +295,7 @@ func (c *Cookies) CSRF(token string) *http.Cookie {
 // ClearCSRF returns a cookie that deletes the double-submit cookie.
 func (c *Cookies) ClearCSRF() *http.Cookie {
 	return &http.Cookie{
-		Name: CSRFCookieName, Value: "", Path: "/", MaxAge: -1,
+		Name: c.CSRFName(), Value: "", Path: "/", MaxAge: -1,
 		HttpOnly: true, Secure: c.secure, SameSite: http.SameSiteStrictMode,
 	}
 }

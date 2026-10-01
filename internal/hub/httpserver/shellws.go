@@ -27,6 +27,10 @@ const (
 	shellReadLimit = 64 << 10
 	shellBufSize   = 32 << 10
 	shellPingWait  = 10 * time.Second
+
+	// shellReasonSessionEnded is the close reason (with code 1008) shell.js
+	// recognizes as "sign in again".
+	shellReasonSessionEnded = "session ended"
 )
 
 // resizeMessage is the only text frame the browser sends.
@@ -91,7 +95,11 @@ func (s *Server) handleShellWS(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close(code, reason)
 		return
 	}
-	s.proxyShell(ctx, conn, shell)
+	guard, _ := s.guardFor(r) // the session is known (checked above)
+	actor := ActorFrom(r)
+	s.proxyShell(ctx, conn, shell, guard, func(ctx context.Context) {
+		s.auth.AuditShellSessionEnded(ctx, actor.Operator, host.Name, actor.IP)
+	})
 }
 
 // shellOpenFailure maps an OpenShell error to a WebSocket close code and a
@@ -110,13 +118,16 @@ func shellOpenFailure(err error) (websocket.StatusCode, string) {
 }
 
 // proxyShell copies data until either side ends, then closes both. stopping
-// (server shutdown) ends it too. The first side to end decides the close code;
-// the shell session is always closed.
+// (server shutdown) ends it too, and so does the end of the operator's
+// session (guard): the socket is then closed with 1008 and the reason
+// "session ended", which shell.js turns into a redirect to /login, and
+// onSessionEnded writes the audit entry. The first side to end decides the
+// close code; the shell session is always closed.
 //
 // Socket I/O runs on its own context (io), which is cancelled only after the
 // close handshake: cancelling a context during a read or write makes the
 // WebSocket library drop the connection without a close frame.
-func (s *Server) proxyShell(stopping context.Context, conn *websocket.Conn, shell grid.ShellSession) {
+func (s *Server) proxyShell(stopping context.Context, conn *websocket.Conn, shell grid.ShellSession, guard *sessionGuard, onSessionEnded func(context.Context)) {
 	sockCtx, stopIO := context.WithCancel(context.Background())
 	defer stopIO()
 	var (
@@ -154,12 +165,18 @@ func (s *Server) proxyShell(stopping context.Context, conn *websocket.Conn, shel
 		}
 	}()
 
-	// keep-alive, and shutdown watcher
+	sessionEnded := func() {
+		onSessionEnded(sockCtx)
+		finish(websocket.StatusPolicyViolation, shellReasonSessionEnded)
+	}
+
+	// keep-alive, session check and shutdown watcher
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		t := time.NewTicker(s.shellPing)
 		defer t.Stop()
+		revoked := guard.revoked()
 		for {
 			select {
 			case <-sockCtx.Done():
@@ -167,7 +184,17 @@ func (s *Server) proxyShell(stopping context.Context, conn *websocket.Conn, shel
 			case <-stopping.Done():
 				finish(websocket.StatusGoingAway, "server shutting down")
 				return
+			case <-revoked:
+				revoked = guard.revoked() // re-arm before looking
+				if !guard.alive(sockCtx) {
+					sessionEnded()
+					return
+				}
 			case <-t.C:
+				if !guard.alive(sockCtx) {
+					sessionEnded()
+					return
+				}
 				pctx, pcancel := context.WithTimeout(sockCtx, shellPingWait)
 				err := conn.Ping(pctx)
 				pcancel()
