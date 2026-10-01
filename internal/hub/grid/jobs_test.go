@@ -81,6 +81,9 @@ func (e *testEnv) jobHost(ja *jobAgent) (HostID, *fakeAgent) {
 	id := e.addHost("alpha", protocol.CapPackages)
 	a := e.connect("alpha", helloFor("0.1.0", protocol.CapPackages), ja.handle)
 	eventually(e.t, func() bool { i, _ := e.g.Host(id); return i.Online })
+	// Wait for the refresh on connect: its late answer would otherwise
+	// overwrite state the test sets up (e.g. the reboot flag of a job).
+	eventually(e.t, func() bool { s, _ := e.g.Snapshot(id); return s.Packages != nil })
 	return id, a
 }
 
