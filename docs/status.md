@@ -1,8 +1,8 @@
 # Umsetzungsstand v0.1
 
-Stand: 30.09.2026 · Branch `claude/zealous-wozniak-26b1q7` (Merge `w3/shared`) · CI grün (Linux amd64 + arm64, `go test -race`)
+Stand: 01.10.2026 · `main` (nach Welle 3) · CI grün (Linux amd64 + arm64, `go test -race`)
 
-Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbeitenden Sonnet-Agents, jedes Ergebnis vom Orchestrator geprüft, gemergt und per GitHub Actions getestet. **Pausiert nach Welle 3** auf Wunsch. Integration und Welle 3 wurden auf dem Session-Branch `claude/zealous-wozniak-26b1q7` gemergt (noch nicht nach `main`).
+Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbeitenden Sonnet-Agents, jedes Ergebnis vom Orchestrator geprüft, gemergt und per GitHub Actions getestet. **Pausiert nach Welle 3** auf Wunsch. Integration und Welle 3 sind nach `main` gemergt.
 
 ## Fertig
 
@@ -37,7 +37,6 @@ Umfang: 194 Go-Dateien, davon 78 Testdateien.
 
 1. **Welle 4 – Auslieferung (2 Agents, medium):** siehe unten.
 2. **Sicherheits-Review** durch einen read-only Agenten, danach Test auf den Pis (Gate: 2 Wochen stabil).
-3. Session-Branch nach `main` mergen (Pull Request), sobald der Nutzer das freigibt.
 
 ## Hinweise für Welle 4 (aus der Integration)
 
