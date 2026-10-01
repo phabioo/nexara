@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -16,6 +17,7 @@ import (
 // Limits of the packages view.
 const (
 	packagesQueryMax     = 64 // characters of the search term
+	packagesOffsetMax    = 1_000_000
 	packageNameMax       = 128
 	packagesSearchMin    = 2 // characters before the repositories are searched
 	packagesSearchWait   = 10 * time.Second
@@ -40,6 +42,7 @@ type packagesJobEvent struct {
 // routesPackages registers the packages view, its actions and the job dialog.
 //
 //	GET  /hosts/{host}/packages?filter=&q=        page; fragment for HTMX (filter, search, live refresh)
+//	GET  /hosts/{host}/packages?...&offset=N      HTMX only: the next page of tiles ("show more")
 //	GET  /hosts/{host}/packages/confirm/{action}  confirm dialog (?package=)
 //	POST /hosts/{host}/packages/{action}          start a job, answers with the job dialog
 //	GET  /hosts/{host}/jobs/{job}                 job dialog (status-bar chip)
@@ -73,12 +76,21 @@ func (s *Server) handlePackages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	model := s.packagesModel(r, host, q.Get("filter"), q.Get("q"))
+	fragment := isHTMXFragment(r)
+	offset := 0
+	if fragment {
+		offset = parsePackagesOffset(q.Get("offset"))
+	}
+	model := s.packagesModel(r, host, q.Get("filter"), q.Get("q"), offset)
 
 	w.Header().Add("Vary", "HX-Request")
-	if isHTMXFragment(r) {
+	if fragment {
+		name := "packages-fragment"
+		if offset > 0 {
+			name = "packages-more" // only the tiles, the sentinel replaces itself
+		}
 		s.packagesWrite(w, r, http.StatusOK, func(rd *views.Renderer, w http.ResponseWriter) error {
-			return rd.RenderPartial(w, "packages-fragment", model)
+			return rd.RenderPartial(w, name, model)
 		})
 		return
 	}
@@ -97,7 +109,7 @@ func isHTMXFragment(r *http.Request) bool {
 }
 
 // packagesModel reads the host state and builds the view model.
-func (s *Server) packagesModel(r *http.Request, host grid.HostInfo, filter, query string) views.PackagesModel {
+func (s *Server) packagesModel(r *http.Request, host grid.HostInfo, filter, query string, offset int) views.PackagesModel {
 	capable := host.HasCapability(protocol.CapPackages)
 	snap, _ := s.hub.Snapshot(host.ID)
 	if snap.Packages == nil && host.Online && capable {
@@ -140,9 +152,19 @@ func (s *Server) packagesModel(r *http.Request, host grid.HostInfo, filter, quer
 		Filter:    filter,
 		Query:     query,
 		Found:     found,
+		Offset:    offset,
 		Note:      note,
 		Jobs:      jobs,
 	})
+}
+
+// parsePackagesOffset reads the "offset" of a "show more" request; anything but a positive number is 0.
+func parsePackagesOffset(v string) int {
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 || n > packagesOffsetMax {
+		return 0
+	}
+	return n
 }
 
 // clampQuery trims the search term and cuts it to packagesQueryMax characters.

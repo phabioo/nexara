@@ -3,6 +3,7 @@ package httpserver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"html"
 	"net/http"
 	"net/http/httptest"
@@ -795,5 +796,101 @@ func TestPackagesEventStream(t *testing.T) {
 			t.Fatalf("event = %q", joined)
 		}
 		return
+	}
+}
+
+// manyPackages gives alpha n installed packages named pkg001... in agent (alphabetical) order.
+func manyPackagesFor(p *pkgEnv, n int) {
+	items := make([]protocol.Package, 0, n)
+	for i := 1; i <= n; i++ {
+		items = append(items, protocol.Package{Name: fmt.Sprintf("pkg%03d", i), InstalledVersion: "1", State: protocol.PackageInstalled})
+	}
+	p.hub.snaps["a1"] = grid.Snapshot{Packages: &protocol.Packages{Items: items}}
+}
+
+func TestPackagesPaging(t *testing.T) {
+	const total = 130
+	tests := []struct {
+		name      string
+		target    string
+		opts      []reqOpt
+		wantTiles int
+		first     string
+		contains  []string
+		absent    []string
+	}{
+		{
+			name: "page renders the first 60 and a sentinel", target: "/hosts/alpha/packages", wantTiles: 60, first: ">pkg001<",
+			contains: []string{
+				`hx-get="/hosts/alpha/packages?filter=all&amp;offset=60"`, `hx-trigger="intersect once, click"`,
+				`hx-target="closest .pkg-more"`, `hx-swap="outerHTML"`, "70 left",
+				`class="grid-tiles phone-order-2" tabindex="0" role="region" aria-label="Packages"`,
+				"<title>Packages", "130</", // the counts still cover everything
+			},
+			absent: []string{">pkg061<"},
+		},
+		{
+			name: "show more answers with tiles and the next sentinel only", target: "/hosts/alpha/packages?filter=all&offset=60",
+			opts: []reqOpt{htmx()}, wantTiles: 60, first: ">pkg061<",
+			contains: []string{`offset=120`, "10 left"},
+			absent:   []string{"<html", `id="pkg-cards"`, `name="filter"`, `class="tabs"`},
+		},
+		{
+			name: "last page has no sentinel", target: "/hosts/alpha/packages?filter=all&offset=120",
+			opts: []reqOpt{htmx()}, wantTiles: 10, first: ">pkg121<", absent: []string{"pkg-more", "offset="},
+		},
+		{
+			name: "offset is ignored for full pages", target: "/hosts/alpha/packages?offset=60", wantTiles: 60, first: ">pkg001<",
+		},
+		{
+			name: "garbage offset is the first page", target: "/hosts/alpha/packages?offset=-4x", opts: []reqOpt{htmx()}, wantTiles: 60, first: ">pkg001<",
+			contains: []string{`name="filter"`, `id="pkg-cards"`},
+		},
+		{
+			name: "search covers every package, not the loaded page", target: "/hosts/alpha/packages?q=pkg12", opts: []reqOpt{htmx()}, wantTiles: 10, first: ">pkg120<",
+			absent: []string{"pkg-more"},
+		},
+		{
+			name: "the sentinel keeps the search term", target: "/hosts/alpha/packages?q=pkg0", opts: []reqOpt{htmx()}, wantTiles: 60, first: ">pkg001<",
+			contains: []string{`filter=all&amp;q=pkg0&amp;offset=60`, "39 left"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newPackagesEnv(t)
+			manyPackagesFor(p, total)
+			rec := p.getAs(tc.target, tc.opts...)
+			if rec.Code != 200 {
+				t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+			}
+			body := rec.Body.String()
+			if n := strings.Count(body, `<div class="tile t-`); n != tc.wantTiles {
+				t.Errorf("%d tiles, want %d", n, tc.wantTiles)
+			}
+			if !strings.Contains(body, tc.first) {
+				t.Errorf("first tile %s missing", tc.first)
+			}
+			for _, s := range tc.contains {
+				if !strings.Contains(body, s) {
+					t.Errorf("body lacks %q", s)
+				}
+			}
+			for _, s := range tc.absent {
+				if strings.Contains(body, s) {
+					t.Errorf("body contains %q", s)
+				}
+			}
+			noFiltered(t, body)
+		})
+	}
+}
+
+func TestParsePackagesOffset(t *testing.T) {
+	for in, want := range map[string]int{
+		"": 0, "0": 0, "60": 60, "-1": 0, "x": 0, "6 0": 0, "99999999999999999999": 0, "1000001": 0, "1000000": 1_000_000,
+	} {
+		if got := parsePackagesOffset(in); got != want {
+			t.Errorf("parsePackagesOffset(%q) = %d, want %d", in, got, want)
+		}
 	}
 }

@@ -9,10 +9,21 @@
 {{range .Notices}}<div class="notice-bad" role="status"><span>{{.}}</span></div>
 {{end}}
 {{with .Note}}<p class="pkg-note" role="status">{{.}}</p>{{end}}
-<div class="grid-tiles phone-order-2">
-  {{range .Tiles}}{{template "tile" (dict "Tone" .Tone "Glyph" .Glyph "Label" .Label "Name" .Name "Desc" .Desc "Meta" .Meta "Badge" .Badge "ActionLabel" .ActionLabel "ActionClass" .ActionClass "ActionAttrs" .ActionAttrs)}}{{end}}
+<div class="grid-tiles phone-order-2" tabindex="0" role="region" aria-label="Packages">
+  {{template "packages-tiles" .}}
   {{with .Empty}}<div class="tile-empty pkg-empty">{{.}}</div>{{end}}
+  {{template "packages-more-sentinel" .}}
 </div>{{end}}
+
+{{define "packages-tiles"}}{{range .Tiles}}{{template "tile" (dict "Tone" .Tone "Glyph" .Glyph "Label" .Label "Name" .Name "Desc" .Desc "Meta" .Meta "Badge" .Badge "ActionLabel" .ActionLabel "ActionClass" .ActionClass "ActionAttrs" .ActionAttrs)}}{{end}}{{end}}
+
+{{/* "Show more" at the end of a page of tiles. It loads the next page when it scrolls into view (the tile
+     list is its own scroll area on desktop, so intersect, not revealed) and by click as a fallback. */}}
+{{define "packages-more-sentinel"}}{{with .More}}<div class="pkg-more"><button type="button" class="btn-card btn-card-grey" hx-get="{{.URL}}" hx-trigger="intersect once, click" hx-target="closest .pkg-more" hx-swap="outerHTML" hx-disabled-elt="this"><span>Show more</span><span>{{.Remaining}} left</span></button></div>{{end}}{{end}}
+
+{{/* Answer of GET .../packages?offset=N to HTMX: the next tiles and, if there are more, the next sentinel;
+     it replaces the sentinel that asked. */}}
+{{define "packages-more"}}{{template "packages-tiles" .}}{{template "packages-more-sentinel" .}}{{end}}
 
 {{define "packages-card"}}<div class="card {{.Order}}">
   {{template "card-head" (dict "Title" .Title "Variant" .Variant)}}
