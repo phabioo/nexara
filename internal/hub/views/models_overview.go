@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -108,11 +109,14 @@ type OverviewMem struct {
 	ShellHref  string // empty hides "Open shell"
 }
 
-// OverviewUnit is one service row.
+// OverviewUnit is one service row. At most one of Bad, Busy and Dim is set: Bad is a failed unit (pink),
+// Busy one that is starting or stopping (half bar), Dim an inactive one (empty bar, dimmed row).
 type OverviewUnit struct {
 	Name  string
 	State string
 	Bad   bool
+	Busy  bool
+	Dim   bool
 }
 
 // OverviewServices feeds the body of the Services card.
@@ -243,18 +247,38 @@ func NewOverviewServices(host string, svc *protocol.Services, enabled bool, rest
 	out.Ready = true
 	running := 0
 	for _, u := range svc.Units {
-		bad := u.ActiveState == "failed"
-		if bad {
+		unit := OverviewUnit{Name: strings.TrimSuffix(u.Name, ".service"), State: u.ActiveState}
+		switch u.ActiveState {
+		case "failed":
+			unit.Bad = true
 			out.Failed++
-		}
-		if u.ActiveState == "active" {
+		case "active":
 			running++
+		case "inactive":
+			unit.Dim = true
+		default:
+			unit.Busy = true
 		}
-		out.Units = append(out.Units, OverviewUnit{Name: strings.TrimSuffix(u.Name, ".service"), State: u.ActiveState, Bad: bad})
+		out.Units = append(out.Units, unit)
 	}
+	// What matters first: failed, then running, then units in transition, then the inactive ones. The
+	// agent already sorts by name, which the stable sort keeps inside each group.
+	sort.SliceStable(out.Units, func(i, j int) bool { return unitRank(out.Units[i]) < unitRank(out.Units[j]) })
 	out.Tag = fmt.Sprintf("%d/%d running", running, len(svc.Units))
 	out.Text = fmt.Sprintf("systemd units on %s. %s", host, PortsText(svc.Ports))
 	return out
+}
+
+func unitRank(u OverviewUnit) int {
+	switch {
+	case u.Bad:
+		return 0
+	case u.Dim:
+		return 3
+	case u.Busy:
+		return 2
+	}
+	return 1
 }
 
 // PortsText renders the listening-ports sentence: "Listening on 22, 445, 32400 and 5353/udp."

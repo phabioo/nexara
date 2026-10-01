@@ -131,7 +131,7 @@ func TestOverviewPages(t *testing.T) {
 	}{
 		{
 			name: "default host is the first online host", path: "/", status: 200,
-			want: []string{"Overview: alpha", `sse-connect="/events?host=alpha"`, "CPU · 4 Cores", "Memory &amp; storage", ">Services<",
+			want: []string{"Overview: alpha", `sse-connect="/events"`, `data-host="alpha" data-view="overview"`, "CPU · 4 Cores", "Memory &amp; storage", ">Services<",
 				"Raspberry Pi 5 Model B Rev 1.0, 4 cores.", "Currently at 24% utilisation, SoC temperature 47.2 °C. Throttling starts at 80 °C.",
 				"Core 0", "Core 3", "SoC temperature", "0.42 0.38 0.35", "3.4 / 8 GB", "41 / 117 GB", "NO DISK", "CPU · LAST 8 S",
 				"Listening on 22, 445 and 5353/udp.", "2/3 running", "Restart failed units (1)", `hx-post="/hosts/alpha/services/restart"`,
@@ -145,7 +145,7 @@ func TestOverviewPages(t *testing.T) {
 		},
 		{
 			name: "offline host shows the offline card without Wake-on-LAN", path: "/hosts/beta", status: 200,
-			want: []string{"Beta Pi · Offline", "The Grid Agent is not connected.", "Last seen", "never", `sse-connect="/events?host=beta"`},
+			want: []string{"Beta Pi · Offline", "The Grid Agent is not connected.", "Last seen", "never", `sse-connect="/events"`, `data-host="beta"`},
 			lack: []string{"Wake", "WoL", "MAC address", "Memory &amp; storage", "Restart failed units"},
 		},
 		{
@@ -159,8 +159,8 @@ func TestOverviewPages(t *testing.T) {
 		{
 			name: "no hosts", path: "/", status: 200,
 			hosts: func(h *fakeHub) { h.hosts = nil },
-			want:  []string{"No hosts yet", `hx-get="/hosts/new"`},
-			lack:  []string{"sse-connect"},
+			// The stream is open even without a host: it tells the page when the first one is added.
+			want: []string{"No hosts yet", `hx-get="/hosts/new"`, `sse-connect="/events"`, `data-host="" data-view="overview"`},
 		},
 	}
 	for _, tc := range tests {
@@ -468,31 +468,12 @@ func TestOverviewSSERenderers(t *testing.T) {
 		ovLack(t, gs[0].html, "smbd.service")
 	})
 
-	t.Run("host state", func(t *testing.T) {
-		for _, tc := range []struct {
-			kind grid.EventKind
-			want string
-		}{{grid.EventHostOnline, "a1 online"}, {grid.EventHostOffline, "b2 offline"}} {
-			id := grid.HostID(strings.Fields(tc.want)[0])
-			var gs []got
-			for _, g := range run(grid.Event{Kind: tc.kind, Host: id, Payload: grid.HostInfo{ID: id}}) {
-				if strings.HasPrefix(g.name, "ov-") { // other views register their own renderers
-					gs = append(gs, g)
-				}
-			}
-			if len(gs) != 1 || gs[0].name != "ov-state" || gs[0].html != tc.want {
-				t.Errorf("%s: %+v", tc.kind, gs)
-			}
-		}
-	})
-
 	t.Run("unusable payloads are skipped", func(t *testing.T) {
 		for _, ev := range []grid.Event{
 			{Kind: grid.EventMetrics, Host: "a1", Payload: "nope"},
 			{Kind: grid.EventMetrics, Host: "a1", Payload: (*protocol.Metrics)(nil)},
 			{Kind: grid.EventServices, Host: "a1", Payload: 42},
 			{Kind: grid.EventServices, Host: "zz", Payload: *sampleOvServices()}, // unknown host
-			{Kind: grid.EventHostOffline, Host: "b2"},                            // no HostInfo payload
 		} {
 			if gs := run(ev); len(gs) != 0 {
 				t.Errorf("%+v rendered %+v", ev, gs)
@@ -537,11 +518,12 @@ func TestOverviewEventStream(t *testing.T) {
 			t.Errorf("event %s missing (got %v)", n, names)
 		}
 	}
-	if got := strings.Join(names["ov-load"], ""); got != "data: 0.42 0.38 0.35" {
+	// The SSE id names the host, nexus.js drops the events of hosts that are not on screen.
+	if got := strings.Join(names["ov-load"], ""); got != "id: alphadata: 0.42 0.38 0.35" {
 		t.Errorf("load block %q", got)
 	}
 	// Every line of a multi-line fragment carries its own data: field.
-	for _, l := range names["ov-cpu"] {
+	for _, l := range names["ov-cpu"][1:] {
 		if !strings.HasPrefix(l, "data: ") {
 			t.Errorf("line without data: %q", l)
 		}

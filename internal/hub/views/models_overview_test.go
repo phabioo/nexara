@@ -197,6 +197,7 @@ func TestNewOverviewServices(t *testing.T) {
 			{Name: "smbd.service", ActiveState: "failed"},
 			{Name: "cron", ActiveState: "inactive"},
 			{Name: "apt-daily.service", ActiveState: "activating"},
+			{Name: "nmbd.service", ActiveState: "active"},
 		},
 		Ports: []protocol.ListeningPort{{Proto: "tcp", Port: 22}, {Proto: "tcp", Port: 22}, {Proto: "udp", Port: 5353}},
 	}
@@ -217,13 +218,23 @@ func TestNewOverviewServices(t *testing.T) {
 			}
 		}},
 		{"list", svc, true, func(t *testing.T, g OverviewServices) {
-			if !g.Ready || g.Failed != 1 || g.Tag != "1/4 running" || g.RestartURL != "/r" {
+			if !g.Ready || g.Failed != 1 || g.Tag != "2/5 running" || g.RestartURL != "/r" {
 				t.Errorf("%+v", g)
 			}
 			if g.Text != "systemd units on pi. Listening on 22 and 5353/udp." {
 				t.Errorf("text %q", g.Text)
 			}
-			wantUnits := []OverviewUnit{{"ssh", "active", false}, {"smbd", "failed", true}, {"cron", "inactive", false}, {"apt-daily", "activating", false}}
+			// failed first, then active (agent order kept), then units in transition, then inactive
+			wantUnits := []OverviewUnit{
+				{Name: "smbd", State: "failed", Bad: true},
+				{Name: "ssh", State: "active"},
+				{Name: "nmbd", State: "active"},
+				{Name: "apt-daily", State: "activating", Busy: true},
+				{Name: "cron", State: "inactive", Dim: true},
+			}
+			if len(g.Units) != len(wantUnits) {
+				t.Fatalf("%d units, want %d", len(g.Units), len(wantUnits))
+			}
 			for i, u := range wantUnits {
 				if g.Units[i] != u {
 					t.Errorf("unit %d: %+v, want %+v", i, g.Units[i], u)

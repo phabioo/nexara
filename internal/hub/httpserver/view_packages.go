@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -16,6 +17,7 @@ import (
 // Limits of the packages view.
 const (
 	packagesQueryMax     = 64 // characters of the search term
+	packagesOffsetMax    = 1_000_000
 	packageNameMax       = 128
 	packagesSearchMin    = 2 // characters before the repositories are searched
 	packagesSearchWait   = 10 * time.Second
@@ -40,6 +42,7 @@ type packagesJobEvent struct {
 // routesPackages registers the packages view, its actions and the job dialog.
 //
 //	GET  /hosts/{host}/packages?filter=&q=        page; fragment for HTMX (filter, search, live refresh)
+//	GET  /hosts/{host}/packages?...&offset=N      HTMX only: the next page of tiles ("show more")
 //	GET  /hosts/{host}/packages/confirm/{action}  confirm dialog (?package=)
 //	POST /hosts/{host}/packages/{action}          start a job, answers with the job dialog
 //	GET  /hosts/{host}/jobs/{job}                 job dialog (status-bar chip)
@@ -73,31 +76,52 @@ func (s *Server) handlePackages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	model := s.packagesModel(r, host, q.Get("filter"), q.Get("q"))
+	// Two fragment answers: the results area (filter, search, live refresh;
+	// HX-Target pkg-results) and the next page of tiles for the "Show more"
+	// sentinel (offset > 0; its target has no id). Everything else, including
+	// boosted navigation and history restores, gets the full page.
+	offset := 0
+	if isHTMXRequest(r) {
+		offset = parsePackagesOffset(q.Get("offset"))
+	}
+	model := s.packagesModel(r, host, q.Get("filter"), q.Get("q"), offset)
 
-	w.Header().Add("Vary", "HX-Request")
-	if isHTMXFragment(r) {
+	w.Header().Add("Vary", "HX-Request, HX-Target")
+	if offset > 0 || isHTMXFragment(r) {
+		name := "packages-fragment"
+		if offset > 0 {
+			name = "packages-more" // only the tiles, the sentinel replaces itself
+		}
 		s.packagesWrite(w, r, http.StatusOK, func(rd *views.Renderer, w http.ResponseWriter) error {
-			return rd.RenderPartial(w, "packages-fragment", model)
+			return rd.RenderPartial(w, name, model)
 		})
 		return
 	}
 	l := s.layout(r, "packages", &host)
 	l.Title = "Packages"
-	l.EventsURL = model.EventsURL // the same stream, plus the events of the job dialog
 	s.packagesWrite(w, r, http.StatusOK, func(rd *views.Renderer, w http.ResponseWriter) error {
 		return rd.Render(w, "packages", packagesPage{Layout: l, P: model})
 	})
 }
 
-// isHTMXFragment reports whether the request wants a fragment: an HTMX request
-// that is not the full-page fetch htmx does when restoring history.
+// packagesResultsTarget is the id htmx sends as HX-Target when the filter tabs, the search box and the live
+// refresh of the packages view ask for the fragment.
+const packagesResultsTarget = "pkg-results"
+
+// isHTMXFragment reports whether the request wants the results fragment: an HTMX request that targets
+// #pkg-results. Boosted navigation and the refresh after an event target #main and get the full page (htmx
+// selects #main and the shell regions from it), and so does the full-page fetch htmx does when restoring history.
 func isHTMXFragment(r *http.Request) bool {
+	return isHTMXRequest(r) && r.Header.Get("HX-Target") == packagesResultsTarget
+}
+
+// isHTMXRequest reports an HTMX request that is not a history restore.
+func isHTMXRequest(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true"
 }
 
 // packagesModel reads the host state and builds the view model.
-func (s *Server) packagesModel(r *http.Request, host grid.HostInfo, filter, query string) views.PackagesModel {
+func (s *Server) packagesModel(r *http.Request, host grid.HostInfo, filter, query string, offset int) views.PackagesModel {
 	capable := host.HasCapability(protocol.CapPackages)
 	snap, _ := s.hub.Snapshot(host.ID)
 	if snap.Packages == nil && host.Online && capable {
@@ -131,7 +155,6 @@ func (s *Server) packagesModel(r *http.Request, host grid.HostInfo, filter, quer
 	return views.BuildPackages(views.PackagesInput{
 		HostLabel: hostLabel(host),
 		HostPath:  hostURL(host.Name),
-		HostName:  host.Name,
 		Online:    host.Online,
 		Capable:   capable,
 		Data:      snap.Packages,
@@ -140,9 +163,19 @@ func (s *Server) packagesModel(r *http.Request, host grid.HostInfo, filter, quer
 		Filter:    filter,
 		Query:     query,
 		Found:     found,
+		Offset:    offset,
 		Note:      note,
 		Jobs:      jobs,
 	})
+}
+
+// parsePackagesOffset reads the "offset" of a "show more" request; anything but a positive number is 0.
+func parsePackagesOffset(v string) int {
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 || n > packagesOffsetMax {
+		return 0
+	}
+	return n
 }
 
 // clampQuery trims the search term and cuts it to packagesQueryMax characters.
@@ -303,13 +336,9 @@ func (s *Server) packagesWrite(w http.ResponseWriter, r *http.Request, status in
 
 // --- event stream --------------------------------------------------------------
 
-// onPackagesStream reports whether the event stream belongs to the packages
-// page (its URL carries view=packages). Only that page reloads its fragment on
-// "pkg-changed"; the job events go to every page, because the status-bar chip
-// opens the job dialog from anywhere.
-func onPackagesStream(r *http.Request) bool {
-	return r != nil && r.URL.Query().Get("view") == "packages"
-}
+// The job events go to every page, because the status-bar chip opens the job dialog from anywhere. The
+// stream is the same for every page and every host; "pkg-changed" is tagged with its host (sse.go) and
+// reaches the fragment of the packages page only while that host is on screen (nexus.js).
 
 // renderPackagesJob turns job_queued, job_started and job_done into one "pkg-job"
 // event whose payload is a set of hx-swap-oob elements: the dialog regions (if
@@ -365,8 +394,8 @@ func (s *Server) renderPackagesJobOutput(_ *http.Request, ev grid.Event) (string
 	return packagesEventJob, html, true
 }
 
-// renderPackagesChanged tells the open packages page to reload its fragment;
-// the page knows its own filter and search term.
-func (s *Server) renderPackagesChanged(r *http.Request, _ grid.Event) (string, string, bool) {
-	return packagesEventChanged, "", onPackagesStream(r)
+// renderPackagesChanged tells an open packages page to reload its fragment; the page knows its own filter
+// and search term. Pages without #pkg-results ignore it.
+func (s *Server) renderPackagesChanged(_ *http.Request, _ grid.Event) (string, string, bool) {
+	return packagesEventChanged, "", true
 }

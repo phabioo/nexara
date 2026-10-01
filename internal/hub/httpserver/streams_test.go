@@ -110,7 +110,7 @@ func TestSSEKeepsRunningWhenAnotherSessionEnds(t *testing.T) {
 	// Several heartbeats pass; the stream must still deliver.
 	time.Sleep(60 * time.Millisecond)
 	e.hub.emit(grid.Event{Kind: grid.EventMetrics, Host: "a1"})
-	if ev := c.nextEvent(t); len(ev) != 2 || ev[0] != "event: m" {
+	if ev := c.nextEvent(t); len(ev) != 3 || ev[0] != "event: m" || ev[1] != "id: alpha" {
 		t.Fatalf("event = %q", ev)
 	}
 }

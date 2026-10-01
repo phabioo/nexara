@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/phabioo/nexara/internal/hub/grid"
@@ -107,21 +108,31 @@ type PackageCard struct {
 	ButtonAttrs   template.HTMLAttr
 }
 
+// PackagesPageSize is the number of tiles rendered per request; the rest follows through More.
+const PackagesPageSize = 60
+
+// PackagesMore describes the "show more" sentinel at the end of a page of tiles.
+type PackagesMore struct {
+	URL       string // GET answers with the next page of tiles (and the next sentinel)
+	Remaining int    // tiles not rendered yet
+}
+
 // PackagesModel is the view model of the packages page and its HTMX fragments.
 type PackagesModel struct {
 	HostLabel string
 	HostPath  string // "/hosts/alpha"
-	EventsURL string
 	Filter    string
 	Query     string
 	Count     string // "7/10", empty hides it
 
 	Filters []PackageFilterTab
 	Ticker  string
-	Notices []string // pink notices under the ticker (reboot required, offline)
-	Note    string   // hint about the repository search
-	Tiles   []PackageTile
-	Empty   string // shown instead of tiles
+	Notices []string      // pink notices under the ticker (reboot required, offline)
+	Note    string        // hint about the repository search
+	Tiles   []PackageTile // one page of the filtered, searched and sorted list
+	Total   int           // all tiles of the current filter and search, not only this page
+	More    *PackagesMore // nil when this page reaches the end
+	Empty   string        // shown instead of tiles
 
 	Sync, Upgrade, Clean PackageCard
 	Disabled             bool // host offline or packages switched off: actions are inert
@@ -131,7 +142,6 @@ type PackagesModel struct {
 type PackagesInput struct {
 	HostLabel string
 	HostPath  string
-	HostName  string // URL name, for the event stream
 	Online    bool
 	Capable   bool // packages capability enabled
 	Data      *protocol.Packages
@@ -140,6 +150,7 @@ type PackagesInput struct {
 	Filter    string
 	Query     string
 	Found     []protocol.Package // repository search results for Query
+	Offset    int                // first tile of the page (0 for the whole view, >0 for "show more")
 	Note      string
 	Jobs      []grid.Job // recent jobs of the host, newest first
 }
@@ -179,7 +190,6 @@ func BuildPackages(in PackagesInput) PackagesModel {
 	m := PackagesModel{
 		HostLabel: in.HostLabel,
 		HostPath:  in.HostPath,
-		EventsURL: "/events?host=" + url.QueryEscape(in.HostName) + "&view=packages",
 		Filter:    filter,
 		Query:     q,
 		Count:     in.Count,
@@ -247,11 +257,21 @@ func BuildPackages(in PackagesInput) PackagesModel {
 			shown = append(shown, p)
 		}
 	}
-	sort.SliceStable(shown, func(i, j int) bool { return stateRank(shown[i].State) < stateRank(shown[j].State) })
-	for _, p := range shown {
+	sortPackages(shown)
+	m.Total = len(shown)
+	start := min(max(in.Offset, 0), len(shown))
+	end := min(start+PackagesPageSize, len(shown))
+	for _, p := range shown[start:end] {
 		m.Tiles = append(m.Tiles, packageTile(p, in.HostPath, disabled))
 	}
-	if len(m.Tiles) == 0 {
+	if end < len(shown) {
+		more := in.HostPath + "/packages?filter=" + filter
+		if q != "" {
+			more += "&q=" + url.QueryEscape(q)
+		}
+		m.More = &PackagesMore{URL: more + "&offset=" + strconv.Itoa(end), Remaining: len(shown) - end}
+	}
+	if len(shown) == 0 {
 		m.Empty = emptyMessage(in.Data != nil, filter, q)
 	}
 
@@ -275,13 +295,31 @@ func packageMatchesFilter(st protocol.PackageState, filter string) bool {
 	return true
 }
 
+// sortPackages puts what needs attention first: updates, then orphaned packages, then installed ones,
+// then packages that are only available. Updates keep the order the agent reported (it sorts by name
+// already); the other groups are sorted alphabetically here.
+func sortPackages(ps []protocol.Package) {
+	sort.SliceStable(ps, func(i, j int) bool {
+		if ri, rj := stateRank(ps[i].State), stateRank(ps[j].State); ri != rj {
+			return ri < rj
+		} else if ri == 0 {
+			return false
+		}
+		li, lj := strings.ToLower(ps[i].Name), strings.ToLower(ps[j].Name)
+		if li != lj {
+			return li < lj
+		}
+		return ps[i].Name < ps[j].Name
+	})
+}
+
 func stateRank(st protocol.PackageState) int {
 	switch st {
 	case protocol.PackageUpdate:
 		return 0
-	case protocol.PackageInstalled:
-		return 1
 	case protocol.PackageOrphaned:
+		return 1
+	case protocol.PackageInstalled:
 		return 2
 	}
 	return 3

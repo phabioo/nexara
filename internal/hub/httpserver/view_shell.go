@@ -2,27 +2,19 @@ package httpserver
 
 import (
 	"errors"
-	"html"
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"github.com/phabioo/nexara/internal/hub/grid"
 	"github.com/phabioo/nexara/internal/hub/views"
 	"github.com/phabioo/nexara/internal/protocol"
 )
 
-// shellStateEvent is the SSE event the offline state of the shell page waits
-// for: it reports when a host goes online or offline so the page can reload.
-const shellStateEvent = "shell-host-state"
-
 // routesShell registers the Nexara Shell page. The WebSocket behind it
 // (GET /hosts/{host}/shell/ws) is infrastructure and lives in shellws.go; the
 // page passes the session's CSRF token as the ?csrf= query parameter.
 func (s *Server) routesShell(mux *http.ServeMux) {
 	mux.HandleFunc("GET /hosts/{host}/shell", s.handleShellPage)
-	s.sse.Register(grid.EventHostOnline, renderShellHostState)
-	s.sse.Register(grid.EventHostOffline, renderShellHostState)
 }
 
 // shellPageState decides what the page shows for a host: the terminal, the
@@ -71,17 +63,4 @@ func (s *Server) handleShellPage(w http.ResponseWriter, r *http.Request) {
 	if err := s.renderer.Render(w, "shell", page); err != nil {
 		s.serverError(w, r, err)
 	}
-}
-
-// renderShellHostState tells an open shell page that a host changed state. The
-// fragment is an invisible marker; shell.js compares it with the page state.
-func renderShellHostState(_ *http.Request, ev grid.Event) (string, string, bool) {
-	info, ok := ev.Payload.(grid.HostInfo)
-	if !ok {
-		return "", "", false
-	}
-	online := ev.Kind == grid.EventHostOnline
-	return shellStateEvent,
-		`<i data-host="` + html.EscapeString(info.Name) + `" data-online="` + strconv.FormatBool(online) + `"></i>`,
-		true
 }

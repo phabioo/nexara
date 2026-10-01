@@ -1,8 +1,8 @@
 # Umsetzungsstand v0.1
 
-Stand: 01.10.2026 · nach Welle 5 · CI grün (Linux amd64 + arm64, `go test -race`)
+Stand: 01.10.2026 · nach Welle 6 · CI grün (Linux amd64 + arm64, `go test -race`)
 
-Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbeitenden Sonnet-Agents, jedes Ergebnis vom Orchestrator geprüft, gemergt und per GitHub Actions getestet. **Pausiert nach Welle 5** (Sicherheits-Fixes) auf Wunsch. Welle 5 liegt auf dem Session-Branch `claude/zealous-wozniak-26b1q7` (PR nach `main`).
+Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbeitenden Sonnet-Agents, jedes Ergebnis vom Orchestrator geprüft, gemergt und per GitHub Actions getestet. **Pausiert nach Welle 6** (Feedback aus dem ersten Pi-Test) auf Wunsch. `v0.1.0-rc1` läuft auf frpi5; Welle 6 liegt auf dem Session-Branch (PR nach `main`).
 
 ## Fertig
 
@@ -31,6 +31,7 @@ Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbei
 | 4 | Build & Release | `scripts/`, `.github/workflows/release.yml`, `internal/release` | `build.sh` (Agents vor dem Hub, `CGO_ENABLED=0`, Version per ldflags), `package-deb.sh`, `release.sh` (`SHA256SUMS` + ed25519-Signatur), Release-Workflow bei `v*.*.*` (Tag streng geprüft, Secret nur im Signierschritt), Go-Prüfung der Signatur für das Selbst-Update in v0.2 |
 | 4 | Install & Paket | `deploy/`, `cmd/nexus/uninstall.go`, `internal/hub/app/uninstall.go` | systemd-Units (Hub gehärtet, `RuntimeDirectory=nexus`), Maintainer-Skripte (Benutzer `nexus`, Verzeichnisse, Configs, Self-Link-Agent), `install.sh` (Signatur + Prüfsumme, Ausgabe URL, Setup-Code, Fingerprint), `nexus uninstall [--purge]` |
 | 5 | Sicherheits-Fixes | siehe `docs/security-review-v0.1.md` | Review ohne kritische/hohe Befunde; behoben: Streams enden mit der Session, Body-Zeitlimit, Login-Sperre pro Konto+IP, HSTS, `__Host-`-Cookies, HKDF-Teilschlüssel; zweistufiger SSH-Link mit Fingerprint-Bestätigung (#41), keine stille Host-Übernahme (#46), längere Codes, Token nicht mehr in `ps`; CA mit NameConstraints, 5 Jahre (#45); Host entfernen mit Widerruf (#47); Go 1.26.8 + `govulncheck` in CI, Release-Environment, `nexus.db` 0600, kein Self-Update paketierter Agents, Setup-Sperre pro IP, mehr Audit, `nexus user unlock`, mehr systemd-Härtung |
+| 6 | Pi-Feedback | `nexus.js`, `layout*.go`, `sse.go`, Templates, `nexus.css`, `demo/large.go` | Navigation ohne Neuladen (htmx boost + OOB-Regionen, eine SSE-Verbindung, Ereignisse tauschen Fragmente, #48); Ansichten passen ab 1024 px in die Fensterhöhe, Listen scrollen in der Karte; Paketliste seitenweise (60) mit Updates zuerst; Services: fehlgeschlagene zuerst, inaktive gedimmt; Laufbänder lückenlos bei jeder Breite; `nexus dev --demo --demo-large` |
 
 Zusätzlich vom Orchestrator: `internal/hub/agentbin` (eingebettete Agent-Binaries), CI-Workflow `.github/workflows/ci.yml`, Entscheidungen #27–#42 in `decisions.md`.
 
@@ -54,6 +55,7 @@ Umfang: 224 Go-Dateien, davon 98 Testdateien.
 
 - `go run ./cmd/nexus dev --demo --seed` → http://127.0.0.1:8080, Anmeldung `demo` / `nexara-demo-passphrase`
 - `go run ./cmd/nexus dev --demo` → Setup-Assistent, Setup-Code steht auf der Konsole
+- `--demo-large` dazu → ein Demo-Host mit ~900 Paketen, 31 Units und 5 Mounts (Größenordnung des echten frpi5)
 
 ## So geht es weiter (für eine neue Session)
 

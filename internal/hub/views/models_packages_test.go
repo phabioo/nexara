@@ -1,6 +1,7 @@
 package views
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -21,7 +22,7 @@ func testPackages() *protocol.Packages {
 
 func baseInput() PackagesInput {
 	return PackagesInput{
-		HostLabel: "pi5", HostPath: "/hosts/pi5", HostName: "pi5",
+		HostLabel: "pi5", HostPath: "/hosts/pi5",
 		Online: true, Capable: true, Data: testPackages(), Filter: "all", Count: "1/3",
 	}
 }
@@ -79,12 +80,12 @@ func TestBuildPackagesFilters(t *testing.T) {
 		found  []protocol.Package
 		want   []string
 	}{
-		{"all, ranked by state", "all", "", nil, []string{"openssh-server", "linux-image-rpi-v8", "curl", "old-kernel", "htop"}},
+		{"all: updates, orphaned, installed, available", "all", "", nil, []string{"openssh-server", "linux-image-rpi-v8", "old-kernel", "curl", "htop"}},
 		{"updates", "updates", "", nil, []string{"openssh-server", "linux-image-rpi-v8"}},
 		{"installed includes updates", "installed", "", nil, []string{"openssh-server", "linux-image-rpi-v8", "curl"}},
 		{"available", "available", "", nil, []string{"htop"}},
 		{"orphaned", "orphaned", "", nil, []string{"old-kernel"}},
-		{"unknown filter is all", "nope", "", nil, []string{"openssh-server", "linux-image-rpi-v8", "curl", "old-kernel", "htop"}},
+		{"unknown filter is all", "nope", "", nil, []string{"openssh-server", "linux-image-rpi-v8", "old-kernel", "curl", "htop"}},
 		{"query is case-insensitive", "all", "  CURL ", nil, []string{"curl"}},
 		{"query with filter", "updates", "linux", nil, []string{"linux-image-rpi-v8"}},
 		{"search hits are appended once", "all", "tm", []protocol.Package{
@@ -132,7 +133,7 @@ func TestBuildPackagesTabs(t *testing.T) {
 	if a := string(m.Filters[1].Attrs); !strings.Contains(a, `hx-get="/hosts/pi5/packages?filter=updates"`) || strings.Contains(a, "q=") {
 		t.Errorf("attrs must not carry the search term (hx-include adds it): %s", a)
 	}
-	if m.Query != "a b" || m.Count != "1/3" || m.EventsURL != "/events?host=pi5&view=packages" {
+	if m.Query != "a b" || m.Count != "1/3" {
 		t.Errorf("model = %+v", m)
 	}
 }
@@ -541,4 +542,91 @@ func TestSafeDOMID(t *testing.T) {
 			t.Errorf("SafeDOMID(%q) = %v", in, got)
 		}
 	}
+}
+
+func manyPackages(n int) []protocol.Package {
+	out := make([]protocol.Package, 0, n)
+	for i := range n {
+		out = append(out, protocol.Package{Name: fmt.Sprintf("pkg%03d", n-i), InstalledVersion: "1", State: protocol.PackageInstalled})
+	}
+	return out
+}
+
+func TestSortPackages(t *testing.T) {
+	ps := []protocol.Package{
+		{Name: "zlib", State: protocol.PackageInstalled},
+		{Name: "Bash", State: protocol.PackageInstalled},
+		{Name: "tmux", State: protocol.PackageAvailable},
+		{Name: "xz", State: protocol.PackageOrphaned},
+		{Name: "curl", State: protocol.PackageInstalled},
+		{Name: "openssh", State: protocol.PackageUpdate},
+		{Name: "apt", State: protocol.PackageUpdate},
+		{Name: "acl", State: protocol.PackageOrphaned},
+	}
+	sortPackages(ps)
+	var got []string
+	for _, p := range ps {
+		got = append(got, p.Name)
+	}
+	// updates keep the agent's order, everything else is alphabetical (case-insensitive)
+	if want := "openssh,apt,acl,xz,Bash,curl,zlib,tmux"; strings.Join(got, ",") != want {
+		t.Errorf("order = %s, want %s", strings.Join(got, ","), want)
+	}
+}
+
+func TestBuildPackagesPaging(t *testing.T) {
+	const total = 2*PackagesPageSize + 7
+	tests := []struct {
+		name       string
+		offset     int
+		query      string
+		wantTiles  int
+		wantFirst  string
+		wantMore   string // "" = no sentinel
+		wantRemain int
+		wantEmpty  bool
+	}{
+		{"first page", 0, "", PackagesPageSize, "pkg001", "/hosts/pi5/packages?filter=all&offset=60", total - PackagesPageSize, false},
+		{"second page", PackagesPageSize, "", PackagesPageSize, "pkg061", "/hosts/pi5/packages?filter=all&offset=120", 7, false},
+		{"last page has no sentinel", 2 * PackagesPageSize, "", 7, "pkg121", "", 0, false},
+		{"offset past the end", 500, "", 0, "", "", 0, false},
+		{"negative offset is the first page", -5, "", PackagesPageSize, "pkg001", "/hosts/pi5/packages?filter=all&offset=60", total - PackagesPageSize, false},
+		{"search covers all packages, not the page", 0, "g0", PackagesPageSize, "pkg001", "/hosts/pi5/packages?filter=all&q=g0&offset=60", 0, false},
+		{"search without match", 0, "nope", 0, "", "", 0, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			in := baseInput()
+			in.Data = &protocol.Packages{Items: manyPackages(total)}
+			in.Offset, in.Query = tc.offset, tc.query
+			m := BuildPackages(in)
+			if len(m.Tiles) != tc.wantTiles {
+				t.Fatalf("%d tiles, want %d", len(m.Tiles), tc.wantTiles)
+			}
+			if tc.wantFirst != "" && m.Tiles[0].Name != tc.wantFirst {
+				t.Errorf("first tile %q, want %q", m.Tiles[0].Name, tc.wantFirst)
+			}
+			switch {
+			case tc.wantMore == "" && m.More != nil:
+				t.Errorf("unexpected sentinel %+v", m.More)
+			case tc.wantMore != "" && (m.More == nil || m.More.URL != tc.wantMore):
+				t.Errorf("sentinel %+v, want %s", m.More, tc.wantMore)
+			}
+			if tc.query == "" && tc.wantMore != "" && m.More.Remaining != tc.wantRemain {
+				t.Errorf("remaining %d, want %d", m.More.Remaining, tc.wantRemain)
+			}
+			if (m.Empty != "") != tc.wantEmpty {
+				t.Errorf("empty = %q", m.Empty)
+			}
+		})
+	}
+
+	t.Run("counts and total ignore the page", func(t *testing.T) {
+		in := baseInput()
+		in.Data = &protocol.Packages{Items: manyPackages(total)}
+		m := BuildPackages(in)
+		if m.Total != total || m.Filters[0].Count != total {
+			t.Errorf("total %d, all-count %d, want %d", m.Total, m.Filters[0].Count, total)
+		}
+	})
 }

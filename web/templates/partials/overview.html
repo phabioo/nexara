@@ -34,9 +34,9 @@
     {{range .Tiles}}{{if .Empty}}<div class="tile-empty">NO DISK</div>{{else}}{{template "tile-resource" (dict "Tone" .Tone "Label" .Label "Value" .Value "On" .On)}}{{end}}
     {{end}}
   </div>
-  {{with .ShellHref}}{{template "btn-card" (dict "Label" "Open shell" "Variant" "light" "Href" .)}}{{end}}
+  {{with .ShellHref}}{{template "btn-card" (dict "Label" "Open shell" "Variant" "light" "Href" . "Boost" true)}}{{end}}
 </div>{{else}}<p class="card-text">Waiting for the first sample from the agent.</p>
-{{with .ShellHref}}<div class="card-foot">{{template "btn-card" (dict "Label" "Open shell" "Variant" "light" "Href" .)}}</div>{{end}}{{end}}{{end}}
+{{with .ShellHref}}<div class="card-foot">{{template "btn-card" (dict "Label" "Open shell" "Variant" "light" "Href" . "Boost" true)}}</div>{{end}}{{end}}{{end}}
 
 {{/* Data: views.OverviewServices. */}}
 {{define "overview-svc-body"}}{{if .Disabled}}{{template "tag" (dict "Tone" "dark" "Text" "Switched off")}}
@@ -47,8 +47,10 @@
 <p class="card-text">{{.Text}}</p>
 {{template "checker"}}
 <div class="card-foot is-tight">
-  {{range .Units}}{{if .Bad}}{{template "objective" (dict "Label" .Name "Value" .State "Pct" 100 "Bad" true "BoxIcon" "close" "Small" true)}}{{else}}{{template "objective" (dict "Label" .Name "Value" .State "Pct" 100 "BoxIcon" "check" "Small" true)}}{{end}}
-  {{end}}
+  <div class="svc-list">
+    {{range .Units}}{{if .Bad}}{{template "objective" (dict "Label" .Name "Value" .State "Pct" 100 "Bad" true "BoxIcon" "close" "Small" true)}}{{else if .Dim}}<div class="svc-dim">{{template "objective" (dict "Label" .Name "Value" .State "Pct" 0 "BoxText" "–" "Small" true)}}</div>{{else if .Busy}}{{template "objective" (dict "Label" .Name "Value" .State "Pct" 50 "BoxText" "…" "Small" true)}}{{else}}{{template "objective" (dict "Label" .Name "Value" .State "Pct" 100 "BoxIcon" "check" "Small" true)}}{{end}}
+    {{end}}
+  </div>
   <button type="button" class="btn-card" data-ov-restart hx-post="{{.RestartURL}}" hx-swap="none" hx-disabled-elt="this"{{if not .Failed}} disabled{{end}}><span>{{if .Failed}}Restart failed units ({{.Failed}}){{else}}All units running{{end}}</span>{{icon "info" 14}}</button>
 </div>{{end}}{{end}}
 
