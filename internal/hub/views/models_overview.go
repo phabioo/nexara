@@ -39,6 +39,7 @@ type OverviewPage struct {
 	RebootRequired bool   // informational chip; the reboot action itself ships with the Power view
 	Load           string // "0.42 0.38 0.35"
 	Offline        *OverviewOffline
+	RemoveURL      string // GET opens the "Remove host" confirm dialog
 
 	CPUTitle string
 	CPU      OverviewCPU
@@ -55,6 +56,9 @@ type OverviewOffline struct {
 	Tag      string
 	Text     string
 	LastSeen string // "12 min ago" or "never"
+	// Host is the unique short name (URL segment); RemoveURL opens the "Remove host" confirm dialog.
+	Host      string
+	RemoveURL string
 }
 
 // OverviewCore is one per-core bar.

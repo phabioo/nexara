@@ -13,15 +13,16 @@
     </div>
   </div>
 </div>{{else if .Offline}}<div class="view">
-  <span hidden sse-swap="ov-state" data-ov-state></span>
+  <span hidden sse-swap="ov-state" data-ov-state data-ov-host="{{.Host}}"></span>
   {{template "overview-offline" .Offline}}
 </div>{{else}}<div class="view">
-  <span hidden sse-swap="ov-state" data-ov-state></span>
+  <span hidden sse-swap="ov-state" data-ov-state data-ov-host="{{.Host}}"></span>
   <div class="view-head">
     <span class="view-title">Overview: {{.Label}}</span>
     <div class="view-actions">
       {{if .RebootRequired}}<span class="btn-alert ov-reboot" role="status">{{icon "reboot" 12}}<span>Reboot required</span></span>{{end}}
       <div class="stat-chip"><span>LOAD</span><span id="ov-load" sse-swap="ov-load">{{.Load}}</span></div>
+      {{with .RemoveURL}}<button type="button" class="btn-power is-danger" hx-get="{{.}}" hx-target="#modal-root" hx-swap="innerHTML">{{icon "close" 12}}<span>Remove host</span></button>{{end}}
     </div>
   </div>
   <div class="grid-cards">

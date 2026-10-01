@@ -24,6 +24,8 @@ type overviewHub struct {
 	restarted []string
 	actors    []grid.Actor
 	restartFn func(unit string) error
+	removed   []string
+	removeFn  func(id grid.HostID) error
 	refreshed chan grid.HostID
 }
 

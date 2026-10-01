@@ -26,7 +26,9 @@ type certEnv struct {
 func newCertEnv(t *testing.T) *certEnv {
 	t.Helper()
 	dir := t.TempDir()
-	ca, err := pki.LoadOrCreateCA(dir)
+	// New CAs are name-constrained (decision #45): the names the tests later "choose in the wizard" are
+	// permitted up front, as the TEST-NET address standing in for a new interface address.
+	ca, err := pki.LoadOrCreateCA(dir, "frpi5.example", "hub.example", "late.example", "192.0.2.44", "192.0.2.99")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -233,6 +233,13 @@ type Hub interface {
 	// binary for the host's os/arch).
 	UpdateAgent(ctx context.Context, actor Actor, id HostID) error
 
+	// RemoveHost retires a host (audited as host.remove): its agent
+	// certificate is revoked, the live connection is closed and the host
+	// disappears from Hosts. Works for online and offline hosts, including the
+	// hub's own. EventHostRemoved is emitted.
+	// Errors: ErrHostNotFound.
+	RemoveHost(ctx context.Context, actor Actor, id HostID) error
+
 	// OpenShell opens an interactive shell on the host (audited). The caller
 	// owns the session and must Close it.
 	// Errors: ErrHostNotFound, ErrHostOffline, ErrCapabilityDisabled.
