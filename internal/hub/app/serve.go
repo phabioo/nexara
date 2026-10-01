@@ -170,6 +170,8 @@ func Serve(ctx context.Context, o ServeOptions) error {
 				}
 			},
 			WaitOnline: waitOnline(g),
+			// Replacing a host is only allowed while it is offline (decision #46).
+			HostOnline: func(id grid.HostID) bool { h, ok := g.Host(id); return ok && h.Online },
 		})
 	}
 	enrollSvc, err := newEnroll(agentHost, agentPort)

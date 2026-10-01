@@ -33,7 +33,7 @@ Die Agents öffnen keine Ports. Sie bauen die Verbindung selbst zum Hub auf, der
 4. Der Hub stellt ihm ein Client-Zertifikat aus, ab dann läuft alles über mTLS.
 5. Der SSH-Zugang wird verworfen. Das Passwort wird nie gespeichert.
 
-Für Windows, macOS oder Hosts ohne SSH gibt es den manuellen Weg: Agent installieren und `grid-agent enroll --hub <adresse> --token <code>` ausführen.
+Für Windows, macOS oder Hosts ohne SSH gibt es den manuellen Weg: Agent installieren und `grid-agent enroll --hub <adresse> --token-file <datei>` ausführen (Code im Format `GRID-XXXX-XXXX-XXXX-XXXX`; `--token <code>` geht auch, landet aber in der Prozessliste).
 
 ## Techstack
 
@@ -142,7 +142,7 @@ Ein frischer Hub startet im Setup-Modus und lässt sich nur mit einem einmaligen
 - Der Hub erzeugt alle 60 Minuten automatisch einen neuen Code und schreibt ihn ins Journal, der alte wird ungültig.
 - Sofort neuer Code: `sudo nexus setup code` (nur lokal oder per SSH) oder Neustart des Dienstes.
 - Ein abgelaufener oder falscher Code führt zur Meldung „Code invalid or expired“ mit Anzahl der verbleibenden Versuche.
-- Nach 5 falschen Codes ist die Eingabe 15 Minuten gesperrt, danach gibt es einen neuen Code.
+- Nach 5 falschen Codes ist die Eingabe für diese IP 15 Minuten gesperrt; der Code bleibt gültig. Nach 50 Fehlversuchen insgesamt sperrt die Eingabe für alle 15 Minuten.
 - Nach „Unlock“ gilt eine Setup-Sitzung im Browser mit 30 Minuten Inaktivitäts-Timeout. Existiert das Operator-Konto schon, geht es nach normalem Login als Checkliste in den Settings weiter. Sonst beginnt der Assistent wieder bei „Unlock“.
 
 Ein verlorenes Operator-Konto lässt sich nur lokal auf dem Hub mit `sudo nexus user reset` zurücksetzen.
