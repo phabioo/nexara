@@ -181,6 +181,17 @@ func (s *Store) RevokeHost(ctx context.Context, id string) error {
 	return affected(s.db.ExecContext(ctx, "UPDATE hosts SET revoked = 1 WHERE id = ?", id))
 }
 
+// RetireHost revokes the host and frees its name: the row stays (the revoked
+// flag and the certificate fingerprint keep rejecting the old agent, audit
+// entries keep their context), but the unique name becomes "<name>~<id>" so a
+// device with the same host name can be linked again as a new host (decision
+// #47). Retiring an already revoked host changes nothing. ErrNotFound if unknown.
+func (s *Store) RetireHost(ctx context.Context, id string) error {
+	return affected(s.db.ExecContext(ctx,
+		`UPDATE hosts SET name = CASE WHEN revoked = 0 THEN name || '~' || id ELSE name END, revoked = 1
+		 WHERE id = ?`, id))
+}
+
 // DeleteHost removes the host row (host removal in Settings; revoke first).
 // Enrollment tokens that referenced it keep existing with host_id NULL; audit
 // entries are unaffected.

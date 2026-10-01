@@ -14,13 +14,14 @@ import (
 	"testing"
 	"time"
 
+	agentenroll "github.com/phabioo/nexara/internal/agent/enroll"
 	"github.com/phabioo/nexara/internal/hub/grid"
 	"github.com/phabioo/nexara/internal/hub/store"
 	"github.com/phabioo/nexara/internal/pki"
 )
 
 func TestCodeFormatAndAlphabet(t *testing.T) {
-	re := regexp.MustCompile(`^GRID-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$`)
+	re := regexp.MustCompile(`^GRID(-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}){4}$`)
 	seen := map[string]bool{}
 	for i := 0; i < 500; i++ {
 		c, err := randomCode()
@@ -34,6 +35,52 @@ func TestCodeFormatAndAlphabet(t *testing.T) {
 			t.Fatalf("duplicate code %q", c)
 		}
 		seen[c] = true
+	}
+}
+
+// The code shape is checked in four places: the hub's handler, the install
+// script, the agent's flags and this generator. They must agree (S-10).
+func TestCodeShapeIsInSyncEverywhere(t *testing.T) {
+	// the script's grep pattern, rendered from the same alphabet
+	script, err := renderInstallScript("frpi5.local", 8443, base64.StdEncoding.EncodeToString(make([]byte, 32)), strings.Repeat("ab", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`grep -Eq '(\^GRID[^']*)'`).FindSubmatch(script)
+	if m == nil {
+		t.Fatal("the install script does not validate the code")
+	}
+	scriptRE := regexp.MustCompile(string(m[1]))
+
+	valid := []string{}
+	for i := 0; i < 50; i++ {
+		c, err := randomCode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		valid = append(valid, c)
+	}
+	invalid := []string{
+		"", "GRID-ABCD-EFGH", "GRID-ABCD-EFGH-JKMN", "GRID-ABCD-EFGH-JKMN-PQRS-TUVW", "GRID-ABCD-EFGH-JKMN-PQR",
+		"GRID-ABCD-EFGH-JKMN-PQR0", "GRID-ABCD-EFGH-JKMN-PQRI", "GRID-ABCD-EFGH-JKMN-PQRO",
+		"GRID-ABCD-EFGH-JKMN-PQR1", "GRID-ABCD-EFGH-JKMN-PQRL", "GRIDABCDEFGHJKMNPQRS",
+		"GRID-ABCD-EFGH-JKMN-PQRS; reboot",
+	}
+	for _, c := range valid {
+		if !codeRE.MatchString(c) || !scriptRE.MatchString(c) {
+			t.Errorf("valid code %q rejected (hub=%v script=%v)", c, codeRE.MatchString(c), scriptRE.MatchString(c))
+		}
+		if got, err := agentenroll.NormalizeCode(strings.ToLower(" " + c + " ")); err != nil || got != c {
+			t.Errorf("agent rejects %q: %q %v", c, got, err)
+		}
+	}
+	for _, c := range invalid {
+		if codeRE.MatchString(c) || scriptRE.MatchString(c) {
+			t.Errorf("invalid code %q accepted (hub=%v script=%v)", c, codeRE.MatchString(c), scriptRE.MatchString(c))
+		}
+		if _, err := agentenroll.NormalizeCode(c); err == nil {
+			t.Errorf("agent accepts %q", c)
+		}
 	}
 }
 
@@ -162,7 +209,8 @@ func TestRenderInstallScript(t *testing.T) {
 		"HUB_ADDR='frpi5.local'", "HUB_PORT='8443'", "PIN='sha256//" + pin + "'", "CA_FP='" + fp + "'",
 		`--pinnedpubkey "$PIN"`, `/grid/download/linux/$ARCH`,
 		"aarch64 | arm64) ARCH=arm64", "x86_64 | amd64) ARCH=amd64",
-		`grid-agent enroll --hub "https://$HUB_ADDR:$HUB_PORT" --token "$CODE" --ca-fingerprint "$CA_FP" --shell-user "${SUDO_USER:-}"`,
+		`grid-agent enroll --hub "https://$HUB_ADDR:$HUB_PORT" --token-file "$TOKFILE" --ca-fingerprint "$CA_FP" --shell-user "${SUDO_USER:-}"`,
+		"invalid enrollment code",
 		"systemctl daemon-reload", "systemctl enable --now grid-agent",
 		"/usr/local/bin/grid-agent", "id -u",
 	} {
@@ -175,6 +223,10 @@ func TestRenderInstallScript(t *testing.T) {
 	}
 	if strings.Contains(s, "{{") {
 		t.Error("unrendered template action")
+	}
+	// The code never appears on the enroll command line (S-19).
+	if strings.Contains(s, `--token "$CODE"`) {
+		t.Error("the script passes the code on the command line")
 	}
 }
 

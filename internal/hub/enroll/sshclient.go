@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -12,15 +13,24 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"github.com/phabioo/nexara/internal/hub/grid"
 )
 
 // SSHDialer opens SSH connections. The real implementation uses
 // golang.org/x/crypto/ssh; tests inject a fake.
 type SSHDialer interface {
+	// Probe is phase 1 of the link: connect, receive the host key and stop.
+	// No authentication is attempted, so no credential can leak to an
+	// unconfirmed host.
+	Probe(ctx context.Context, addr string, timeout time.Duration) (grid.HostKeyInfo, error)
+	// Dial connects and authenticates. It refuses any host key other than
+	// cfg.HostKeySHA256 before a credential is sent (grid.ErrHostKeyMismatch).
 	Dial(ctx context.Context, cfg SSHDialConfig) (SSHConn, error)
 }
 
@@ -42,6 +52,8 @@ type SSHDialConfig struct {
 	Password []byte // not retained by the dialer beyond the connection attempt
 	Signer   ssh.Signer
 	Timeout  time.Duration
+	// HostKeySHA256 is the only host key ("SHA256:...") the dialer accepts.
+	HostKeySHA256 string
 }
 
 // ExitError is returned by SSHConn.Run for a command that ran but failed.
@@ -72,7 +84,63 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 
 type realDialer struct{}
 
+// hostKeyAlgorithms is the fixed preference list of both phases. ed25519 comes
+// first so the fingerprint shown to the operator is the one of
+// /etc/ssh/ssh_host_ed25519_key.pub whenever the host has such a key; using the
+// same list in probe and dial keeps the negotiated key type stable.
+var hostKeyAlgorithms = []string{
+	ssh.KeyAlgoED25519,
+	ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521,
+	ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256,
+}
+
+// errProbeDone aborts the handshake right after the host key was received.
+var errProbeDone = errors.New("enroll: probe done")
+
+var fingerprintRE = regexp.MustCompile(`^SHA256:[A-Za-z0-9+/]{43}$`)
+
+func (realDialer) Probe(ctx context.Context, addr string, timeout time.Duration) (grid.HostKeyInfo, error) {
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	var got grid.HostKeyInfo
+	sc := &ssh.ClientConfig{
+		User:              "nexus-probe",
+		HostKeyAlgorithms: hostKeyAlgorithms,
+		// No Auth methods: the callback runs during key exchange, before the
+		// client could authenticate, and ends the handshake.
+		HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
+			got = grid.HostKeyInfo{Type: key.Type(), SHA256: ssh.FingerprintSHA256(key)}
+			return errProbeDone
+		},
+		Timeout: timeout,
+	}
+	dctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	raw, err := (&net.Dialer{}).DialContext(dctx, "tcp", addr)
+	if err != nil {
+		return grid.HostKeyInfo{}, err
+	}
+	defer raw.Close()
+	_ = raw.SetDeadline(time.Now().Add(timeout))
+	// Closing the connection on cancellation unblocks a stuck handshake.
+	stop := context.AfterFunc(ctx, func() { _ = raw.Close() })
+	defer stop()
+	c, _, _, err := ssh.NewClientConn(raw, addr, sc)
+	if err == nil { // cannot happen without Auth, but never leak a session
+		_ = c.Close()
+		return grid.HostKeyInfo{}, errors.New("enroll: unexpected SSH session during probe")
+	}
+	if got.SHA256 == "" {
+		return grid.HostKeyInfo{}, err
+	}
+	return got, nil
+}
+
 func (realDialer) Dial(ctx context.Context, cfg SSHDialConfig) (SSHConn, error) {
+	if !fingerprintRE.MatchString(cfg.HostKeySHA256) {
+		return nil, errors.New("enroll: no confirmed host key fingerprint")
+	}
 	var auth []ssh.AuthMethod
 	switch {
 	case cfg.Signer != nil:
@@ -96,13 +164,20 @@ func (realDialer) Dial(ctx context.Context, cfg SSHDialConfig) (SSHConn, error) 
 		timeout = 10 * time.Second
 	}
 	conn := &realConn{}
+	mismatch := false
 	sc := &ssh.ClientConfig{
-		User: cfg.User,
-		Auth: auth,
-		// Accepted on first use (decision #41); the fingerprint is shown in the
-		// progress list. The connection is used once and then dropped.
+		User:              cfg.User,
+		Auth:              auth,
+		HostKeyAlgorithms: hostKeyAlgorithms,
+		// Only the fingerprint the operator confirmed is accepted (decision
+		// #41). The callback runs during key exchange, before any credential
+		// is sent, so a changed key never sees the password.
 		HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
 			conn.fingerprint = ssh.FingerprintSHA256(key)
+			if subtle.ConstantTimeCompare([]byte(conn.fingerprint), []byte(cfg.HostKeySHA256)) != 1 {
+				mismatch = true
+				return grid.ErrHostKeyMismatch
+			}
 			return nil
 		},
 		Timeout: timeout,
@@ -117,6 +192,9 @@ func (realDialer) Dial(ctx context.Context, cfg SSHDialConfig) (SSHConn, error) 
 	c, chans, reqs, err := ssh.NewClientConn(raw, cfg.Addr, sc)
 	if err != nil {
 		_ = raw.Close()
+		if mismatch {
+			return nil, grid.ErrHostKeyMismatch
+		}
 		return nil, err
 	}
 	_ = raw.SetDeadline(time.Time{})

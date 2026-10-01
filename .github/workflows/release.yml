@@ -11,8 +11,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
       - name: test
@@ -21,13 +21,17 @@ jobs:
   release:
     needs: test
     runs-on: ubuntu-latest
+    # The signing secret lives in this environment (Settings > Environments >
+    # release), which requires a reviewer. Whoever pushes a tag cannot reach the
+    # key without that approval. Also protect the v*.*.* tags in the repository.
+    environment: release
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
       - name: version
@@ -49,16 +53,28 @@ jobs:
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: scripts/build.sh --version "$VERSION" --out dist
-      - name: package and sign
+      - name: package
+        # No secret here: release.sh builds the .deb files and SHA256SUMS and,
+        # without a key in the environment, skips signing.
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: scripts/release.sh "$VERSION" dist
+      - name: sign
+        # The only step that sees the signing key.
         env:
           NEXARA_RELEASE_SIGNING_KEY: ${{ secrets.NEXARA_RELEASE_SIGNING_KEY }}
-          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           if [ -z "$NEXARA_RELEASE_SIGNING_KEY" ]; then
-            echo "::error::secret NEXARA_RELEASE_SIGNING_KEY is not set"
+            echo "::error::secret NEXARA_RELEASE_SIGNING_KEY is not set (it belongs to the 'release' environment)"
             exit 1
           fi
-          scripts/release.sh "$VERSION" dist
+          umask 077
+          keydir="$(mktemp -d)"
+          trap 'rm -rf "$keydir"' EXIT
+          printf '%s\n' "$NEXARA_RELEASE_SIGNING_KEY" > "$keydir/key.pem"
+          openssl pkeyutl -sign -rawin -inkey "$keydir/key.pem" \
+            -in dist/SHA256SUMS -out dist/SHA256SUMS.sig
+          chmod 0644 dist/SHA256SUMS.sig
       - name: verify signature
         run: |
           openssl pkeyutl -verify -pubin -inkey deploy/keys/nexara-release.pub \

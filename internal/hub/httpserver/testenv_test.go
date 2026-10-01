@@ -204,7 +204,35 @@ func (s *fakeShell) Close() error {
 
 // --- environment ---------------------------------------------------------------
 
+// Cookie names on the wire in the test environment (SecureCookies: true, so __Host- prefixed).
+var (
+	sessionCookieName   = auth.CookieName(auth.SessionCookieName, true)
+	csrfCookieName      = auth.CookieName(auth.CSRFCookieName, true)
+	challengeCookieName = auth.CookieName(loginChallengeBase, true)
+	setupCookieName     = auth.CookieName(setup.SessionCookie, true)
+)
+
+// offsetClock is the auth clock of the environment: real time plus an offset
+// that tests advance to expire sessions without waiting.
+type offsetClock struct {
+	mu  sync.Mutex
+	off time.Duration
+}
+
+func (c *offsetClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return time.Now().Add(c.off)
+}
+
+func (c *offsetClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	c.off += d
+	c.mu.Unlock()
+}
+
 type env struct {
+	clock *offsetClock
 	t     *testing.T
 	srv   *Server
 	st    *store.Store
@@ -232,20 +260,26 @@ func (s *syncBuffer) String() string {
 	return s.b.String()
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T) *env { return newEnvSecure(t, true) }
+
+// newEnvSecure builds the environment with TLS-mode cookies (secure) or the
+// plain-HTTP demo's.
+func newEnvSecure(t *testing.T, secure bool) *env {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "nexus.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
+	clock := &offsetClock{}
 	key := make([]byte, auth.SecretKeyLen)
 	for i := range key {
 		key[i] = byte(i + 1)
 	}
 	svc, err := auth.NewService(auth.Config{
 		Store: st, SecretKey: key, IdleTimeout: 12 * time.Hour,
-		RateAttempts: 5, RateWindow: 15 * time.Minute, HashParams: testParams,
+		RateAttempts: 5, RateWindow: 15 * time.Minute, HashParams: testParams, Now: clock.Now,
+		CookieOptions: []auth.CookieOption{auth.WithSecure(secure)},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -270,7 +304,7 @@ func newEnv(t *testing.T) *env {
 	srv, err := New(Options{
 		Auth: svc,
 		Setup: SetupDeps{
-			Codes: setup.NewCodes(setup.CodeOptions{}), Sessions: setup.NewSessions(setup.SessionOptions{}), Mode: mode,
+			Codes: setup.NewCodes(setup.CodeOptions{}), Sessions: setup.NewSessions(setup.SessionOptions{InsecureCookie: !secure}), Mode: mode,
 		},
 		Hub: hub,
 		Static: fstest.MapFS{
@@ -281,12 +315,12 @@ func newEnv(t *testing.T) *env {
 		AgentHandler:  http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "agent-ok") }),
 		EnrollHandler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "enroll-ok") }),
 		Logger:        slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
-		SecureCookies: true,
+		SecureCookies: secure,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &env{t: t, srv: srv, st: st, svc: svc, hub: hub, users: users, mode: mode, logs: logs}
+	return &env{clock: clock, t: t, srv: srv, st: st, svc: svc, hub: hub, users: users, mode: mode, logs: logs}
 }
 
 func (e *env) setSetupMode(active bool) {
@@ -305,7 +339,7 @@ func (e *env) signIn() (cookie *http.Cookie, csrf string) {
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	return &http.Cookie{Name: auth.SessionCookieName, Value: res.SessionID}, e.svc.CSRFToken(res.Session)
+	return &http.Cookie{Name: sessionCookieName, Value: res.SessionID}, e.svc.CSRFToken(res.Session)
 }
 
 func (e *env) addTOTP() string {
@@ -314,11 +348,11 @@ func (e *env) addTOTP() string {
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	sealed, err := e.svc.SealTOTPSecret(enr.Secret)
+	u, err := e.st.GetUserByOperatorID(context.Background(), testOperator)
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	u, err := e.st.GetUserByOperatorID(context.Background(), testOperator)
+	sealed, err := e.svc.SealTOTPSecret(u.ID, enr.Secret)
 	if err != nil {
 		e.t.Fatal(err)
 	}

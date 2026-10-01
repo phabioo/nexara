@@ -3,20 +3,45 @@ package auth
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hkdf"
 	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 // SecretKeyLen is the size of secret.key (AES-256).
 const SecretKeyLen = 32
 
-// AADTOTP is the associated data binding sealed blobs to their purpose, so a
-// sealed TOTP secret cannot be swapped for another kind of secret later.
-var AADTOTP = []byte("nexus:totp-secret:v1")
+// HKDF "info" labels: one subkey per purpose, so a flaw in one use of
+// secret.key cannot be turned against another (security review S-19).
+const (
+	hkdfInfoCSRF = "nexus/v1 csrf-token-hmac"
+	hkdfInfoSeal = "nexus/v1 sealed-secrets-aes-gcm"
+)
+
+// deriveKey expands the master key from secret.key into a 32-byte subkey for
+// one purpose (HKDF-SHA-256, no salt: the master key is already uniformly random).
+func deriveKey(master []byte, info string) ([]byte, error) {
+	if len(master) != SecretKeyLen {
+		return nil, errors.New("auth: secret key must be 32 bytes")
+	}
+	return hkdf.Key(sha256.New, master, nil, info, SecretKeyLen)
+}
+
+// TOTPAAD is the associated data of a sealed TOTP secret: its purpose and
+// the owning user's ID. A blob copied from one user's row into another's, or
+// into a different kind of column, no longer opens.
+//
+// v0.1 is not deployed anywhere, so there are no blobs sealed with the old
+// shared key and constant AAD to migrate; nothing reads them any more.
+func TOTPAAD(userID int64) []byte {
+	return []byte("nexus:totp-secret:v2:user=" + strconv.FormatInt(userID, 10))
+}
 
 const sealVersion = 1
 

@@ -24,9 +24,15 @@ const (
 	// maxLinkEntries and linkRetention bound the in-memory attempt list.
 	maxLinkEntries = 64
 	linkRetention  = 30 * time.Minute
+	// probeTTL is how long a shown host key can be confirmed; maxProbes bounds the list.
+	probeTTL  = 10 * time.Minute
+	maxProbes = 32
 )
 
-var errTooManyLinks = errors.New("too many link attempts running")
+var (
+	errTooManyLinks = errors.New("too many link attempts running")
+	errProbeGone    = errors.New("host key check expired or already used")
+)
 
 // Phases of a code attempt, used to let the poll answer 204 while nothing changed.
 const (
@@ -42,13 +48,104 @@ const (
 // persisted and no credential is stored: the SSH password lives only inside
 // the goroutine that calls the enroller.
 type linkRegistry struct {
-	mu    sync.Mutex
-	links map[string]*linkAttempt
-	codes map[string]*codeAttempt
+	mu     sync.Mutex
+	links  map[string]*linkAttempt
+	codes  map[string]*codeAttempt
+	probes map[string]*hostKeyProbe
 }
 
 func newLinkRegistry() *linkRegistry {
-	return &linkRegistry{links: map[string]*linkAttempt{}, codes: map[string]*codeAttempt{}}
+	return &linkRegistry{links: map[string]*linkAttempt{}, codes: map[string]*codeAttempt{}, probes: map[string]*hostKeyProbe{}}
+}
+
+// --- host key probes (phase 1) ---------------------------------------------------------------
+
+// hostKeyProbe is the state between the two phases of an SSH link: the host
+// key the hub saw, waiting for the operator's confirmation. It is bound to the
+// operator and the browser session that asked, expires after probeTTL and can
+// be used once. It holds no credential.
+type hostKeyProbe struct {
+	id          string
+	operator    string
+	session     string // store.Session.IDHash
+	form        views.AddHostForm
+	port        int
+	info        grid.HostKeyInfo
+	replaceID   grid.HostID // offline host the operator chose to replace; empty otherwise
+	replaceName string
+	created     time.Time
+}
+
+// keyFile is the file on the host whose fingerprint the operator compares.
+func keyFile(keyType string) string {
+	switch {
+	case strings.HasPrefix(keyType, "ecdsa-"):
+		return "/etc/ssh/ssh_host_ecdsa_key.pub"
+	case keyType == "ssh-rsa" || strings.HasPrefix(keyType, "rsa-"):
+		return "/etc/ssh/ssh_host_rsa_key.pub"
+	}
+	return "/etc/ssh/ssh_host_ed25519_key.pub"
+}
+
+func (p *hostKeyProbe) view() *hostKeyConfirm {
+	c := &hostKeyConfirm{
+		ProbeID:     p.id,
+		Target:      p.form.User + "@" + p.form.Address + ":" + strconv.Itoa(p.port),
+		KeyType:     p.info.Type,
+		Fingerprint: p.info.SHA256,
+		KeyFile:     keyFile(p.info.Type),
+	}
+	if p.replaceID != "" {
+		c.Replace = &replaceNotice{ID: string(p.replaceID), Name: p.replaceName}
+	}
+	return c
+}
+
+// addProbe stores a probe and returns it with its id. replace may be nil.
+func (l *linkRegistry) addProbe(p *hostKeyProbe, replace *replaceNotice, now time.Time) *hostKeyProbe {
+	p.id, p.created = newAttemptID(), now
+	if replace != nil {
+		p.replaceID, p.replaceName = grid.HostID(replace.ID), replace.Name
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.pruneProbes(now)
+	for len(l.probes) >= maxProbes {
+		oldest, oldestAt := "", now
+		for id, q := range l.probes {
+			if !q.created.After(oldestAt) {
+				oldest, oldestAt = id, q.created
+			}
+		}
+		if oldest == "" {
+			break
+		}
+		delete(l.probes, oldest)
+	}
+	l.probes[p.id] = p
+	return p
+}
+
+func (l *linkRegistry) pruneProbes(now time.Time) {
+	for id, p := range l.probes {
+		if now.Sub(p.created) > probeTTL {
+			delete(l.probes, id)
+		}
+	}
+}
+
+// getProbe returns the probe if it belongs to this operator and session and has not expired.
+func (l *linkRegistry) getProbe(id, operator, session string, now time.Time) *hostKeyProbe {
+	if id == "" {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	p := l.probes[id]
+	if p == nil || p.operator != operator || p.session != session || now.Sub(p.created) > probeTTL {
+		return nil
+	}
+	return p
 }
 
 func newAttemptID() string {
@@ -75,6 +172,17 @@ type linkAttempt struct {
 	errMsg  string
 	host    grid.HostInfo
 	hostKey string
+	exists  *grid.HostExistsError // set when the link ran into an existing host
+}
+
+// existsID is the host the attempt collided with, if any.
+func (a *linkAttempt) existsID() grid.HostID {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.exists == nil {
+		return ""
+	}
+	return a.exists.ID
 }
 
 var sshStepLabels = map[grid.LinkStepName]string{
@@ -157,6 +265,10 @@ func (a *linkAttempt) finish(host grid.HostInfo, err error) {
 	} else {
 		a.state = views.LinkStateFailed
 		a.errMsg = linkErrorMessage(err)
+		var he *grid.HostExistsError
+		if errors.As(err, &he) {
+			a.exists = he
+		}
 	}
 	a.version++
 }
@@ -211,9 +323,10 @@ func (a *linkAttempt) progress(polling bool) *views.AddHostProgress {
 	return p
 }
 
-// start validates capacity, registers the attempt and runs the link in the
-// background. The request's password travels inside req only.
-func (l *linkRegistry) start(s *Server, r *http.Request, req grid.SSHLinkRequest, form views.AddHostForm) (*linkAttempt, error) {
+// start validates capacity, consumes the confirmed probe, registers the
+// attempt and runs the link in the background. The request's password travels
+// inside req only.
+func (l *linkRegistry) start(s *Server, r *http.Request, req grid.SSHLinkRequest, form views.AddHostForm, probeID string) (*linkAttempt, error) {
 	now := s.now()
 	l.mu.Lock()
 	l.prune(now)
@@ -227,6 +340,11 @@ func (l *linkRegistry) start(s *Server, r *http.Request, req grid.SSHLinkRequest
 		l.mu.Unlock()
 		return nil, errTooManyLinks
 	}
+	if _, ok := l.probes[probeID]; !ok { // used by a concurrent request in the meantime
+		l.mu.Unlock()
+		return nil, errProbeGone
+	}
+	delete(l.probes, probeID)
 	port := req.Port
 	if port == 0 {
 		port = 22
@@ -286,6 +404,7 @@ func (l *linkRegistry) prune(now time.Time) {
 			delete(l.codes, id)
 		}
 	}
+	l.pruneProbes(now)
 	for len(l.links)+len(l.codes) > maxLinkEntries {
 		oldestID, oldest := "", now
 		isCode := false

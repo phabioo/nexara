@@ -103,7 +103,11 @@ func Serve(ctx context.Context, o ServeOptions) error {
 	if err != nil {
 		return err
 	}
-	ca, err := pki.LoadOrCreateCA(cfg.TLS.Dir)
+	// A new CA is name-constrained (decision #45); the configured agent host is
+	// part of the permitted names. The wizard sets it only after the CA exists,
+	// so a later public DNS name is not covered (pki.CA.Permits tells).
+	caHost, _ := resolveAgentAddress(cfg.Hub.AgentAddress, defaultAgentHost(), 0)
+	ca, err := pki.LoadOrCreateCA(cfg.TLS.Dir, caHost)
 	if err != nil {
 		return err
 	}
@@ -138,6 +142,7 @@ func Serve(ctx context.Context, o ServeOptions) error {
 		return err
 	}
 	codes, mode, sessions := newSetupParts(st, log, now, true)
+	codes.SetAudit(setupAudit(st, log))
 	setupMode := mode.Active(ctx)
 	if setupMode {
 		if _, _, err := codes.Rotate(); err != nil {
@@ -165,6 +170,8 @@ func Serve(ctx context.Context, o ServeOptions) error {
 				}
 			},
 			WaitOnline: waitOnline(g),
+			// Replacing a host is only allowed while it is offline (decision #46).
+			HostOnline: func(id grid.HostID) bool { h, ok := g.Host(id); return ok && h.Online },
 		})
 	}
 	enrollSvc, err := newEnroll(agentHost, agentPort)
@@ -177,7 +184,7 @@ func Serve(ctx context.Context, o ServeOptions) error {
 	cm := &committer{
 		st: st, auth: authSvc, codes: codes, sessions: sessions, mode: mode, log: log,
 		configPath: o.ConfigPath, listenPort: listenPort,
-		applyHub: rt.applyHub, selfLink: rt.writeSelfLink,
+		applyHub: rt.applyHub, selfLink: rt.writeSelfLink, permits: ca.Permits,
 	}
 
 	renderer, err := views.New(web.Templates, views.Options{})
@@ -239,7 +246,11 @@ func Serve(ctx context.Context, o ServeOptions) error {
 	bg(func() { certs.Run(runCtx, orDefault(o.CertCheckEvery, DefaultCertCheckInterval)) })
 	bg(func() { housekeeping(runCtx, st, authSvc, now, log) })
 	if o.AdminSocket != "" {
-		backend := adminBackend{codes: codes, mode: mode, sessions: sessions, auth: authSvc, now: now}
+		limits, _ := any(authSvc).(loginLimits) // ClearLoginLimits; nil until the auth service has it
+		backend := adminBackend{
+			codes: codes, mode: mode, sessions: sessions, auth: authSvc, limits: limits, now: now,
+			audit: func(ctx context.Context, e store.AuditEntry) { appendAudit(ctx, st, log, e) },
+		}
 		bg(func() {
 			if err := setup.ServeAdmin(runCtx, o.AdminSocket, backend.handlers()); err != nil && runCtx.Err() == nil {
 				// The hub works without it; only `sudo nexus setup code` and
@@ -335,6 +346,47 @@ func newSetupParts(users setup.UserCounter, log *slog.Logger, now func() time.Ti
 		Wizard:         setup.WizardOptions{CheckPassphrase: checkWizardPassphrase},
 	})
 	return codes, setup.NewMode(users), sessions
+}
+
+// appendAudit writes an audit entry; a failure is logged, never fatal.
+func appendAudit(ctx context.Context, st *store.Store, log *slog.Logger, e store.AuditEntry) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if _, err := st.AppendAudit(ctx, e); err != nil {
+		log.Error("audit write failed", "action", e.Action, "err", err)
+	}
+}
+
+// Audit actions of the setup unlock.
+const (
+	ActionSetupUnlock    = "setup.unlock"
+	ActionSetupWrongCode = "setup.wrong_code"
+	ActionSetupLockedIP  = "setup.locked"
+	ActionSetupLockedAll = "setup.locked_global"
+	setupAuditActor      = "setup"
+)
+
+// setupAudit turns setup-code events into audit entries. The entered code is
+// never part of an event.
+func setupAudit(st *store.Store, log *slog.Logger) func(setup.CodeEvent) {
+	return func(ev setup.CodeEvent) {
+		e := store.AuditEntry{User: setupAuditActor, Time: ev.Time, Detail: "ip: " + ev.IP, Result: store.AuditDenied}
+		switch ev.Kind {
+		case setup.EventUnlocked:
+			e.Action, e.Result = ActionSetupUnlock, store.AuditOK
+		case setup.EventWrongCode:
+			e.Action = ActionSetupWrongCode
+		case setup.EventIPLocked:
+			e.Action = ActionSetupLockedIP
+			e.Detail += "; locked for 15 minutes"
+		case setup.EventAllLocked:
+			e.Action = ActionSetupLockedAll
+			e.Detail += "; all clients locked for 15 minutes"
+		default:
+			return
+		}
+		appendAudit(context.Background(), st, log, e)
+	}
 }
 
 // housekeeping removes expired sessions and enrollment tokens hourly.

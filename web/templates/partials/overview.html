@@ -62,6 +62,21 @@
       <p class="card-text">{{.Text}}</p>
       {{template "checker"}}
       {{template "objective" (dict "Label" "Last seen" "Value" .LastSeen "Strong" true "Pct" 0 "BoxIcon" "power" "BoxUnit" "OFF")}}
+      {{with .RemoveURL}}<button type="button" class="btn-card btn-card-grey" hx-get="{{.}}" hx-target="#modal-root" hx-swap="innerHTML"><span>Remove host</span>{{icon "close" 14}}</button>{{end}}
     </div>
   </div>
 </div>{{end}}
+
+{{/* Confirm dialog of "Remove host", same markup as packages-confirm. Data: views.OverviewRemove. */}}
+{{define "overview-remove"}}{{template "modal-open" (dict "ID" "remove-title" "Title" "Remove host" "Variant" "bad" "Size" "sm")}}
+<form class="pkg-confirm" hx-post="{{.PostURL}}" hx-target="#modal-root" hx-swap="innerHTML">
+  <span class="tag tag-dark">{{.HostLabel}}</span>
+  <p class="card-text">{{.Text}}</p>
+  {{with .HubNote}}<p class="card-text"><strong>{{.}}</strong></p>{{end}}
+  {{template "checker"}}
+  <div class="modal-actions">
+    {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}
+    {{template "btn-card" (dict "Label" "Remove host" "Type" "submit" "Icon" "close")}}
+  </div>
+</form>
+{{template "modal-close"}}{{end}}

@@ -17,6 +17,10 @@ import (
 
 const testPassword = "hunter2-Secret-PW!"
 
+// testHostKey is the host key fingerprint the fake host presents and the
+// operator "confirmed".
+const testHostKey = "SHA256:ZmFrZUhvc3RLZXlGaW5nZXJwcmludDEyMzQ1Njc4OTA"
+
 const osReleaseDebian = `PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
 NAME="Debian GNU/Linux"
 VERSION_ID="12"
@@ -32,12 +36,14 @@ type fakeConn struct {
 	tmpN   int
 	closed bool
 
+	hostname string // answer of "uname -n"; default "pi-kitchen"
+
 	// override runs first; a non-nil handled result short-circuits the default behaviour.
 	override func(cmd string, stdin []byte) (out []byte, err error, handled bool)
 	env      *testEnv
 }
 
-func (f *fakeConn) HostKeyFingerprint() string { return "SHA256:fakeHostKeyFingerprint" }
+func (f *fakeConn) HostKeyFingerprint() string { return testHostKey }
 
 func (f *fakeConn) Close() error {
 	f.mu.Lock()
@@ -73,6 +79,11 @@ func (f *fakeConn) Run(_ context.Context, cmd string, stdin io.Reader) ([]byte, 
 		return []byte("Linux\n"), nil
 	case cmd == "uname -m":
 		return []byte("aarch64\n"), nil
+	case cmd == "uname -n":
+		if f.hostname != "" {
+			return []byte(f.hostname + "\n"), nil
+		}
+		return []byte("pi-kitchen\n"), nil
 	case cmd == "cat /etc/os-release":
 		return []byte(osReleaseDebian), nil
 	case cmd == "mktemp":
@@ -91,8 +102,15 @@ func (f *fakeConn) Run(_ context.Context, cmd string, stdin io.Reader) ([]byte, 
 	case strings.Contains(cmd, "grid-agent enroll --hub"):
 		fields := strings.Fields(cmd)
 		for i, fl := range fields {
-			if fl == "--token" && i+1 < len(fields) {
-				w, _ := f.env.post(fields[i+1], "pi-kitchen", "192.168.10.23")
+			if fl == "--token-file" && i+1 < len(fields) {
+				f.mu.Lock()
+				token := strings.TrimSpace(string(f.files[fields[i+1]]))
+				f.mu.Unlock()
+				name := f.hostname
+				if name == "" {
+					name = "pi-kitchen"
+				}
+				w, _ := f.env.post(token, name, "192.168.10.23")
 				if w.Code != 200 {
 					return nil, &ExitError{Status: 1, Stderr: "enroll: rejected"}
 				}
@@ -117,16 +135,39 @@ type fakeDialer struct {
 	cfg        SSHDialConfig
 	pwAtDial   string
 	signerUsed bool
+
+	ignorePin  bool             // behave like a faulty dialer that does not enforce the pin
+	probeKey   grid.HostKeyInfo // answer of Probe; default testHostKey
+	probeErr   error
+	probeCalls int
+	probeAddr  string
 }
 
+func (d *fakeDialer) Probe(_ context.Context, addr string, _ time.Duration) (grid.HostKeyInfo, error) {
+	d.probeCalls++
+	d.probeAddr = addr
+	if d.probeErr != nil {
+		return grid.HostKeyInfo{}, d.probeErr
+	}
+	if d.probeKey.SHA256 != "" {
+		return d.probeKey, nil
+	}
+	return grid.HostKeyInfo{Type: "ssh-ed25519", SHA256: testHostKey}, nil
+}
+
+// Dial behaves like the real dialer: a host key other than the confirmed one
+// is refused before any credential is "sent".
 func (d *fakeDialer) Dial(_ context.Context, cfg SSHDialConfig) (SSHConn, error) {
 	d.calls++
 	d.cfg = cfg
-	d.pwAtDial = string(cfg.Password)
 	d.signerUsed = cfg.Signer != nil
 	if d.err != nil {
 		return nil, d.err
 	}
+	if !d.ignorePin && d.conn.HostKeyFingerprint() != cfg.HostKeySHA256 {
+		return nil, grid.ErrHostKeyMismatch
+	}
+	d.pwAtDial = string(cfg.Password)
 	return d.conn, nil
 }
 
@@ -157,7 +198,7 @@ func (r linkResult) step(name grid.LinkStepName, state grid.LinkState) (grid.Lin
 }
 
 func defaultRequest() grid.SSHLinkRequest {
-	return grid.SSHLinkRequest{Address: "pi-kitchen.local", User: "pi", Password: grid.Secret(testPassword), DisplayName: "Kitchen"}
+	return grid.SSHLinkRequest{Address: "pi-kitchen.local", User: "pi", Password: grid.Secret(testPassword), DisplayName: "Kitchen", HostKeySHA256: testHostKey}
 }
 
 func runLink(t *testing.T, req grid.SSHLinkRequest, tweak func(*fakeConn, *fakeDialer), mods ...func(*Options)) linkResult {
@@ -173,6 +214,35 @@ func runLink(t *testing.T, req grid.SSHLinkRequest, tweak func(*fakeConn, *fakeD
 	var steps []grid.LinkStep
 	info, err := e.svc.LinkViaSSH(context.Background(), grid.Actor{Operator: "1", IP: "192.0.2.1"}, req, func(s grid.LinkStep) { steps = append(steps, s) })
 	return linkResult{info: info, err: err, steps: steps, conn: conn, dial: dial, env: e}
+}
+
+// runLinkPre is runLink for tests that need state in the hub (an existing
+// host) before the request is built.
+func runLinkPre(t *testing.T, pre func(e *testEnv) grid.SSHLinkRequest, mods ...func(*Options)) linkResult {
+	t.Helper()
+	conn := &fakeConn{}
+	dial := &fakeDialer{conn: conn}
+	mods = append([]func(*Options){func(o *Options) { o.SSH = dial }}, mods...)
+	e := newEnv(t, mods...)
+	conn.env = e
+	req := pre(e)
+	var steps []grid.LinkStep
+	info, err := e.svc.LinkViaSSH(context.Background(), grid.Actor{Operator: "1", IP: "192.0.2.1"}, req, func(s grid.LinkStep) { steps = append(steps, s) })
+	return linkResult{info: info, err: err, steps: steps, conn: conn, dial: dial, env: e}
+}
+
+// existingKitchen enrolls "pi-kitchen" the way an earlier link or code would have.
+func existingKitchen(t *testing.T, e *testEnv) store.Host {
+	t.Helper()
+	w, resp := e.post(e.newCode(nil), "pi-kitchen", "192.0.2.5")
+	if w.Code != 200 {
+		t.Fatalf("setup enrollment: %d", w.Code)
+	}
+	h, err := e.st.GetHost(context.Background(), resp.HostID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h
 }
 
 // assertNoSecret checks every place the password could leak to.
@@ -227,7 +297,7 @@ func TestLinkViaSSHWithPassword(t *testing.T) {
 	if got := r.summary(); got != want {
 		t.Fatalf("progress\n got %s\nwant %s", got, want)
 	}
-	if s, _ := r.step(grid.StepConnect, grid.LinkDone); s.Detail != "Connected as pi · Host key SHA256:fakeHostKeyFingerprint" {
+	if s, _ := r.step(grid.StepConnect, grid.LinkDone); s.Detail != "Connected as pi · Host key "+testHostKey {
 		t.Fatalf("connect detail %q", s.Detail)
 	}
 	if s, _ := r.step(grid.StepDetect, grid.LinkDone); s.Detail != "Debian 12 · arm64" {
@@ -249,7 +319,7 @@ func TestLinkViaSSHWithPassword(t *testing.T) {
 
 	// Dial: password auth, 10 s timeout, port 22, and the secret wiped afterwards.
 	if r.dial.cfg.Addr != "pi-kitchen.local:22" || r.dial.cfg.User != "pi" || r.dial.pwAtDial != testPassword ||
-		r.dial.signerUsed || r.dial.cfg.Timeout != 10*time.Second {
+		r.dial.signerUsed || r.dial.cfg.Timeout != 10*time.Second || r.dial.cfg.HostKeySHA256 != testHostKey {
 		t.Fatalf("dial config %+v", r.dial.cfg)
 	}
 	if !allZero(r.dial.cfg.Password) {
@@ -263,12 +333,13 @@ func TestLinkViaSSHWithPassword(t *testing.T) {
 	cmds := r.conn.commands()
 	joined := strings.Join(cmds, "\n")
 	for _, want := range []string{
-		"uname -s", "uname -m", "cat /etc/os-release", "mktemp",
+		"uname -s", "uname -m", "uname -n", "cat /etc/os-release", "mktemp",
 		"sudo -S -p '' sh -c 'systemctl stop grid-agent >/dev/null 2>&1; install -m 0755 /tmp/tmp.X1 /usr/local/bin/grid-agent'",
-		"sudo -S -p '' /usr/local/bin/grid-agent enroll --hub https://frpi5.local:8443 --token GRID-",
+		"sudo -S -p '' /usr/local/bin/grid-agent enroll --hub https://frpi5.local:8443 --token-file /tmp/tmp.X2",
 		"--ca-fingerprint " + r.env.ca.Fingerprint() + " --shell-user pi",
-		"sudo -S -p '' sh -c 'install -m 0644 /tmp/tmp.X2 /etc/systemd/system/grid-agent.service && systemctl daemon-reload && systemctl enable --now grid-agent'",
+		"sudo -S -p '' sh -c 'install -m 0644 /tmp/tmp.X3 /etc/systemd/system/grid-agent.service && systemctl daemon-reload && systemctl enable --now grid-agent'",
 		"rm -f /tmp/tmp.X1 /tmp/tmp.X2",
+		"rm -f /tmp/tmp.X3",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing command %q in:\n%s", want, joined)
@@ -277,7 +348,7 @@ func TestLinkViaSSHWithPassword(t *testing.T) {
 	if !bytes.Equal(r.conn.files["/tmp/tmp.X1"], testBinary.Data) {
 		t.Error("binary not uploaded")
 	}
-	if string(r.conn.files["/tmp/tmp.X2"]) != unitFile {
+	if string(r.conn.files["/tmp/tmp.X3"]) != unitFile {
 		t.Error("unit not uploaded")
 	}
 	// The password travels only as the first stdin line of each sudo call.
@@ -304,7 +375,7 @@ func TestLinkViaSSHWithPassword(t *testing.T) {
 	for _, a := range r.env.auditActions() {
 		if a.Action == "host.link" {
 			found = true
-			if a.Result != store.AuditOK || a.User != "1" || a.Host != "pi-kitchen" || a.Detail != "pi@pi-kitchen.local:22 [password]" {
+			if a.Result != store.AuditOK || a.User != "1" || a.Host != "pi-kitchen" || a.Detail != "pi@pi-kitchen.local:22 [password] host key "+testHostKey {
 				t.Fatalf("audit %+v", a)
 			}
 		}
@@ -342,7 +413,7 @@ func TestLinkViaSSHWithHubKey(t *testing.T) {
 		t.Fatalf("%d sudo calls", n)
 	}
 	for _, a := range r.env.auditActions() {
-		if a.Action == "host.link" && a.Detail != "pi@pi-kitchen.local:2222 [hub key]" {
+		if a.Action == "host.link" && a.Detail != "pi@pi-kitchen.local:2222 [hub key] host key "+testHostKey {
 			t.Fatalf("audit %+v", a)
 		}
 	}
@@ -511,7 +582,7 @@ func TestLinkViaSSHFailures(t *testing.T) {
 			for _, a := range r.env.auditActions() {
 				if a.Action == "host.link" {
 					audited = true
-					if a.Result != store.AuditError || a.Detail != "pi@pi-kitchen.local:22 [password] failed" {
+					if a.Result != store.AuditError || !strings.HasPrefix(a.Detail, "pi@pi-kitchen.local:22 [password] host key "+testHostKey+" failed") {
 						t.Fatalf("audit %+v", a)
 					}
 				}
@@ -540,6 +611,9 @@ func TestLinkViaSSHInvalidArguments(t *testing.T) {
 		{"neither", func(r *grid.SSHLinkRequest) { r.Password = "" }},
 		{"control char in name", func(r *grid.SSHLinkRequest) { r.DisplayName = "a\nb" }},
 		{"long name", func(r *grid.SSHLinkRequest) { r.DisplayName = strings.Repeat("x", 65) }},
+		{"no host key confirmation", func(r *grid.SSHLinkRequest) { r.HostKeySHA256 = "" }},
+		{"malformed host key confirmation", func(r *grid.SSHLinkRequest) { r.HostKeySHA256 = "SHA256:short" }},
+		{"malformed replace id", func(r *grid.SSHLinkRequest) { r.ReplaceHostID = "../x" }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -594,5 +668,307 @@ func TestArchFromUname(t *testing.T) {
 		if got != tt.want || ok != tt.ok {
 			t.Errorf("archFromUname(%q) = %q,%v", tt.in, got, ok)
 		}
+	}
+}
+
+func TestProbeSSH(t *testing.T) {
+	actor := grid.Actor{Operator: "3", IP: "192.0.2.1"}
+	t.Run("returns the host key and sends no credential", func(t *testing.T) {
+		conn := &fakeConn{}
+		dial := &fakeDialer{conn: conn, probeKey: grid.HostKeyInfo{Type: "ssh-ed25519", SHA256: testHostKey}}
+		e := newEnv(t, func(o *Options) { o.SSH = dial })
+		info, err := e.svc.ProbeSSH(context.Background(), actor, "pi-kitchen.local", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.SHA256 != testHostKey || info.Type != "ssh-ed25519" {
+			t.Fatalf("info %+v", info)
+		}
+		if dial.probeAddr != "pi-kitchen.local:22" || dial.calls != 0 {
+			t.Fatalf("probe addr %q, dial calls %d (a probe must never authenticate)", dial.probeAddr, dial.calls)
+		}
+		var audited bool
+		for _, a := range e.auditActions() {
+			if a.Action == "host.probe" {
+				audited = true
+				if a.User != "3" || a.Result != store.AuditOK || !strings.Contains(a.Detail, testHostKey) {
+					t.Fatalf("audit %+v", a)
+				}
+			}
+		}
+		if !audited {
+			t.Fatal("probe not audited")
+		}
+	})
+	t.Run("an unreachable host is a link failure", func(t *testing.T) {
+		dial := &fakeDialer{conn: &fakeConn{}, probeErr: errors.New("dial tcp 10.0.0.9:22: connect: connection refused")}
+		e := newEnv(t, func(o *Options) { o.SSH = dial })
+		_, err := e.svc.ProbeSSH(context.Background(), actor, "10.0.0.9", 22)
+		if !errors.Is(err, grid.ErrLinkFailed) {
+			t.Fatalf("error %v", err)
+		}
+		for _, a := range e.auditActions() {
+			if a.Action == "host.probe" && a.Result != store.AuditError {
+				t.Fatalf("audit %+v", a)
+			}
+		}
+	})
+	for _, tt := range []struct {
+		name string
+		host string
+		port int
+	}{
+		{"bad address", "x y", 22}, {"empty address", "", 22}, {"shell metacharacters", "a;b", 22},
+		{"port too big", "pi.local", 70000}, {"negative port", "pi.local", -1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dial := &fakeDialer{conn: &fakeConn{}}
+			e := newEnv(t, func(o *Options) { o.SSH = dial })
+			if _, err := e.svc.ProbeSSH(context.Background(), actor, tt.host, tt.port); !errors.Is(err, grid.ErrInvalidArgument) {
+				t.Fatalf("error %v", err)
+			}
+			if dial.probeCalls != 0 {
+				t.Fatal("connected despite invalid input")
+			}
+		})
+	}
+}
+
+// Phase 2 only talks to the host key the operator confirmed (S-04, decision
+// #41). A different key ends the attempt before a credential is sent and
+// before a single command ran.
+func TestLinkViaSSHHostKeyMismatch(t *testing.T) {
+	const otherKey = "SHA256:b3RoZXJIb3N0S2V5RmluZ2VycHJpbnQxMjM0NTY3ODk"
+	tests := []struct {
+		name  string
+		tweak func(*fakeConn, *fakeDialer)
+	}{
+		{"the dialer pins the key", nil},
+		{"a faulty dialer that does not pin is caught as well", func(_ *fakeConn, d *fakeDialer) { d.ignorePin = true }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := defaultRequest()
+			req.HostKeySHA256 = otherKey
+			r := runLink(t, req, tt.tweak)
+			if !errors.Is(r.err, grid.ErrHostKeyMismatch) || !errors.Is(r.err, grid.ErrLinkFailed) {
+				t.Fatalf("error %v", r.err)
+			}
+			last := r.steps[len(r.steps)-1]
+			if last.Step != grid.StepConnect || last.State != grid.LinkFailed || !strings.Contains(last.Detail, "Host key changed") {
+				t.Fatalf("last step %+v", last)
+			}
+			if got := r.conn.commands(); len(got) != 0 {
+				t.Fatalf("commands ran on a host with an unconfirmed key: %v", got)
+			}
+			if tt.tweak == nil && r.dial.pwAtDial != "" {
+				t.Fatal("the password reached the dialer of an unconfirmed host")
+			}
+			if tt.tweak != nil && !r.conn.isClosed() {
+				t.Fatal("connection left open")
+			}
+			assertNoSecret(t, r, testPassword)
+			if len(r.env.enrolledHosts()) != 0 {
+				t.Fatal("a host was enrolled")
+			}
+			var audited bool
+			for _, a := range r.env.auditActions() {
+				if a.Action == "host.link" {
+					audited = true
+					if a.Result != store.AuditDenied || !strings.Contains(a.Detail, otherKey) || !strings.Contains(a.Detail, "host key changed") {
+						t.Fatalf("audit %+v", a)
+					}
+				}
+			}
+			if !audited {
+				t.Fatal("mismatch not audited")
+			}
+		})
+	}
+}
+
+// S-03 / decision #46: a name that is taken is refused at the detect step,
+// before anything is installed, and nothing about the existing host changes.
+func TestLinkViaSSHRefusesAnExistingHostName(t *testing.T) {
+	var old store.Host
+	r := runLinkPre(t, func(e *testEnv) grid.SSHLinkRequest {
+		old = existingKitchen(t, e)
+		return defaultRequest()
+	})
+	var he *grid.HostExistsError
+	if !errors.As(r.err, &he) || !errors.Is(r.err, grid.ErrHostExists) || he.ID != grid.HostID(old.ID) || he.Name != "pi-kitchen" {
+		t.Fatalf("error %#v", r.err)
+	}
+	last := r.steps[len(r.steps)-1]
+	if last.Step != grid.StepDetect || last.State != grid.LinkFailed || !strings.Contains(last.Detail, "pi-kitchen already exists") {
+		t.Fatalf("last step %+v", last)
+	}
+	joined := strings.Join(r.conn.commands(), "\n")
+	if strings.Contains(joined, "mktemp") || strings.Contains(joined, "sudo") {
+		t.Fatalf("something was installed before the refusal:\n%s", joined)
+	}
+	got, _ := r.env.st.GetHost(context.Background(), old.ID)
+	if got.CertFingerprint != old.CertFingerprint || got.DisplayName != old.DisplayName {
+		t.Fatalf("existing host changed: %+v", got)
+	}
+	assertNoSecret(t, r, testPassword)
+	for _, a := range r.env.auditActions() {
+		if a.Action == "host.link" && (a.Result != store.AuditDenied || !strings.Contains(a.Detail, "host name already exists")) {
+			t.Fatalf("audit %+v", a)
+		}
+	}
+}
+
+func TestLinkViaSSHReplace(t *testing.T) {
+	actor := "1"
+	tests := []struct {
+		name    string
+		replace func(old store.Host) grid.HostID
+		online  bool
+		hostKey bool // the device reports another name than pi-kitchen
+		wantErr error
+		wantOK  bool
+	}{
+		{"explicit replace of the offline host", func(h store.Host) grid.HostID { return grid.HostID(h.ID) }, false, false, nil, true},
+		{"the host is online", func(h store.Host) grid.HostID { return grid.HostID(h.ID) }, true, false, grid.ErrHostExists, false},
+		{"another host chosen", func(store.Host) grid.HostID { return "0123456789abcdef" }, false, false, grid.ErrHostExists, false},
+		{"no replace requested", func(store.Host) grid.HostID { return "" }, false, false, grid.ErrHostExists, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var old store.Host
+			r := runLinkPre(t, func(e *testEnv) grid.SSHLinkRequest {
+				old = existingKitchen(t, e)
+				req := defaultRequest()
+				req.ReplaceHostID = tt.replace(old)
+				return req
+			}, func(o *Options) { o.HostOnline = func(grid.HostID) bool { return tt.online } })
+			if !tt.wantOK {
+				if !errors.Is(r.err, tt.wantErr) {
+					t.Fatalf("error %v, want %v", r.err, tt.wantErr)
+				}
+				got, _ := r.env.st.GetHost(context.Background(), old.ID)
+				if got.CertFingerprint != old.CertFingerprint {
+					t.Fatal("host replaced although it was not allowed")
+				}
+				return
+			}
+			if r.err != nil {
+				t.Fatal(r.err)
+			}
+			if string(r.info.ID) != old.ID {
+				t.Fatalf("host id %q, want the old row %q", r.info.ID, old.ID)
+			}
+			got, _ := r.env.st.GetHost(context.Background(), old.ID)
+			if got.CertFingerprint == old.CertFingerprint || got.Address != "pi-kitchen.local" || got.DisplayName != "Kitchen" {
+				t.Fatalf("host after replace: %+v", got)
+			}
+			if _, err := r.env.st.GetHostByFingerprint(context.Background(), old.CertFingerprint); err == nil {
+				t.Fatal("the old certificate still works")
+			}
+			var replace, link bool
+			for _, a := range r.env.auditActions() {
+				switch a.Action {
+				case "host.replace":
+					replace = true
+					if a.User != actor || a.Host != "pi-kitchen" || !strings.Contains(a.Detail, old.CertFingerprint[:16]) {
+						t.Fatalf("host.replace audit %+v", a)
+					}
+				case "host.link":
+					link = a.Result == store.AuditOK
+				}
+			}
+			if !replace || !link {
+				t.Fatalf("audit: replace=%v link=%v", replace, link)
+			}
+		})
+	}
+}
+
+func TestLinkViaSSHReplaceNeedsTheNameToMatch(t *testing.T) {
+	tests := []struct {
+		name     string
+		hostname string // what "uname -n" answers
+		runErr   error
+	}{
+		{"the device reports another name", "pi-other", nil},
+		{"the name cannot be read", "", &ExitError{Status: 1, Stderr: "uname: not found"}},
+		{"the name is not a host name", "bad_name!", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conn := &fakeConn{hostname: tt.hostname}
+			if tt.runErr != nil {
+				conn.override = func(cmd string, _ []byte) ([]byte, error, bool) {
+					if cmd == "uname -n" {
+						return nil, tt.runErr, true
+					}
+					return nil, nil, false
+				}
+			}
+			dial := &fakeDialer{conn: conn}
+			e := newEnv(t, func(o *Options) { o.SSH = dial })
+			conn.env = e
+			old := existingKitchen(t, e)
+			req := defaultRequest()
+			req.ReplaceHostID = grid.HostID(old.ID)
+			_, err := e.svc.LinkViaSSH(context.Background(), grid.Actor{Operator: "1"}, req, nil)
+			if !errors.Is(err, grid.ErrLinkFailed) {
+				t.Fatalf("error %v", err)
+			}
+			if strings.Contains(strings.Join(conn.commands(), "\n"), "mktemp") {
+				t.Fatal("installation started although the host to replace could not be confirmed")
+			}
+			got, _ := e.st.GetHost(context.Background(), old.ID)
+			if got.CertFingerprint != old.CertFingerprint {
+				t.Fatal("host replaced")
+			}
+		})
+	}
+}
+
+// S-19: the one-time token travels in a 0600 temp file that is removed right
+// after the enrollment, never on a command line.
+func TestLinkViaSSHTokenStaysOffTheCommandLine(t *testing.T) {
+	r := runLink(t, defaultRequest(), nil)
+	if r.err != nil {
+		t.Fatal(r.err)
+	}
+	token := strings.TrimSpace(string(r.conn.files["/tmp/tmp.X2"]))
+	if !codeRE.MatchString(token) {
+		t.Fatalf("token file content %q", token)
+	}
+	cmds := r.conn.commands()
+	enrollIdx, removeIdx, unitUploadIdx := -1, -1, -1
+	for i, c := range cmds {
+		if strings.Contains(c, token) {
+			t.Errorf("token on a command line: %q", c)
+		}
+		if strings.Contains(c, " --token ") {
+			t.Errorf("--token used: %q", c)
+		}
+		switch {
+		case strings.Contains(c, "grid-agent enroll"):
+			enrollIdx = i
+			if !strings.Contains(c, "--token-file /tmp/tmp.X2") {
+				t.Errorf("enroll command %q", c)
+			}
+		case strings.HasPrefix(c, "rm -f ") && strings.Contains(c, "/tmp/tmp.X2") && removeIdx < 0:
+			removeIdx = i
+		case c == "cat > /tmp/tmp.X3":
+			unitUploadIdx = i
+		}
+	}
+	if enrollIdx < 0 || removeIdx < enrollIdx || unitUploadIdx < removeIdx {
+		t.Fatalf("order enroll=%d remove=%d unit=%d in %v", enrollIdx, removeIdx, unitUploadIdx, cmds)
+	}
+	// nor in the audit log or the hub log
+	for _, a := range r.env.auditActions() {
+		if strings.Contains(a.Detail, token) {
+			t.Errorf("token in audit %+v", a)
+		}
+	}
+	if strings.Contains(r.env.logs.String(), token) {
+		t.Error("token in the log")
 	}
 }

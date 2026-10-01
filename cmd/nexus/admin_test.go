@@ -108,3 +108,22 @@ func TestUserResetError(t *testing.T) {
 		t.Fatalf("code %d stderr %q", code, errOut)
 	}
 }
+
+func TestUserUnlock(t *testing.T) {
+	calls := fakeAdmin(t, setup.AdminResponse{OK: true, Message: "Login rate limits cleared."}, nil)
+	code, out, errOut := runCtxArgs(context.Background(), "", "user", "unlock", "--admin-socket", "/tmp/x.sock")
+	if code != 0 || !strings.Contains(out, "cleared") || errOut != "" || strings.Contains(out, "Continue?") {
+		t.Fatalf("code %d stdout %q stderr %q", code, out, errOut)
+	}
+	if len(*calls) != 1 || (*calls)[0] != "/tmp/x.sock "+setup.CmdLoginUnlock {
+		t.Errorf("calls = %v", *calls)
+	}
+
+	fakeAdmin(t, setup.AdminResponse{}, errors.New("boom"))
+	if code, _, errOut := runCtxArgs(context.Background(), "", "user", "unlock"); code != 1 || !strings.Contains(errOut, "nexus user unlock: boom") {
+		t.Errorf("error: %d %q", code, errOut)
+	}
+	if code, _, _ := runCtxArgs(context.Background(), "", "user", "bogus"); code != 2 {
+		t.Errorf("unknown subcommand: %d", code)
+	}
+}

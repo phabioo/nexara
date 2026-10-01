@@ -47,6 +47,9 @@ type committer struct {
 	// selfLink writes the self-link token for the hub's own agent with the
 	// chosen capabilities. Nil means the mode has no self-link (demo).
 	selfLink func(ctx context.Context, caps []string) error
+	// permits reports whether the hub CA may certify a host name or IP
+	// (decision #45). Nil skips the check.
+	permits func(host string) bool
 
 	mu sync.Mutex // commits are serialized: at most one operator can be created
 }
@@ -76,13 +79,6 @@ func (c *committer) Commit(ctx context.Context, res setup.Result, clientIP strin
 		}
 		return httpserver.SetupOutcome{}, fmt.Errorf("app: hash passphrase: %w", err)
 	}
-	var sealed []byte
-	if res.TOTPSecret != "" {
-		if sealed, err = c.auth.SealTOTPSecret(res.TOTPSecret); err != nil {
-			return httpserver.SetupOutcome{}, fmt.Errorf("app: seal TOTP secret: %w", err)
-		}
-	}
-
 	var newCfg config.HubConfig
 	written := false
 	if c.configPath != "" {
@@ -91,6 +87,12 @@ func (c *committer) Commit(ctx context.Context, res setup.Result, clientIP strin
 			return httpserver.SetupOutcome{}, fmt.Errorf("app: %w", err)
 		}
 		newCfg = hubConfigFrom(cur, res.Hub, c.listenPort)
+		// The CA exists before the wizard asks for the agent address, so its
+		// name constraints cannot include a public name chosen here; agents
+		// would then fail to verify the server certificate.
+		if h := strings.TrimSpace(res.Hub.AgentHost); h != "" && c.permits != nil && !c.permits(h) {
+			return httpserver.SetupOutcome{}, setup.ValidationError{"hub": agentHostNotPermitted}
+		}
 		if err := newCfg.Validate(); err != nil {
 			var verr *config.ValidationError
 			if errors.As(err, &verr) {
@@ -104,15 +106,27 @@ func (c *committer) Commit(ctx context.Context, res setup.Result, clientIP strin
 		written = true
 	}
 
-	user, err := c.st.CreateUser(ctx, store.User{
-		OperatorID: res.OperatorID, PassHash: hash,
-		TOTPSecretEnc: sealed, TOTPEnabled: sealed != nil,
-	})
+	user, err := c.st.CreateUser(ctx, store.User{OperatorID: res.OperatorID, PassHash: hash})
 	if errors.Is(err, store.ErrExists) {
 		return httpserver.SetupOutcome{}, httpserver.ErrSetupDone
 	}
 	if err != nil {
 		return httpserver.SetupOutcome{}, fmt.Errorf("app: create operator: %w", err)
+	}
+	if res.TOTPSecret != "" {
+		// The sealed blob is bound to the user ID, which exists only now. If
+		// storing it fails the operator is removed again (no users existed
+		// before this commit), so nobody ends up without the 2FA they chose.
+		sealed, err := c.auth.SealTOTPSecret(user.ID, res.TOTPSecret)
+		if err == nil {
+			err = c.st.SetTOTP(ctx, user.ID, sealed, true)
+		}
+		if err != nil {
+			if _, derr := c.st.DeleteAllUsers(ctx); derr != nil {
+				c.log.Error("setup commit: roll back operator", "err", derr)
+			}
+			return httpserver.SetupOutcome{}, fmt.Errorf("app: store TOTP secret: %w", err)
+		}
 	}
 
 	// --- point of no return: the operator exists ---
@@ -152,7 +166,7 @@ func (c *committer) Commit(ctx context.Context, res setup.Result, clientIP strin
 	}
 
 	twoFactor := "skipped"
-	if sealed != nil {
+	if res.TOTPSecret != "" {
 		twoFactor = "on"
 	}
 	cfgState := "unchanged"
@@ -195,6 +209,10 @@ func checkWizardPassphrase(pass string) error {
 	}
 	return errors.New(passphraseProblem(pass))
 }
+
+// agentHostNotPermitted is shown when the agent address lies outside the hub
+// CA's name constraints.
+const agentHostNotPermitted = "Agents can only reach the hub under a .local name, the hub's own host name or a private IP address (for example frpi5.local or 192.168.1.20). Remote access works through your VPN."
 
 var hubNameInvalid = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 

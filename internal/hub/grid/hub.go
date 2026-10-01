@@ -233,6 +233,13 @@ type Hub interface {
 	// binary for the host's os/arch).
 	UpdateAgent(ctx context.Context, actor Actor, id HostID) error
 
+	// RemoveHost retires a host (audited as host.remove): its agent
+	// certificate is revoked, the live connection is closed and the host
+	// disappears from Hosts. Works for online and offline hosts, including the
+	// hub's own. EventHostRemoved is emitted.
+	// Errors: ErrHostNotFound.
+	RemoveHost(ctx context.Context, actor Actor, id HostID) error
+
 	// OpenShell opens an interactive shell on the host (audited). The caller
 	// owns the session and must Close it.
 	// Errors: ErrHostNotFound, ErrHostOffline, ErrCapabilityDisabled.
@@ -283,6 +290,15 @@ type SSHLinkRequest struct {
 	Password Secret
 	// UseHubKey authenticates with the hub's own SSH key instead of a password.
 	UseHubKey bool
+
+	// HostKeySHA256 is the host key fingerprint ("SHA256:...") the operator
+	// confirmed after ProbeSSH. Required: authentication only ever happens
+	// against a host that presents exactly this key (decision #41).
+	HostKeySHA256 string
+	// ReplaceHostID, if set, is the explicit operator choice to replace that
+	// existing (offline) host with the device behind this SSH target instead
+	// of failing with ErrHostExists (decision #46). Empty means: never replace.
+	ReplaceHostID HostID
 }
 
 // String implements fmt.Stringer without the password.
@@ -356,14 +372,41 @@ type EnrollCode struct {
 	Command string
 }
 
+// HostKeyInfo is the SSH host key a target presented during ProbeSSH.
+type HostKeyInfo struct {
+	Type   string // key algorithm, e.g. "ssh-ed25519"
+	SHA256 string // "SHA256:..." as printed by ssh-keygen -lf
+}
+
+// HostExistsError is the ErrHostExists error that names the clashing host, so
+// the UI can offer replacing it. errors.Is(err, ErrHostExists) holds.
+type HostExistsError struct {
+	ID   HostID
+	Name string
+}
+
+func (e *HostExistsError) Error() string { return "grid: host " + e.Name + " already exists" }
+
+// Unwrap makes errors.Is(err, ErrHostExists) true.
+func (e *HostExistsError) Unwrap() error { return ErrHostExists }
+
 // Enroller adds hosts to the hub.
 type Enroller interface {
-	// LinkViaSSH installs the agent on the host over SSH and enrolls it.
+	// ProbeSSH is phase 1 of the SSH link: it connects to host:port and
+	// performs only as much of the SSH handshake as needed to receive the
+	// host key. No authentication is attempted and no credential is sent.
+	// Audited as host.probe. Errors: ErrInvalidArgument, ErrLinkFailed (not reachable).
+	ProbeSSH(ctx context.Context, actor Actor, host string, port int) (HostKeyInfo, error)
+	// LinkViaSSH is phase 2: it installs the agent on the host over SSH and
+	// enrolls it. req.HostKeySHA256 is the fingerprint confirmed by the
+	// operator; a target presenting another key is refused with
+	// ErrHostKeyMismatch before any credential is sent.
 	// progress is called from the calling goroutine for every state change
 	// (may be nil). On success the host is online and its HostInfo returned.
 	// The SSH credentials are discarded before returning, also on failure.
 	// Errors: ErrLinkFailed (wraps the cause; the failing step was reported
-	// through progress), ErrHostExists, ErrInvalidArgument.
+	// through progress), ErrHostExists (*HostExistsError), ErrHostKeyMismatch,
+	// ErrInvalidArgument.
 	LinkViaSSH(ctx context.Context, actor Actor, req SSHLinkRequest, progress func(LinkStep)) (HostInfo, error)
 	// NewEnrollCode creates a one-time enrollment code (valid 15 minutes).
 	NewEnrollCode(ctx context.Context, actor Actor, opts EnrollOptions) (EnrollCode, error)
@@ -387,5 +430,6 @@ var (
 	ErrJobFinished        = errors.New("grid: job already finished")
 	ErrHostExists         = errors.New("grid: host already exists")
 	ErrLinkFailed         = errors.New("grid: linking the host failed")
+	ErrHostKeyMismatch    = errors.New("grid: SSH host key does not match the confirmed fingerprint")
 	ErrUnsupported        = errors.New("grid: not supported on this host")
 )

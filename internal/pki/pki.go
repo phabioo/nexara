@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,9 +26,10 @@ import (
 )
 
 const (
-	// CAValidity, LeafValidity and RenewBefore follow docs/concept.md
-	// ("Zertifikate & Name im Netz").
-	CAValidity   = 10 * 365 * 24 * time.Hour
+	// CAValidity is 5 years since security review S-05 (decision #45);
+	// LeafValidity and RenewBefore follow docs/concept.md ("Zertifikate & Name
+	// im Netz"). CAs created before that change keep their 10 years.
+	CAValidity   = 5 * 365 * 24 * time.Hour
 	LeafValidity = 365 * 24 * time.Hour
 	RenewBefore  = 30 * 24 * time.Hour
 
@@ -54,7 +56,17 @@ func (ca *CA) CertPEM() []byte { return encodeCertPEM(ca.Cert.Raw) }
 func (ca *CA) Fingerprint() string { return Fingerprint(ca.Cert) }
 
 // LoadOrCreateCA loads ca.pem / ca.key from dir or creates a new CA there.
-func LoadOrCreateCA(dir string) (*CA, error) {
+//
+// A new CA carries critical NameConstraints (decision #45, S-05): DNS "local"
+// (all *.local), "localhost", the hub's own host names and every entry of
+// permitted (DNS names or IP addresses, e.g. the configured agent host), plus
+// loopback, RFC 1918, link-local and IPv6 ULA ranges. Device trust stores that
+// honor the extension then cannot be abused for other domains.
+//
+// An existing CA is loaded as it is, constraints or not: there is no forced
+// rotation, because that would invalidate every installed trust anchor and
+// agent. Only CAs created after this change are constrained.
+func LoadOrCreateCA(dir string, permitted ...string) (*CA, error) {
 	certPath := filepath.Join(dir, CACertFile)
 	keyPath := filepath.Join(dir, CAKeyFile)
 
@@ -64,7 +76,7 @@ func LoadOrCreateCA(dir string) (*CA, error) {
 	case certErr == nil && keyErr == nil:
 		return parseCA(certPEM, keyPEM, time.Now())
 	case errors.Is(certErr, os.ErrNotExist) && errors.Is(keyErr, os.ErrNotExist):
-		return createCA(dir, time.Now())
+		return createCA(dir, time.Now(), permitted)
 	case certErr != nil && !errors.Is(certErr, os.ErrNotExist):
 		return nil, fmt.Errorf("pki: read %s: %w", certPath, certErr)
 	case keyErr != nil && !errors.Is(keyErr, os.ErrNotExist):
@@ -97,7 +109,7 @@ func parseCA(certPEM, keyPEM []byte, now time.Time) (*CA, error) {
 	return &CA{Cert: cert, Key: key}, nil
 }
 
-func createCA(dir string, now time.Time) (*CA, error) {
+func createCA(dir string, now time.Time, permitted []string) (*CA, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("pki: create %s: %w", dir, err)
 	}
@@ -124,6 +136,7 @@ func createCA(dir string, now time.Time) (*CA, error) {
 		MaxPathLen:            0,
 		MaxPathLenZero:        true,
 	}
+	applyNameConstraints(tmpl, permitted)
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
 	if err != nil {
 		return nil, fmt.Errorf("pki: sign CA certificate: %w", err)
@@ -274,4 +287,81 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 		return fail(err)
 	}
 	return nil
+}
+
+// privateIPRanges are the IP ranges a hub CA may ever certify: loopback,
+// RFC 1918, link-local and IPv6 ULA (decision #45).
+var privateIPRanges = []string{
+	"127.0.0.0/8", "::1/128",
+	"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+	"169.254.0.0/16", "fe80::/10", "fc00::/7",
+}
+
+// applyNameConstraints sets critical permitted-subtree constraints on the CA
+// template. extra holds additional DNS names or IP addresses (e.g. the
+// configured agent host); an IP inside the private ranges is redundant but
+// harmless.
+func applyNameConstraints(tmpl *x509.Certificate, extra []string) {
+	dns := map[string]bool{"local": true}
+	for _, n := range LocalNames() {
+		dns[n] = true
+	}
+	var ranges []*net.IPNet
+	for _, r := range privateIPRanges {
+		_, n, err := net.ParseCIDR(r)
+		if err == nil {
+			ranges = append(ranges, n)
+		}
+	}
+	for _, e := range extra {
+		e = strings.ToLower(strings.TrimSpace(strings.Trim(strings.TrimSpace(e), "[]")))
+		e = strings.TrimSuffix(e, ".")
+		switch ip := net.ParseIP(e); {
+		case e == "":
+		case ip != nil:
+			if v4 := ip.To4(); v4 != nil {
+				ranges = append(ranges, &net.IPNet{IP: v4, Mask: net.CIDRMask(32, 32)})
+			} else {
+				ranges = append(ranges, &net.IPNet{IP: ip, Mask: net.CIDRMask(128, 128)})
+			}
+		default:
+			dns[e] = true
+		}
+	}
+	tmpl.PermittedDNSDomainsCritical = true
+	tmpl.PermittedDNSDomains = sortedKeys(dns)
+	tmpl.PermittedIPRanges = ranges
+}
+
+// Permits reports whether the CA's name constraints allow a leaf certificate
+// to carry name (a DNS name or an IP address). A CA without constraints (older
+// installs) permits everything. The check mirrors x509.Verify so the hub can
+// drop SANs that would make the whole certificate fail validation.
+func (ca *CA) Permits(name string) bool {
+	name = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(name), "."))
+	if ip := net.ParseIP(strings.Trim(name, "[]")); ip != nil {
+		return ca.permitsIP(ip)
+	}
+	if len(ca.Cert.PermittedDNSDomains) == 0 {
+		return true
+	}
+	for _, d := range ca.Cert.PermittedDNSDomains {
+		d = strings.ToLower(strings.TrimPrefix(d, "."))
+		if name == d || strings.HasSuffix(name, "."+d) {
+			return true
+		}
+	}
+	return false
+}
+
+func (ca *CA) permitsIP(ip net.IP) bool {
+	if len(ca.Cert.PermittedIPRanges) == 0 {
+		return true
+	}
+	for _, r := range ca.Cert.PermittedIPRanges {
+		if r.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }

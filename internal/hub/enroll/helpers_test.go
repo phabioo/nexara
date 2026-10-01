@@ -162,7 +162,7 @@ func (e *testEnv) postRaw(req protocol.EnrollRequest, ip string) (*httptest.Resp
 func (e *testEnv) postBody(body []byte, ip string) (*httptest.ResponseRecorder, protocol.EnrollResponse) {
 	e.t.Helper()
 	r := httptest.NewRequest(http.MethodPost, "/grid/enroll", bytes.NewReader(body))
-	r.RemoteAddr = ip + ":40000"
+	r.RemoteAddr = net.JoinHostPort(ip, "40000")
 	w := httptest.NewRecorder()
 	e.svc.Handler().ServeHTTP(w, r)
 	var resp protocol.EnrollResponse

@@ -65,8 +65,8 @@ func (s *Server) handleEventsPing(w http.ResponseWriter, _ *http.Request) {
 
 // handleEvents streams hub events as server-sent events. ?host=<name> limits
 // the stream to one host (host-level events still pass). The session is
-// required (middleware). The stream ends when the client disconnects or the
-// server shuts down.
+// required (middleware). The stream ends when the client disconnects, the
+// server shuts down or the session ends (see sessionGuard).
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	var filter grid.HostID
 	if name := r.URL.Query().Get("host"); name != "" {
@@ -76,6 +76,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		filter = h.ID
+	}
+	guard, ok := s.guardFor(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
 	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -99,11 +104,23 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 	tick := time.NewTicker(s.sseHeartbeat)
 	defer tick.Stop()
+	revoked := guard.revoked()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-revoked:
+			// Re-arm first, then look: a revocation after the check is not lost.
+			revoked = guard.revoked()
+			if !guard.alive(ctx) {
+				return
+			}
 		case <-tick.C:
+			// The heartbeat also finds sessions that ended by time. The
+			// client's reconnect then gets a 401 and nexus.js goes to /login.
+			if !guard.alive(ctx) {
+				return
+			}
 			if _, err := w.Write([]byte(": ping\n\n")); err != nil {
 				return
 			}

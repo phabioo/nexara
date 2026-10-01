@@ -46,9 +46,19 @@
     reloadTimer = setTimeout(function () { window.location.reload(); }, RELOAD_DELAY_MS);
   }
 
-  // A host went online or offline: tabs, pill, sidebar and the card set all change.
+  // A host went online or offline: tabs, pill, sidebar and the card set all change. When the host shown
+  // here was removed (payload "<name> removed"), its URL is gone: continue at the overview.
+  var REMOVED = ' removed';
   document.addEventListener('htmx:sseMessage', function (e) {
-    if (e.detail && e.detail.type === 'ov-state') { reloadSoon(); }
+    if (!e.detail || e.detail.type !== 'ov-state') { return; }
+    var data = typeof e.detail.data === 'string' ? e.detail.data : '';
+    var marker = document.querySelector('[data-ov-state]');
+    var own = marker ? marker.getAttribute('data-ov-host') : '';
+    if (own && data === own + REMOVED) {
+      window.location.replace('/');
+      return;
+    }
+    reloadSoon();
   });
 
   // Events are only change hints: after the stream dropped and came back, read the state again.

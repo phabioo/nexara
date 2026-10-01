@@ -50,6 +50,10 @@ func (h *enrollHolder) LinkViaSSH(ctx context.Context, actor grid.Actor, req gri
 	return h.Service().LinkViaSSH(ctx, actor, req, progress)
 }
 
+func (h *enrollHolder) ProbeSSH(ctx context.Context, actor grid.Actor, host string, port int) (grid.HostKeyInfo, error) {
+	return h.Service().ProbeSSH(ctx, actor, host, port)
+}
+
 func (h *enrollHolder) NewEnrollCode(ctx context.Context, actor grid.Actor, opts grid.EnrollOptions) (grid.EnrollCode, error) {
 	return h.Service().NewEnrollCode(ctx, actor, opts)
 }

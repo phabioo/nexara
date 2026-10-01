@@ -16,6 +16,8 @@ import (
 const (
 	CmdSetupCode = "setup-code"
 	CmdUserReset = "user-reset"
+	// CmdLoginUnlock clears the login rate-limit counters (locked-out accounts and IPs).
+	CmdLoginUnlock = "login-unlock"
 )
 
 const (
@@ -46,6 +48,8 @@ type AdminHandlers struct {
 	SetupCode func(ctx context.Context) (code string, expires time.Time, err error)
 	// UserReset resets the operator account and returns a message for the CLI.
 	UserReset func(ctx context.Context) (message string, err error)
+	// LoginUnlock clears the login rate limits and returns a message for the CLI.
+	LoginUnlock func(ctx context.Context) (message string, err error)
 }
 
 func (h AdminHandlers) dispatch(ctx context.Context, cmd string) AdminResponse {
@@ -65,6 +69,15 @@ func (h AdminHandlers) dispatch(ctx context.Context, cmd string) AdminResponse {
 			return AdminResponse{Message: "user-reset is not available"}
 		}
 		msg, err := h.UserReset(ctx)
+		if err != nil {
+			return AdminResponse{Message: err.Error()}
+		}
+		return AdminResponse{OK: true, Message: msg}
+	case CmdLoginUnlock:
+		if h.LoginUnlock == nil {
+			return AdminResponse{Message: "login-unlock is not available"}
+		}
+		msg, err := h.LoginUnlock(ctx)
 		if err != nil {
 			return AdminResponse{Message: err.Error()}
 		}

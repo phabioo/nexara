@@ -22,7 +22,7 @@ import (
 func newCA(t *testing.T) (*CA, string) {
 	t.Helper()
 	dir := t.TempDir()
-	ca, err := LoadOrCreateCA(dir)
+	ca, err := LoadOrCreateCA(dir, "frpi5") // the test host is not called frpi5
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestCACreateAndReload(t *testing.T) {
 	if !ca.Cert.IsCA || !strings.HasPrefix(ca.Cert.Subject.CommonName, "Nexara Nexus CA ") {
 		t.Fatalf("unexpected CA cert: %+v", ca.Cert.Subject)
 	}
-	if got := ca.Cert.NotAfter.Sub(ca.Cert.NotBefore); got < 3649*24*time.Hour || got > 3651*24*time.Hour {
+	if got := ca.Cert.NotAfter.Sub(ca.Cert.NotBefore); got < 1824*24*time.Hour || got > 1827*24*time.Hour {
 		t.Fatalf("CA validity = %v", got)
 	}
 	if runtime.GOOS != "windows" {

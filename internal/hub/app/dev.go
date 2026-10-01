@@ -148,7 +148,7 @@ func RunDev(ctx context.Context, o DevOptions) error {
 	if err := os.MkdirAll(tlsDir, 0o700); err != nil {
 		return fmt.Errorf("cannot create the demo CA directory: %w", err)
 	}
-	ca, err := pki.LoadOrCreateCA(tlsDir)
+	ca, err := pki.LoadOrCreateCA(tlsDir, defaultAgentHost())
 	if err != nil {
 		return fmt.Errorf("cannot create the demo CA: %w", err)
 	}

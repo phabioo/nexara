@@ -2,16 +2,22 @@ package enroll
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"net"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/phabioo/nexara/internal/hub/grid"
 	"github.com/phabioo/nexara/internal/hub/store"
 	"github.com/phabioo/nexara/internal/pki"
 	"github.com/phabioo/nexara/internal/protocol"
@@ -19,7 +25,11 @@ import (
 
 const (
 	maxEnrollBody = 64 << 10
-	enrollRate    = 10 // POST /grid/enroll attempts per IP and minute
+	// enrollRate is the number of POST /grid/enroll attempts per client per
+	// minute; a client is an IPv4 address or an IPv6 /64. enrollGlobalRate
+	// caps all clients together (S-10).
+	enrollRate       = 10
+	enrollGlobalRate = 60
 )
 
 // Handler serves POST /grid/enroll, GET /grid/install.sh and
@@ -66,7 +76,8 @@ func hostNameFrom(reported string) (string, bool) {
 
 func (s *Service) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	ip := ipOf(r.RemoteAddr)
-	if !s.limiter.allow(ip, s.now()) {
+	now := s.now()
+	if !s.limiter.allow(limitKey(ip), now) || !s.globalLimiter.allow("*", now) {
 		w.Header().Set("Retry-After", "60")
 		writeErr(w, http.StatusTooManyRequests, "too many attempts")
 		return
@@ -85,26 +96,40 @@ func (s *Service) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	// Everything that can be checked without the token is checked first, so a
-	// malformed request from a legitimate agent does not burn its one-time code.
-	name, ok := hostNameFrom(req.Hello.Hostname)
-	if req.Token == "" || len(req.Token) > 128 {
-		s.deny(ctx, ip, "missing token")
+	// The token is checked before anything else is parsed: an unauthenticated
+	// request never reaches the CSR or the CA (S-10). The check only reads, so
+	// a malformed request from a legitimate agent does not burn its one-time
+	// code; the code is consumed once everything else is known to be valid.
+	// Nothing of the presented code is ever logged or audited.
+	if len(req.Token) > 128 || !codeRE.MatchString(normalizeCode(req.Token)) {
+		s.deny(ctx, ip, "malformed or missing token")
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	tokenHash := hashCode(req.Token)
+	if err := s.checkToken(ctx, tokenHash, now); err != nil {
+		if errors.Is(err, store.ErrTokenInvalid) {
+			s.deny(ctx, ip, "invalid, expired or used token")
+			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		s.log.Error("enroll: check token", "err", err)
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	name, ok := hostNameFrom(req.Hello.Hostname)
 	if !ok || !knownOS[req.Hello.OS] || !knownArch[req.Hello.Arch] {
 		writeErr(w, http.StatusBadRequest, "invalid host description")
 		return
 	}
-	if _, _, err := pki.SignAgentCSR(s.ca, []byte(req.CSRPEM), "precheck", s.now()); err != nil {
+	if err := checkCSR([]byte(req.CSRPEM)); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid certificate request")
 		return
 	}
 
-	tokenHash := hashCode(req.Token)
-	tokenCaps, err := s.st.ConsumeEnrollToken(ctx, tokenHash, s.now())
-	if errors.Is(err, store.ErrTokenInvalid) {
+	tokenCaps, err := s.st.ConsumeEnrollToken(ctx, tokenHash, now)
+	if errors.Is(err, store.ErrTokenInvalid) { // used by a concurrent request
 		s.deny(ctx, ip, "invalid, expired or used token")
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -115,16 +140,20 @@ func (s *Service) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	host, err := s.registerHost(ctx, name, ip, req, tokenCaps)
+	host, err := s.registerHost(ctx, name, ip, tokenHash, req, tokenCaps)
 	if err != nil {
-		if errors.Is(err, errHostRevoked) {
+		switch {
+		case errors.Is(err, errHostRevoked):
 			s.audit(ctx, "system", name, "enroll.denied", "host is revoked; remove it first (from "+ip+")", store.AuditDenied)
 			writeErr(w, http.StatusConflict, "host is revoked")
-			return
+		case errors.Is(err, grid.ErrHostExists):
+			s.audit(ctx, "system", name, "enroll.denied", "a host with this name already exists (from "+ip+")", store.AuditDenied)
+			writeErr(w, http.StatusConflict, "host exists")
+		default:
+			s.log.Error("enroll: register host", "host", name, "err", err)
+			s.audit(ctx, "system", name, "enroll.ok", "failed while registering (from "+ip+")", store.AuditError)
+			writeErr(w, http.StatusInternalServerError, "internal error")
 		}
-		s.log.Error("enroll: register host", "host", name, "err", err)
-		s.audit(ctx, "system", name, "enroll.ok", "failed while registering (from "+ip+")", store.AuditError)
-		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	_ = s.st.SetEnrollTokenHost(ctx, tokenHash, host.h.ID)
@@ -142,6 +171,57 @@ func (s *Service) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// checkToken reports store.ErrTokenInvalid unless the token exists, is unused
+// and has not expired. It does not consume the token.
+func (s *Service) checkToken(ctx context.Context, tokenHash string, now time.Time) error {
+	t, err := s.st.GetEnrollToken(ctx, tokenHash)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return store.ErrTokenInvalid
+	case err != nil:
+		return err
+	case !t.UsedAt.IsZero() || !t.ExpiresAt.After(now):
+		return store.ErrTokenInvalid
+	}
+	return nil
+}
+
+// checkCSR parses the request and verifies its self-signature without
+// involving the CA. Only authenticated requests get here.
+func checkCSR(csrPEM []byte) error {
+	blk, _ := pem.Decode(csrPEM)
+	if blk == nil || blk.Type != "CERTIFICATE REQUEST" {
+		return errors.New("no certificate request")
+	}
+	csr, err := x509.ParseCertificateRequest(blk.Bytes)
+	if err != nil {
+		return errors.New("malformed certificate request")
+	}
+	if err := csr.CheckSignature(); err != nil {
+		return errors.New("bad signature")
+	}
+	if pub, ok := csr.PublicKey.(*ecdsa.PublicKey); !ok || pub.Curve != elliptic.P256() {
+		return errors.New("key must be ECDSA P-256")
+	}
+	return nil
+}
+
+// limitKey maps a client address to its rate-limit bucket: the address itself
+// for IPv4, the /64 for IPv6 (a single host can use any address in its /64).
+func limitKey(ip string) string {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ip
+	}
+	addr = addr.Unmap()
+	if addr.Is6() {
+		if p, err := addr.Prefix(64); err == nil {
+			return p.String()
+		}
+	}
+	return addr.String()
+}
+
 func (s *Service) deny(ctx context.Context, ip, why string) {
 	s.audit(ctx, "system", "", "enroll.denied", why+" (from "+ip+")", store.AuditDenied)
 }
@@ -154,10 +234,12 @@ type registered struct {
 	detail  string
 }
 
-// registerHost signs the CSR and creates the host row, or re-uses the row of a
-// host with the same name (re-install of a device): its certificate is replaced,
-// so the old one stops working.
-func (s *Service) registerHost(ctx context.Context, name, ip string, req protocol.EnrollRequest, tokenCaps []string) (registered, error) {
+// registerHost signs the CSR and creates the host row. A host name that is
+// already taken is refused with grid.ErrHostExists (decision #46): cloned
+// images and stolen codes must not take over an existing identity. The one
+// exception is a replacement the operator granted explicitly for exactly this
+// token and host (see replaceHost).
+func (s *Service) registerHost(ctx context.Context, name, ip, tokenHash string, req protocol.EnrollRequest, tokenCaps []string) (registered, error) {
 	now := s.now()
 	caps := tokenCaps
 	if caps == nil {
@@ -172,7 +254,7 @@ func (s *Service) registerHost(ctx context.Context, name, ip string, req protoco
 	existing, err := s.st.GetHostByName(ctx, name)
 	switch {
 	case err == nil:
-		return s.reuseHost(ctx, existing, ip, req, caps, mac, version, now)
+		return s.existingHost(ctx, existing, tokenHash, ip, req, caps, mac, version, now)
 	case !errors.Is(err, store.ErrNotFound):
 		return registered{}, err
 	}
@@ -189,11 +271,7 @@ func (s *Service) registerHost(ctx context.Context, name, ip string, req protoco
 		MAC: mac, Capabilities: caps, CreatedAt: now,
 	})
 	if errors.Is(err, store.ErrExists) { // lost a race with a concurrent enrollment of the same name
-		existing, gerr := s.st.GetHostByName(ctx, name)
-		if gerr != nil {
-			return registered{}, gerr
-		}
-		return s.reuseHost(ctx, existing, ip, req, caps, mac, version, now)
+		return registered{}, &grid.HostExistsError{Name: name}
 	}
 	if err != nil {
 		return registered{}, err
@@ -201,10 +279,27 @@ func (s *Service) registerHost(ctx context.Context, name, ip string, req protoco
 	return registered{h: h, certPEM: certPEM, detail: "new host " + h.ID}, nil
 }
 
-func (s *Service) reuseHost(ctx context.Context, h store.Host, ip string, req protocol.EnrollRequest, caps []string, mac, version string, now time.Time) (registered, error) {
+// existingHost decides what happens when the reported name is taken.
+func (s *Service) existingHost(ctx context.Context, h store.Host, tokenHash, ip string, req protocol.EnrollRequest, caps []string, mac, version string, now time.Time) (registered, error) {
 	if h.Revoked {
 		return registered{}, errHostRevoked
 	}
+	grant, ok := s.takeReplace(tokenHash, now)
+	if !ok || grant.hostID != h.ID {
+		return registered{}, &grid.HostExistsError{ID: grid.HostID(h.ID), Name: h.Name}
+	}
+	if s.hostOnline != nil && s.hostOnline(grid.HostID(h.ID)) {
+		return registered{}, &grid.HostExistsError{ID: grid.HostID(h.ID), Name: h.Name}
+	}
+	return s.replaceHost(ctx, h, grant.actor, ip, req, caps, mac, version, now)
+}
+
+// replaceHost gives an existing host a new certificate (the device behind the
+// name was re-installed or swapped). The row id and history stay; the old
+// certificate stops working because the host is looked up by the fingerprint
+// of its current certificate. Audited as host.replace.
+func (s *Service) replaceHost(ctx context.Context, h store.Host, actor grid.Actor, ip string, req protocol.EnrollRequest, caps []string, mac, version string, now time.Time) (registered, error) {
+	oldFP := h.CertFingerprint
 	certPEM, cert, err := pki.SignAgentCSR(s.ca, []byte(req.CSRPEM), h.ID, now)
 	if err != nil {
 		return registered{}, err
@@ -218,11 +313,23 @@ func (s *Service) reuseHost(ctx context.Context, h store.Host, ip string, req pr
 	}); err != nil {
 		return registered{}, err
 	}
-	h, err = s.st.GetHost(ctx, h.ID)
+	nh, err := s.st.GetHost(ctx, h.ID)
 	if err != nil {
 		return registered{}, err
 	}
-	return registered{h: h, certPEM: certPEM, detail: "re-enrolled host " + h.ID}, nil
+	s.audit(ctx, actor.Operator, nh.Name, "host.replace",
+		"replaced by a new agent from "+ip+"; old certificate "+shortFP(oldFP)+" revoked", store.AuditOK)
+	return registered{h: nh, certPEM: certPEM, detail: "replaced host " + nh.ID}, nil
+}
+
+func shortFP(fp string) string {
+	if len(fp) > 16 {
+		return fp[:16]
+	}
+	if fp == "" {
+		return "(none)"
+	}
+	return fp
 }
 
 func filterCaps(in []string) []string {

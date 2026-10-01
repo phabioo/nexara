@@ -117,8 +117,7 @@ func normalizeIPs(ips []net.IP) []string {
 // pin the CA fingerprint (enrollment) can see the CA in the handshake. It
 // reports whether a new certificate was written.
 func EnsureServerCert(ca *CA, dir string, names []string, ips []net.IP, now time.Time) (bool, error) {
-	wantNames := normalizeNames(names)
-	wantIPs := normalizeIPs(ips)
+	wantNames, wantIPs, _ := ca.FilterPermitted(normalizeNames(names), normalizeIPs(ips))
 	if len(wantNames) == 0 && len(wantIPs) == 0 {
 		return false, errors.New("pki: server certificate needs at least one name or IP")
 	}
@@ -181,6 +180,29 @@ func EnsureServerCert(ca *CA, dir string, names []string, ips []net.IP, now time
 		return false, err
 	}
 	return true, nil
+}
+
+// FilterPermitted splits names and IP strings into those the CA's name
+// constraints allow and the dropped rest. One SAN outside the constraints makes
+// x509.Verify reject the whole certificate, so EnsureServerCert drops them
+// (e.g. a global IPv6 address or a CGNAT/VPN address of the device) instead of
+// issuing a certificate no client accepts. Callers can log dropped.
+func (ca *CA) FilterPermitted(names, ips []string) (okNames, okIPs, dropped []string) {
+	for _, n := range names {
+		if ca.Permits(n) {
+			okNames = append(okNames, n)
+		} else {
+			dropped = append(dropped, n)
+		}
+	}
+	for _, i := range ips {
+		if ca.Permits(i) {
+			okIPs = append(okIPs, i)
+		} else {
+			dropped = append(dropped, i)
+		}
+	}
+	return okNames, okIPs, dropped
 }
 
 func serverCertCurrent(ca *CA, certPath, keyPath string, wantNames, wantIPs []string, now time.Time) bool {

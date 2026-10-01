@@ -54,7 +54,7 @@ HUB_ADDR='{{.Address}}'
 HUB_PORT='{{.Port}}'
 PIN='sha256//{{.Pin}}'
 CA_FP='{{.CAFingerprint}}'
-CODE="${1:-}"
+CODE="$(printf '%s' "${1:-}" | tr 'a-z' 'A-Z')"
 
 die() {
 	echo "grid-agent installer: $*" >&2
@@ -63,6 +63,7 @@ die() {
 
 [ "$(id -u)" -eq 0 ] || die "must run as root: curl ... | sudo sh -s -- <code>"
 [ -n "$CODE" ] || die "missing enrollment code"
+printf '%s\n' "$CODE" | LC_ALL=C grep -Eq '^GRID(-[{{.CodeClass}}]{4}){4}$' || die "invalid enrollment code (expected GRID-XXXX-XXXX-XXXX-XXXX)"
 [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ] || die "run this through sudo from your normal user (the shell runs as that user, never as root)"
 [ "$(uname -s)" = Linux ] || die "this installer supports Linux only"
 command -v curl >/dev/null 2>&1 || die "curl is required"
@@ -75,7 +76,10 @@ x86_64 | amd64) ARCH=amd64 ;;
 esac
 
 TMP="$(mktemp)"
-trap 'rm -f "$TMP"' EXIT
+TOKFILE="$(mktemp)"
+trap 'rm -f "$TMP" "$TOKFILE"' EXIT
+# The code goes through a 0600 file, not the enroll command line.
+printf '%s\n' "$CODE" >"$TOKFILE"
 
 echo "Downloading Grid Agent (linux/$ARCH) from the hub ..."
 curl -fsSL --insecure --pinnedpubkey "$PIN" -o "$TMP" "https://$HUB_ADDR:$HUB_PORT/grid/download/linux/$ARCH" </dev/null
@@ -84,7 +88,7 @@ systemctl stop grid-agent </dev/null >/dev/null 2>&1 || true
 install -m 0755 "$TMP" /usr/local/bin/grid-agent </dev/null
 
 echo "Enrolling ..."
-/usr/local/bin/grid-agent enroll --hub "https://$HUB_ADDR:$HUB_PORT" --token "$CODE" --ca-fingerprint "$CA_FP" --shell-user "${SUDO_USER:-}" </dev/null
+/usr/local/bin/grid-agent enroll --hub "https://$HUB_ADDR:$HUB_PORT" --token-file "$TOKFILE" --ca-fingerprint "$CA_FP" --shell-user "${SUDO_USER:-}" </dev/null
 
 cat >/etc/systemd/system/grid-agent.service <<'NEXARA_UNIT'
 {{.Unit}}NEXARA_UNIT
@@ -97,6 +101,7 @@ echo "Grid Agent installed and started."
 
 type scriptData struct {
 	Address, Port, Pin, CAFingerprint, Unit string
+	CodeClass                               string // characters allowed in an enrollment code
 }
 
 var (
@@ -112,7 +117,7 @@ func renderInstallScript(address string, port int, pin, caFingerprint string) ([
 	}
 	var buf bytes.Buffer
 	err := installScript.Execute(&buf, scriptData{
-		Address: address, Port: strconv.Itoa(port), Pin: pin, CAFingerprint: caFingerprint, Unit: unitFile,
+		Address: address, Port: strconv.Itoa(port), Pin: pin, CAFingerprint: caFingerprint, Unit: unitFile, CodeClass: codeAlphabet,
 	})
 	if err != nil {
 		return nil, err

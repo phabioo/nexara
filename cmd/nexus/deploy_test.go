@@ -93,6 +93,8 @@ func TestNexusUnit(t *testing.T) {
 		"NoNewPrivileges=true", "ProtectSystem=strict", "ProtectHome=true", "PrivateTmp=true", "PrivateDevices=true",
 		"RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6", "CapabilityBoundingSet=\n",
 		"ReadWritePaths=/var/lib/nexus /etc/nexus", "Restart=on-failure",
+		"SystemCallFilter=@system-service", "SystemCallErrorNumber=EPERM", "ProtectProc=invisible",
+		"ProcSubset=pid", "MemoryDenyWriteExecute=true",
 	} {
 		if !strings.Contains(unit, want) {
 			t.Errorf("nexus.service lacks %q", want)
@@ -101,6 +103,32 @@ func TestNexusUnit(t *testing.T) {
 	// Port 8443 needs no privileges; a capability would only widen the sandbox.
 	if m := regexp.MustCompile(`(?m)^AmbientCapabilities=(.+)$`).FindString(unit); m != "" {
 		t.Errorf("unexpected %s", m)
+	}
+}
+
+// A download cut off by a dropped connection must not execute a partial
+// script: everything is inside main(), which is called on the last line.
+func TestInstallShIsWrappedInMain(t *testing.T) {
+	lines := strings.Split(strings.TrimRight(deployFile(t, "install.sh"), "\n"), "\n")
+	if last := lines[len(lines)-1]; last != `main "$@"` {
+		t.Errorf("last line = %q, want main \"$@\"", last)
+	}
+	start := -1
+	for i, l := range lines {
+		if l == "main() {" {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		t.Fatal("install.sh has no main() { ... } wrapper")
+	}
+	// Only comments, set -eu and the function header may precede main, so no
+	// command runs before the whole file has been received.
+	for _, l := range lines[:start] {
+		if l != "" && !strings.HasPrefix(l, "#") && l != "set -eu" {
+			t.Errorf("statement before main(): %q", l)
+		}
 	}
 }
 

@@ -131,7 +131,8 @@
     switch (code) {
       case 1000: return reason === 'shell exited' ? 'Session ended. The shell exited.' : 'Session closed.';
       case 1001: return 'The hub is restarting. Reconnect in a moment.';
-      case 1008: return 'The shell is switched off for this host.';
+      case 1008:
+        return reason === 'session ended' ? 'Your session has ended. Redirecting to sign in.' : 'The shell is switched off for this host.';
       case 1013: return 'The host is offline.';
       case 1011: return reason === 'shell connection lost' ? 'Connection to the host lost.' : 'The shell could not be started.';
       default: return 'Connection lost.';
@@ -163,6 +164,10 @@
       if (everOpened) { term.write('\r\n\x1b[2m[session ended]\x1b[0m\r\n'); }
       logLine('Shell session closed on ' + hostLabel);
       setStatus(info);
+      // The hub ends open shells when the operator's session ends (sign-out elsewhere, expiry, reset).
+      if (everOpened && e.code === 1008 && e.reason === 'session ended') {
+        window.setTimeout(function () { window.location.assign('/login'); }, 1500);
+      }
     };
   }
 

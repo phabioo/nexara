@@ -12,10 +12,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"github.com/phabioo/nexara/internal/hub/grid"
 )
 
 // sshTestServer is a minimal SSH server: password "pw" or one authorized key,
@@ -23,6 +26,8 @@ import (
 type sshTestServer struct {
 	addr    string
 	hostKey ssh.PublicKey
+	// authAttempts counts authentication attempts of any method, "none" included.
+	authAttempts atomic.Int32
 }
 
 func startSSHServer(t *testing.T, authorized ssh.PublicKey, handler func(cmd string, stdin []byte) (stdout, stderr string, status int)) *sshTestServer {
@@ -35,6 +40,7 @@ func startSSHServer(t *testing.T, authorized ssh.PublicKey, handler func(cmd str
 	if err != nil {
 		t.Fatal(err)
 	}
+	srv := &sshTestServer{hostKey: hostSigner.PublicKey()}
 	cfg := &ssh.ServerConfig{
 		PasswordCallback: func(c ssh.ConnMetadata, pw []byte) (*ssh.Permissions, error) {
 			if c.User() == "pi" && string(pw) == "pw" {
@@ -49,6 +55,7 @@ func startSSHServer(t *testing.T, authorized ssh.PublicKey, handler func(cmd str
 			return nil, errors.New("denied")
 		},
 	}
+	cfg.AuthLogCallback = func(ssh.ConnMetadata, string, error) { srv.authAttempts.Add(1) }
 	cfg.AddHostKey(hostSigner)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -64,8 +71,11 @@ func startSSHServer(t *testing.T, authorized ssh.PublicKey, handler func(cmd str
 			go serveSSH(nc, cfg, handler)
 		}
 	}()
-	return &sshTestServer{addr: ln.Addr().String(), hostKey: hostSigner.PublicKey()}
+	srv.addr = ln.Addr().String()
+	return srv
 }
+
+func (s *sshTestServer) fingerprint() string { return ssh.FingerprintSHA256(s.hostKey) }
 
 func serveSSH(nc net.Conn, cfg *ssh.ServerConfig, handler func(string, []byte) (string, string, int)) {
 	defer nc.Close()
@@ -123,7 +133,7 @@ func TestRealDialerPasswordAndRun(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	c, err := realDialer{}.Dial(ctx, SSHDialConfig{Addr: srv.addr, User: "pi", Password: []byte("pw"), Timeout: 5 * time.Second})
+	c, err := realDialer{}.Dial(ctx, SSHDialConfig{Addr: srv.addr, User: "pi", Password: []byte("pw"), Timeout: 5 * time.Second, HostKeySHA256: srv.fingerprint()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,17 +159,17 @@ func TestRealDialerPasswordAndRun(t *testing.T) {
 func TestRealDialerWrongPasswordAndNoCredentials(t *testing.T) {
 	srv := startSSHServer(t, nil, func(string, []byte) (string, string, int) { return "", "", 0 })
 	ctx := context.Background()
-	_, err := realDialer{}.Dial(ctx, SSHDialConfig{Addr: srv.addr, User: "pi", Password: []byte("wrong-password"), Timeout: 5 * time.Second})
+	_, err := realDialer{}.Dial(ctx, SSHDialConfig{Addr: srv.addr, User: "pi", Password: []byte("wrong-password"), Timeout: 5 * time.Second, HostKeySHA256: srv.fingerprint()})
 	if err == nil {
 		t.Fatal("wrong password accepted")
 	}
 	if strings.Contains(err.Error(), "wrong-password") {
 		t.Fatalf("password in error: %v", err)
 	}
-	if _, err := (realDialer{}).Dial(ctx, SSHDialConfig{Addr: srv.addr, User: "pi"}); err == nil {
+	if _, err := (realDialer{}).Dial(ctx, SSHDialConfig{Addr: srv.addr, User: "pi", HostKeySHA256: srv.fingerprint()}); err == nil {
 		t.Fatal("dial without credentials succeeded")
 	}
-	if _, err := (realDialer{}).Dial(ctx, SSHDialConfig{Addr: "127.0.0.1:1", User: "pi", Password: []byte("pw"), Timeout: time.Second}); err == nil {
+	if _, err := (realDialer{}).Dial(ctx, SSHDialConfig{Addr: "127.0.0.1:1", User: "pi", Password: []byte("pw"), Timeout: time.Second, HostKeySHA256: testHostKey}); err == nil {
 		t.Fatal("dial to closed port succeeded")
 	}
 }
@@ -168,7 +178,7 @@ func TestRealDialerCancelRun(t *testing.T) {
 	release := make(chan struct{})
 	srv := startSSHServer(t, nil, func(string, []byte) (string, string, int) { <-release; return "", "", 0 })
 	defer close(release)
-	c, err := realDialer{}.Dial(context.Background(), SSHDialConfig{Addr: srv.addr, User: "pi", Password: []byte("pw"), Timeout: 5 * time.Second})
+	c, err := realDialer{}.Dial(context.Background(), SSHDialConfig{Addr: srv.addr, User: "pi", Password: []byte("pw"), Timeout: 5 * time.Second, HostKeySHA256: srv.fingerprint()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +223,7 @@ func TestHubKeyCreatedReusedAndUsable(t *testing.T) {
 
 	// The key authenticates against a server that authorizes it.
 	srv := startSSHServer(t, e.svc.hubKey.signer.PublicKey(), func(string, []byte) (string, string, int) { return "ok", "", 0 })
-	c, err := realDialer{}.Dial(context.Background(), SSHDialConfig{Addr: srv.addr, User: "anyone", Signer: e.svc.hubKey.signer, Timeout: 5 * time.Second})
+	c, err := realDialer{}.Dial(context.Background(), SSHDialConfig{Addr: srv.addr, User: "anyone", Signer: e.svc.hubKey.signer, Timeout: 5 * time.Second, HostKeySHA256: srv.fingerprint()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,5 +239,107 @@ func TestCleanLine(t *testing.T) {
 	}
 	if got := cleanLine(strings.Repeat("x", 500), 20); len(got) != 20 {
 		t.Fatalf("len %d", len(got))
+	}
+}
+
+func TestRealDialerProbeReceivesKeyWithoutAuthenticating(t *testing.T) {
+	srv := startSSHServer(t, nil, func(string, []byte) (string, string, int) { return "", "", 0 })
+	info, err := realDialer{}.Probe(context.Background(), srv.addr, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Type != "ssh-ed25519" || info.SHA256 != srv.fingerprint() {
+		t.Fatalf("probe returned %+v, want ssh-ed25519 %s", info, srv.fingerprint())
+	}
+	if n := srv.authAttempts.Load(); n != 0 {
+		t.Fatalf("the probe attempted authentication %d times", n)
+	}
+}
+
+func TestRealDialerProbeFailures(t *testing.T) {
+	// A closed port.
+	if _, err := (realDialer{}).Probe(context.Background(), "127.0.0.1:1", time.Second); err == nil {
+		t.Fatal("probe of a closed port succeeded")
+	}
+	// Something that is not SSH: the connection is closed without a banner.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	if _, err := (realDialer{}).Probe(context.Background(), ln.Addr().String(), time.Second); err == nil {
+		t.Fatal("probe of a non-SSH service succeeded")
+	}
+	// A canceled context ends a probe of a host that never answers.
+	silent, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer silent.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := (realDialer{}).Probe(ctx, silent.Addr().String(), 5*time.Second); err == nil {
+		t.Fatal("probe of a silent host succeeded")
+	}
+}
+
+// oneCharOff changes the last character of a fingerprint. The last base64
+// character of a SHA-256 fingerprint carries only 4 bits, so a fixed
+// replacement would equal the original about once in 16 runs.
+func oneCharOff(fp string) string {
+	last := "A"
+	if strings.HasSuffix(fp, "A") {
+		last = "E"
+	}
+	return fp[:len(fp)-1] + last
+}
+
+func TestRealDialerPinsTheConfirmedHostKey(t *testing.T) {
+	srv := startSSHServer(t, nil, func(string, []byte) (string, string, int) { return "", "", 0 })
+	other := startSSHServer(t, nil, func(string, []byte) (string, string, int) { return "", "", 0 })
+	tests := []struct {
+		name    string
+		pin     string
+		wantErr error
+	}{
+		{"confirmed key", srv.fingerprint(), nil},
+		{"another host's key", other.fingerprint(), grid.ErrHostKeyMismatch},
+		{"one character off", oneCharOff(srv.fingerprint()), grid.ErrHostKeyMismatch},
+		{"no fingerprint given", "", errors.New("any")},
+		{"malformed fingerprint", "SHA256:short", errors.New("any")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := srv.authAttempts.Load()
+			c, err := realDialer{}.Dial(context.Background(), SSHDialConfig{
+				Addr: srv.addr, User: "pi", Password: []byte("pw"), Timeout: 5 * time.Second, HostKeySHA256: tt.pin,
+			})
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatal(err)
+				}
+				c.Close()
+				return
+			}
+			if err == nil {
+				c.Close()
+				t.Fatal("dial accepted a host key that was not confirmed")
+			}
+			if tt.pin != "" && tt.pin != "SHA256:short" && !errors.Is(err, grid.ErrHostKeyMismatch) {
+				t.Fatalf("error %v, want ErrHostKeyMismatch", err)
+			}
+			if n := srv.authAttempts.Load() - before; n != 0 {
+				t.Fatalf("the password was offered %d times to an unconfirmed host key", n)
+			}
+		})
 	}
 }

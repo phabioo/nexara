@@ -102,6 +102,7 @@ type Server struct {
 	// Intervals, shortened in tests.
 	sseHeartbeat time.Duration
 	shellPing    time.Duration
+	bodyTimeout  time.Duration
 
 	// streamsDone is closed when the server shuts down so SSE and WebSocket
 	// handlers end (http.Server.Shutdown does not cancel running requests).
@@ -138,6 +139,7 @@ func New(o Options) (*Server, error) {
 		addHost:      newLinkRegistry(),
 		sseHeartbeat: 15 * time.Second,
 		shellPing:    30 * time.Second,
+		bodyTimeout:  bodyReadTimeout,
 		streamsDone:  make(chan struct{}),
 	}
 	if s.log == nil {
