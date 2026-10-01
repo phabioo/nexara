@@ -47,6 +47,9 @@ type committer struct {
 	// selfLink writes the self-link token for the hub's own agent with the
 	// chosen capabilities. Nil means the mode has no self-link (demo).
 	selfLink func(ctx context.Context, caps []string) error
+	// permits reports whether the hub CA may certify a host name or IP
+	// (decision #45). Nil skips the check.
+	permits func(host string) bool
 
 	mu sync.Mutex // commits are serialized: at most one operator can be created
 }
@@ -91,6 +94,12 @@ func (c *committer) Commit(ctx context.Context, res setup.Result, clientIP strin
 			return httpserver.SetupOutcome{}, fmt.Errorf("app: %w", err)
 		}
 		newCfg = hubConfigFrom(cur, res.Hub, c.listenPort)
+		// The CA exists before the wizard asks for the agent address, so its
+		// name constraints cannot include a public name chosen here; agents
+		// would then fail to verify the server certificate.
+		if h := strings.TrimSpace(res.Hub.AgentHost); h != "" && c.permits != nil && !c.permits(h) {
+			return httpserver.SetupOutcome{}, setup.ValidationError{"hub": agentHostNotPermitted}
+		}
 		if err := newCfg.Validate(); err != nil {
 			var verr *config.ValidationError
 			if errors.As(err, &verr) {
@@ -195,6 +204,10 @@ func checkWizardPassphrase(pass string) error {
 	}
 	return errors.New(passphraseProblem(pass))
 }
+
+// agentHostNotPermitted is shown when the agent address lies outside the hub
+// CA's name constraints.
+const agentHostNotPermitted = "Agents can only reach the hub under a .local name, the hub's own host name or a private IP address (for example frpi5.local or 192.168.1.20). Remote access works through your VPN."
 
 var hubNameInvalid = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 

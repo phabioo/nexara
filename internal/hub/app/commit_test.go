@@ -15,6 +15,7 @@ import (
 	"github.com/phabioo/nexara/internal/hub/httpserver"
 	"github.com/phabioo/nexara/internal/hub/setup"
 	"github.com/phabioo/nexara/internal/hub/store"
+	"github.com/phabioo/nexara/internal/pki"
 )
 
 type commitEnv struct {
@@ -478,5 +479,38 @@ func TestHubConfigFrom(t *testing.T) {
 	}
 	if err := got.Validate(); err != nil {
 		t.Errorf("result must validate: %v", err)
+	}
+}
+
+func TestCommitAgentHostMustFitTheCA(t *testing.T) {
+	ca, err := pki.LoadOrCreateCA(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		host string
+		ok   bool
+	}{
+		{"frpi5.local", true},
+		{"192.168.1.20", true},
+		{"fd00::20", true},
+		{"hub.example.com", false},
+		{"8.8.8.8", false},
+	}
+	for _, tt := range tests {
+		e := newCommitEnv(t, true)
+		e.c.permits = ca.Permits
+		res := goodResult()
+		res.Hub.AgentHost = tt.host
+		_, err := e.c.Commit(context.Background(), res, "192.0.2.7")
+		var verr setup.ValidationError
+		switch {
+		case tt.ok && err != nil:
+			t.Errorf("%s: unexpected error %v", tt.host, err)
+		case !tt.ok && (!errors.As(err, &verr) || verr["hub"] != agentHostNotPermitted):
+			t.Errorf("%s: err = %v, want the agent-host validation error", tt.host, err)
+		case !tt.ok && e.users() != 0:
+			t.Errorf("%s: operator created although the agent host was refused", tt.host)
+		}
 	}
 }

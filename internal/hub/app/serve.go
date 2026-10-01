@@ -182,7 +182,7 @@ func Serve(ctx context.Context, o ServeOptions) error {
 	cm := &committer{
 		st: st, auth: authSvc, codes: codes, sessions: sessions, mode: mode, log: log,
 		configPath: o.ConfigPath, listenPort: listenPort,
-		applyHub: rt.applyHub, selfLink: rt.writeSelfLink,
+		applyHub: rt.applyHub, selfLink: rt.writeSelfLink, permits: ca.Permits,
 	}
 
 	renderer, err := views.New(web.Templates, views.Options{})
