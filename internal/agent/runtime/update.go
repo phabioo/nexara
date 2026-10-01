@@ -36,6 +36,9 @@ func (a *Agent) validateUpdate(up protocol.AgentUpdate) (string, error) {
 	if a.opts.BinaryPath == "" {
 		return "", errors.New("agent cannot locate its own binary")
 	}
+	if packageManaged(a.opts.BinaryPath) {
+		return "", errors.New("managed by package; update the nexus package")
+	}
 	if !sha256HexRe.MatchString(strings.ToLower(up.SHA256)) {
 		return "", errors.New("invalid sha256")
 	}
@@ -47,6 +50,30 @@ func (a *Agent) validateUpdate(up protocol.AgentUpdate) (string, error) {
 		return "", errors.New("invalid update path")
 	}
 	return path, nil
+}
+
+// packageManagedDirs hold binaries owned by the distribution's package
+// manager. Replacing them behind dpkg's back breaks verification and is undone
+// by the next package upgrade; the package update path handles them instead.
+var packageManagedDirs = []string{"/usr/bin/", "/usr/sbin/", "/bin/", "/sbin/"}
+
+// packageManaged reports whether the binary lives in a package-managed
+// directory (the .deb installs /usr/bin/grid-agent). Binaries from SSH
+// enrollment live in /usr/local/bin and self-update normally. The path is
+// resolved through symlinks first so /bin on a usr-merged system matches too.
+func packageManaged(binary string) bool {
+	paths := []string{filepath.ToSlash(filepath.Clean(binary))}
+	if r, err := filepath.EvalSymlinks(binary); err == nil {
+		paths = append(paths, filepath.ToSlash(r))
+	}
+	for _, p := range paths {
+		for _, d := range packageManagedDirs {
+			if strings.HasPrefix(p, d) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // hubOrigin derives https://host:port from the hub's wss:// URL.

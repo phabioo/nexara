@@ -88,6 +88,7 @@ type setupBrowser struct {
 	e  *setupEnv
 	j  jar
 	ho string // Host header
+	ra string // RemoteAddr override (client IP)
 }
 
 func (e *setupEnv) browser(t *testing.T) *setupBrowser {
@@ -100,6 +101,10 @@ func (b *setupBrowser) do(method, target string, form url.Values, extra ...reqOp
 	if b.ho != "" {
 		host := b.ho
 		opts = append(opts, func(r *http.Request) { r.Host = host })
+	}
+	if b.ra != "" {
+		ra := b.ra
+		opts = append(opts, func(r *http.Request) { r.RemoteAddr = ra })
 	}
 	if form != nil {
 		opts = append(opts, withForm(form))
@@ -318,11 +323,27 @@ func TestSetupUnlockPost(t *testing.T) {
 		wantBody(t, rec, "Input locked for 15 minutes", "About 10 minutes left", ` disabled`)
 		wantNoBody(t, rec, `id="f-code"`)
 
-		// After the lock a fresh code is generated and the field is back.
+		// Another client is not locked and the printed code still works for it
+		// (a lock must not rotate the code).
+		other := e.browser(t)
+		other.ra = "192.0.2.77:4000"
+		rec = other.get("/setup")
+		wantBody(t, rec, `id="f-code"`, "5 attempts")
+		wantNoBody(t, rec, "Input locked")
+		rec = other.post("/setup/unlock", url.Values{"code": {setup.FormatCode(e.code)}})
+		if rec.Code != http.StatusSeeOther {
+			t.Errorf("other client unlock: %d", rec.Code)
+		}
+
+		// After the lock the field is back, and the same code is still valid.
 		e.clock.Add(11 * time.Minute)
 		rec = b.get("/setup")
 		wantBody(t, rec, `id="f-code"`, "5 attempts")
 		wantNoBody(t, rec, "Input locked")
+		rec = b.post("/setup/unlock", url.Values{"code": {setup.FormatCode(e.code)}})
+		if rec.Code != http.StatusSeeOther {
+			t.Errorf("unlock after lock: %d", rec.Code)
+		}
 	})
 
 	t.Run("an expired code is rejected", func(t *testing.T) {

@@ -2,6 +2,8 @@ module github.com/phabioo/nexara
 
 go 1.26.0
 
+toolchain go1.26.8
+
 require (
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc
 	github.com/coder/websocket v1.8.15

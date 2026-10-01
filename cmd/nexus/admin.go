@@ -33,25 +33,34 @@ func cmdSetup(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-// cmdUser implements `nexus user reset`.
+// cmdUser implements `nexus user reset` and `nexus user unlock`.
 func cmdUser(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	if len(args) == 0 || args[0] != "reset" {
+	if len(args) == 0 || (args[0] != "reset" && args[0] != "unlock") {
 		fmt.Fprintln(stderr, "Usage: nexus user reset [--yes] [--admin-socket <path>]")
+		fmt.Fprintln(stderr, "       nexus user unlock [--admin-socket <path>]")
 		return exitUsageOrStub
 	}
-	fs := newFlagSet("user reset", stderr)
+	sub := args[0]
+	fs := newFlagSet("user "+sub, stderr)
 	socket := fs.String("admin-socket", app.DefaultAdminSocket, "admin Unix socket of the running hub")
-	yes := fs.Bool("yes", false, "do not ask for confirmation")
+	yes := new(bool)
+	if sub == "reset" {
+		yes = fs.Bool("yes", false, "do not ask for confirmation")
+	}
 	if code, done := parse(fs, args[1:]); done {
 		return code
 	}
-	if !*yes && !confirm(stdin, stdout, "This deletes the operator account and returns the hub to setup mode. Continue? [y/N] ") {
-		fmt.Fprintln(stderr, "nexus user reset: cancelled")
-		return exitFailure
+	cmd := setup.CmdLoginUnlock
+	if sub == "reset" {
+		cmd = setup.CmdUserReset
+		if !*yes && !confirm(stdin, stdout, "This deletes the operator account and returns the hub to setup mode. Continue? [y/N] ") {
+			fmt.Fprintln(stderr, "nexus user reset: cancelled")
+			return exitFailure
+		}
 	}
-	resp, err := adminCall(*socket, setup.CmdUserReset)
+	resp, err := adminCall(*socket, cmd)
 	if err != nil {
-		fmt.Fprintf(stderr, "nexus user reset: %v\n", err)
+		fmt.Fprintf(stderr, "nexus user %s: %v\n", sub, err)
 		return exitFailure
 	}
 	fmt.Fprintln(stdout, resp.Message)
