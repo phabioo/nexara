@@ -46,7 +46,6 @@ Umfang: 201 Go-Dateien, davon 82 Testdateien.
 - Der Hub-eigene Agent liegt als `/usr/bin/grid-agent` im Paket; die Unit stammt aus `script.go` (`/usr/local/bin/grid-agent`), ein Drop-in `/etc/systemd/system/grid-agent.service.d/10-package-binary.conf` setzt `ExecStart` auf `/usr/bin/grid-agent`. Auto-Update des Hub-eigenen Agenten würde eine dpkg-Datei überschreiben; da Hub und Agent aus demselben Build stammen, tritt es nur bei Versionsabweichung auf – im Review prüfen.
 - `nexus.db` entsteht mit 0644 (Verzeichnis 0750 schützt); im Review auf 0600 setzen.
 - `install.sh` braucht OpenSSL ≥ 3 (`-rawin`), also Raspberry Pi OS/Debian Bookworm oder neuer.
-- `TestGracefulShutdown` (`internal/agent/runtime`) ist unter hoher Parallel-Last zweimal rot geworden (5-s-Timeout), isoliert 15× grün – beobachten.
 
 ## UI ausprobieren
 
