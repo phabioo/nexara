@@ -38,7 +38,7 @@ Settled decisions. Change them only deliberately and record the change here.
 | 32 | YAML library `go.yaml.in/yaml/v3`; QR codes with `github.com/boombuler/barcode` (already required by `pquerna/otp`), rendered as inline SVG | Maintained YAML fork; no extra dependency for QR, CSP-friendly output |
 | 33 | Jobs live in memory only (no table); `audit_log` is the record. Minute/hour history tables come with the History view in v0.2 | No new tables in v0.1; the live ring buffer covers the overview |
 | 34 | `nexus dev --demo` serves plain HTTP on 127.0.0.1 only | Browsers treat localhost as secure; no certificates needed for UI work |
-| 35 | `sudo nexus setup code` / `sudo nexus user reset` talk to the running service over a local admin Unix socket (`/run/nexus/admin.sock`, 0660 root:nexus) | No network surface, works while the service runs |
+| 35 | `sudo nexus setup code` / `sudo nexus user reset` talk to the running service over a local admin Unix socket (`/run/nexus/admin.sock`, 0660 nexus:nexus in the 0750 `RuntimeDirectory`; root reaches it, other users do not) | No network surface, works while the service runs |
 | 36 | Release signature: ed25519 over `SHA256SUMS`; verified with `crypto/ed25519` in the hub and `openssl` in `install.sh` | No extra tooling on the Pi or in Go |
 | 37 | Hub code stays platform-neutral (develop on Windows); Linux-only code sits behind build tags | Fast local UI iteration |
 | 38 | Enrollment runs over HTTPS `POST /grid/enroll` (token + CSR, agent pins the CA fingerprint); the response carries cert, CA, hub URL and the capabilities chosen in the UI. Self-link: the installer sets up the agent with `enroll.token_file`, the setup wizard writes that token | One enrollment path for SSH, code and self-link |
