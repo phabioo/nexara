@@ -129,7 +129,10 @@ func (s *session) writeLoop() {
 		case <-s.ctx.Done():
 			return
 		case b := <-s.out:
-			ctx, cancel := context.WithTimeout(s.ctx, writeTimeout)
+			// Not derived from s.ctx: coder/websocket tears the connection down
+			// when a write's context is cancelled, so a shutdown racing an
+			// in-flight write would skip the normal close handshake.
+			ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
 			err := s.conn.Write(ctx, websocket.MessageText, b)
 			cancel()
 			if err != nil {
