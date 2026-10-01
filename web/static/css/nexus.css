@@ -89,6 +89,17 @@ svg { flex: none; }
 .scroll-thin::-webkit-scrollbar { width: 6px; }
 .scroll-thin::-webkit-scrollbar-track { background: var(--panel); }
 .scroll-thin::-webkit-scrollbar-thumb { background: var(--key-line); }
+/* inner scroll regions of cards and lists: thin bars from the tokens, a visible focus ring (they are focusable) */
+.card-scroll, .grid-tiles, .layout-split-aside {
+  --sb-thumb: var(--key-line); --sb-track: transparent;
+  scrollbar-width: thin; scrollbar-color: var(--sb-thumb) var(--sb-track);
+}
+.card:not(.card-dark) .card-scroll { --sb-thumb: #5f6266; --sb-track: rgba(13,14,15,.12); }
+:is(.card-scroll, .grid-tiles, .layout-split-aside)::-webkit-scrollbar { width: 6px; height: 6px; }
+:is(.card-scroll, .grid-tiles, .layout-split-aside)::-webkit-scrollbar-track { background: var(--sb-track); }
+:is(.card-scroll, .grid-tiles, .layout-split-aside)::-webkit-scrollbar-thumb { background: var(--sb-thumb); }
+:is(.card-scroll, .grid-tiles):focus-visible { outline: 2px solid var(--lime); outline-offset: -2px; }
+.card:not(.card-dark) .card-scroll:focus-visible { outline-color: var(--ink); }
 .scroll-x { overflow-x: auto; scrollbar-width: none; }
 .scroll-x::-webkit-scrollbar { display: none; }
 .htmx-indicator { opacity: 0; transition: opacity .15s; }
@@ -332,7 +343,8 @@ svg { flex: none; }
   white-space: nowrap;
 }
 .grid-cards { flex: 1 0 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.grid-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 124px; gap: 6px; align-content: start; }
+.grid-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: auto; gap: 6px; align-content: start; }
+.grid-tiles .tile { min-height: 124px; }
 .layout-split { flex: 1 0 auto; display: flex; gap: 26px; }
 .layout-split-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .layout-split-aside { width: 360px; flex: none; display: flex; flex-direction: column; gap: 10px; }
@@ -599,6 +611,7 @@ svg { flex: none; }
   font-family: var(--font-display); font-stretch: 125%; font-weight: 800;
   font-size: 9px; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
 }
+.tile-strip b > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tile-pixels { width: 13px; flex: none; display: grid; grid-template-columns: 4px 4px; grid-auto-rows: 4px; gap: 2px; padding: 2px 0 0 3px; }
 .tile-pixels i { background: var(--c); }
 .tile-pixels i:nth-child(2), .tile-pixels i:nth-child(3) { opacity: .35; }
@@ -622,12 +635,18 @@ svg { flex: none; }
 .ticker-blue { background: var(--blue-band); color: var(--ink); }
 .ticker-green { background: var(--green-band); color: var(--green-term); }
 .ticker-pink { background: var(--pink); color: var(--ink); }
+.ticker { --tk-gap: 18px; --tk-dur: 2.6s; }
+.ticker-short { --tk-dur: 1.8s; }
+.ticker-long { --tk-dur: 3.6s; }
+/* 20 identical units; the animation slides by one unit (1/20 of the run), see the "ticker" template */
 .ticker-run {
-  display: flex; gap: 18px; white-space: nowrap; animation: ticker-scroll 26s linear infinite;
+  flex: none; display: flex; width: max-content; white-space: nowrap;
+  animation: ticker-scroll var(--tk-dur) linear infinite;
   font-family: var(--font-display); font-stretch: 125%; font-weight: 800;
   font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
 }
-@keyframes ticker-scroll { to { transform: translateX(-50%); } }
+.ticker-unit { flex: none; display: flex; gap: var(--tk-gap); padding-right: var(--tk-gap); }
+@keyframes ticker-scroll { to { transform: translateX(-5%); } }
 
 /* === banner / toast === */
 .toast-host {
@@ -865,7 +884,8 @@ svg { flex: none; }
   .btn-power {
   white-space: nowrap; height: 44px; flex: 1; }
   .ticker { height: 22px; }
-  .ticker-run { gap: 16px; font-size: 10px; animation-duration: 24s; }
+  .ticker { --tk-gap: 16px; }
+  .ticker-run { font-size: 10px; animation-duration: calc(var(--tk-dur) * .92); }
   .toast-host { padding: 0 14px; top: 28vh; }
   .toast-title { font-size: 30px; }
   .toast-main { gap: 14px; }
@@ -1203,6 +1223,39 @@ svg { flex: none; }
 .ov-mem .tile-resource .tile-body { justify-content: flex-start; }
 .ov-mem .tile-resource .tile-cells { max-height: none; align-items: flex-start; }
 
+/* Long content scrolls inside its card instead of stretching the dashboard. The card body is the scroll
+   region and the button at its end stays pinned. The body, not an inner list, scrolls because the SSE
+   events replace the content of the body on every sample and would throw an inner scroll position away.
+   From 1024 px the card row gets a height bound to the viewport (.view-fit); below that the page flows
+   naturally and the body is only capped, so a phone never meets a scroll trap taller than its screen. */
+.card-scroll { overflow-y: auto; overscroll-behavior: contain; max-height: min(640px, 72dvh); }
+.card-scroll > * { flex-shrink: 0; }
+.card-scroll > .card-foot { margin-top: auto; }
+.card { --card-fill: var(--card); }
+.card-dark { --card-fill: #141618; }
+.card-scroll .card-foot > .btn-card:last-child {
+  position: sticky; bottom: 0; z-index: 1; /* sticks at the padding edge of the scroller, no extra offset */
+  box-shadow: 0 -10px 0 var(--card-fill), 0 12px 0 var(--card-fill);
+}
+.svc-list { display: flex; flex-direction: column; gap: 8px; }
+/* inactive units: empty bar, muted box, no check mark that would read as "running" */
+.svc-dim { opacity: .55; }
+.svc-dim .value-box { background: transparent; }
+@media (max-width: 767.98px) {
+  .card-scroll .card-foot > .btn-card:last-child { box-shadow: 0 -10px 0 var(--card-fill), 0 14px 0 var(--card-fill); }
+}
+@media (min-width: 1024px) {
+  /* two rows (CPU + memory, services below) need more height than the main area of a small tablet */
+  .view-fit { flex: 1 1 0; min-height: 980px; }
+  .view-fit .grid-cards { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1.5fr) minmax(0, 1fr); }
+  .view-fit .card { overflow: hidden; }
+  .view-fit .card-scroll { max-height: none; }
+}
+@media (min-width: 1280px) {
+  .view-fit { min-height: 560px; }
+  .view-fit .grid-cards { grid-template-rows: minmax(0, 1fr); }
+}
+
 /* informational reboot chip (the reboot action itself is a later version) */
 .ov-reboot { cursor: default; }
 .ov-reboot:hover { background: var(--pink); }
@@ -1227,6 +1280,29 @@ svg { flex: none; }
 .pkg-results, .pkg-cards { display: contents; }
 .pkg-note { margin: 0; font-size: 12px; color: var(--muted); }
 .pkg-empty { grid-column: 1 / -1; }
+.pkg-more { grid-column: 1 / -1; display: flex; }
+.pkg-more .btn-card { margin-top: 0; }
+.pkg-more .btn-card:disabled { opacity: .7; }
+
+/* From 1024 px the packages view fits the main area: header, filters and ticker stay, the tile list scrolls
+   inside the main column and the maintenance column scrolls if its cards do not fit. Below 1024 px the page
+   flows naturally and "Show more" does the paging. */
+@media (min-width: 1024px) {
+  .layout-fit { flex: 1 1 0; min-height: 720px; }
+  .layout-fit .layout-split-main { min-height: 0; }
+  .layout-fit .grid-tiles { flex: 1 1 0; min-height: 262px; overflow-y: auto; overscroll-behavior: contain; }
+}
+@media (min-width: 1024px) and (max-width: 1279.98px) {
+  /* the three cards sit in a compact row under the tiles */
+  .layout-fit .layout-split-main { flex: 1 1 0; }
+  .layout-fit .layout-split-aside { flex: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .layout-fit .layout-split-aside > * { flex: none; }
+}
+@media (min-width: 1280px) {
+  .layout-fit { min-height: 560px; }
+  .layout-fit .layout-split-aside { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .layout-fit .layout-split-aside > .card { flex: 1 1 0; min-height: auto; }
+}
 .tag-bad { background: var(--pink); color: var(--ink); }
 .btn-card:disabled, .btn-tool:disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
 

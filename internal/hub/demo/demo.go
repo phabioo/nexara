@@ -53,6 +53,10 @@ type Options struct {
 	// TimeScale multiplies every artificial delay (job line pacing, service
 	// restart, enrollment, SSH steps). 0 means 1. Tests use a tiny value.
 	TimeScale float64
+	// Large gives pi5-media a real install's size (about 900 packages, 31 units with a failed and
+	// several inactive ones, 5 mounts) to test scrolling and paging. The default stays the design's
+	// sample set.
+	Large bool
 }
 
 // Hub is the simulated grid. Create it with New and run the simulation with Start.
@@ -61,6 +65,7 @@ type Hub struct {
 	tick  time.Duration
 	ticks <-chan time.Time
 	scale float64
+	large bool
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -82,6 +87,7 @@ func New(o Options) *Hub {
 		tick:  o.Tick,
 		ticks: o.Ticks,
 		scale: o.TimeScale,
+		large: o.Large,
 		rng:   o.Rand,
 		subs:  make(map[chan grid.Event]struct{}),
 	}

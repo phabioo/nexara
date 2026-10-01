@@ -226,6 +226,12 @@ func (h *Hub) seed() {
 		},
 	}
 
+	if h.large {
+		pi5.pkgs = largePackages()
+		pi5.services.Units = largeUnits()
+		pi5.prof.disks = largeDisks()
+	}
+
 	h.hosts = []*host{pi5, pi3, pi4}
 	h.hostSeq = 3
 	for _, hst := range []*host{pi5, pi3} {

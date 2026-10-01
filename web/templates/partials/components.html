@@ -52,8 +52,12 @@
 {{/* Tab / chip with optional count box: Label, Count, Active, Href (link) or Attrs (button), Variant. */}}
 {{define "tab"}}{{if .Href}}<a class="tab{{if .Active}} on{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}}{{with .Attrs}} {{.}}{{end}}><span class="tab-label">{{.Label}}</span>{{if has .Count}}<span class="tab-count">{{.Count}}</span>{{end}}</a>{{else}}<button type="button" class="tab{{if .Active}} on{{end}}" aria-pressed="{{if .Active}}true{{else}}false{{end}}"{{with .Attrs}} {{.}}{{end}}><span class="tab-label">{{.Label}}</span>{{if has .Count}}<span class="tab-count">{{.Count}}</span>{{end}}</button>{{end}}{{end}}
 
-{{/* CSS-only scrolling ticker band. Variant: "blue", "green" or "pink"; Text; Class (optional). */}}
-{{define "ticker"}}<div class="ticker ticker-{{.Variant}}{{with .Class}} {{.}}{{end}}" aria-hidden="true"><div class="ticker-run">{{range $i := seq 40}}<span>{{if odd $i}}+{{else}}{{$.Text}}{{end}}</span>{{end}}</div></div>{{end}}
+{{/* CSS-only scrolling ticker band. Variant: "blue", "green" or "pink"; Text; Class (optional).
+     The run is 20 identical units and slides by exactly one unit (nexus.css: translateX(-5%)), so the track
+     covers the band from its left edge at every width, the loop has no gap or jump, and the distance
+     travelled never depends on the viewport (very wide animated layers get painted incompletely by Safari).
+     Keep the unit count in sync with the keyframes. The text length picks the speed class. */}}
+{{define "ticker"}}<div class="ticker ticker-{{.Variant}}{{if lt (len .Text) 24}} ticker-short{{else if gt (len .Text) 40}} ticker-long{{end}}{{with .Class}} {{.}}{{end}}" aria-hidden="true"><div class="ticker-run">{{range $i := seq 20}}<span class="ticker-unit"><span>{{$.Text}}</span><span>+</span></span>{{end}}</div></div>{{end}}
 
 {{/* Toast / banner. Data: Title, Sub (views.Toast or dict). nexus.js hides it after 2.6 s. */}}
 {{define "toast"}}<div class="toast" role="status">{{template "corners"}}
