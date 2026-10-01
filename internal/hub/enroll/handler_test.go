@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/phabioo/nexara/internal/hub/grid"
 	"github.com/phabioo/nexara/internal/hub/store"
 	"github.com/phabioo/nexara/internal/pki"
 )
@@ -111,48 +113,136 @@ func TestEnrollCapabilitiesFromToken(t *testing.T) {
 	}
 }
 
-func TestEnrollReusesExistingHostName(t *testing.T) {
+// A name that is taken is refused, whoever asks and however the code was
+// made (decision #46, S-03): the host keeps its row, certificate and display
+// name, the new agent gets "host exists", nothing is announced.
+func TestEnrollExistingHostNameIsRefused(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 
 	_, first := e.post(e.newCode(nil), "pi-kitchen", "192.0.2.5")
-	h1, _ := e.st.GetHost(ctx, first.HostID)
+	h1, _ := e.st.GetHostByName(ctx, "pi-kitchen")
 	if err := e.st.SetHostDisplayName(ctx, h1.ID, "Kitchen Pi"); err != nil {
 		t.Fatal(err)
 	}
+	h1, _ = e.st.GetHost(ctx, h1.ID)
 
-	e.clock.Advance(time.Hour)
-	w, second := e.post(e.newCode([]string{"monitoring"}), "PI-KITCHEN", "192.0.2.77")
-	if w.Code != http.StatusOK {
-		t.Fatalf("status %d: %s", w.Code, w.Body)
-	}
-	if second.HostID != first.HostID {
-		t.Fatalf("host re-created: %s vs %s", second.HostID, first.HostID)
+	for _, name := range []string{"pi-kitchen", "PI-KITCHEN", "Pi-Kitchen.fritz.box"} {
+		e.clock.Advance(time.Hour)
+		w, _ := e.post(e.newCode([]string{"monitoring"}), name, "192.0.2.77")
+		if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "host exists") {
+			t.Fatalf("%s: status %d: %s", name, w.Code, w.Body)
+		}
 	}
 	hosts, _ := e.st.ListHosts(ctx)
-	if len(hosts) != 1 {
-		t.Fatalf("%d hosts", len(hosts))
+	if len(hosts) != 1 || hosts[0].ID != first.HostID {
+		t.Fatalf("hosts: %+v", hosts)
 	}
 	h2 := hosts[0]
-	if h2.DisplayName != "Kitchen Pi" {
-		t.Fatalf("display name lost: %q", h2.DisplayName)
+	if h2.CertFingerprint != h1.CertFingerprint || h2.CertSerial != h1.CertSerial || h2.Address != "192.0.2.5" ||
+		h2.DisplayName != "Kitchen Pi" || len(h2.Capabilities) != 2 {
+		t.Fatalf("host was modified: %+v", h2)
 	}
-	if h2.Address != "192.0.2.77" || len(h2.Capabilities) != 1 {
-		t.Fatalf("host not refreshed: %+v", h2)
+	if got, err := e.st.GetHostByFingerprint(ctx, h1.CertFingerprint); err != nil || got.ID != h1.ID {
+		t.Fatalf("the original certificate stopped working: %v", err)
 	}
-	if h2.CertFingerprint == h1.CertFingerprint || h2.CertSerial == h1.CertSerial {
-		t.Fatal("certificate was not replaced")
+	if len(e.enrolledHosts()) != 1 {
+		t.Fatal("OnEnrolled fired for a refused enrollment")
 	}
-	// The old certificate no longer maps to a host.
-	if _, err := e.st.GetHostByFingerprint(ctx, h1.CertFingerprint); err == nil {
-		t.Fatal("old certificate still valid")
+	denied := 0
+	for _, a := range e.auditActions() {
+		if a.Action == "enroll.denied" && a.Host == "pi-kitchen" && strings.Contains(a.Detail, "already exists") {
+			denied++
+		}
 	}
-	if got, err := e.st.GetHostByFingerprint(ctx, h2.CertFingerprint); err != nil || got.ID != h1.ID {
-		t.Fatalf("new certificate: %v", err)
+	if denied != 3 {
+		t.Fatalf("%d enroll.denied entries for the name clash, want 3", denied)
 	}
-	if len(e.enrolledHosts()) != 2 {
-		t.Fatal("OnEnrolled must fire for re-enrollment too")
+}
+
+// The operator's explicit choice (grid.SSHLinkRequest.ReplaceHostID) arms
+// exactly one token for exactly one host; everything else stays refused.
+func TestEnrollReplaceGrant(t *testing.T) {
+	setup := func(t *testing.T) (*testEnv, string, store.Host) {
+		e := newEnv(t)
+		_, first := e.post(e.newCode(nil), "pi-kitchen", "192.0.2.5")
+		h, _ := e.st.GetHost(context.Background(), first.HostID)
+		return e, e.newCode(nil), h
 	}
+	actor := grid.Actor{Operator: "7", IP: "192.0.2.1"}
+
+	t.Run("granted token replaces the certificate and keeps the row", func(t *testing.T) {
+		e, code, old := setup(t)
+		e.svc.grantReplace(hashCode(code), old.ID, actor, e.clock.Now())
+		w, resp := e.post(code, "pi-kitchen", "192.0.2.77")
+		if w.Code != http.StatusOK || resp.HostID != old.ID {
+			t.Fatalf("status %d host %q: %s", w.Code, resp.HostID, w.Body)
+		}
+		got, _ := e.st.GetHost(context.Background(), old.ID)
+		if got.CertFingerprint == old.CertFingerprint || got.Address != "192.0.2.77" {
+			t.Fatalf("host not replaced: %+v", got)
+		}
+		if _, err := e.st.GetHostByFingerprint(context.Background(), old.CertFingerprint); err == nil {
+			t.Fatal("the old certificate still maps to the host")
+		}
+		var replaced bool
+		for _, a := range e.auditActions() {
+			if a.Action == "host.replace" {
+				replaced = true
+				if a.User != "7" || a.Host != "pi-kitchen" || a.Result != store.AuditOK || !strings.Contains(a.Detail, old.CertFingerprint[:16]) {
+					t.Fatalf("audit %+v", a)
+				}
+			}
+		}
+		if !replaced {
+			t.Fatal("no host.replace audit entry")
+		}
+		if len(e.enrolledHosts()) != 2 {
+			t.Fatal("OnEnrolled must fire for a replacement")
+		}
+	})
+	t.Run("the grant is for one host", func(t *testing.T) {
+		e, code, old := setup(t)
+		e.svc.grantReplace(hashCode(code), "0123456789abcdef", actor, e.clock.Now())
+		if w, _ := e.post(code, "pi-kitchen", "192.0.2.77"); w.Code != http.StatusConflict {
+			t.Fatalf("status %d", w.Code)
+		}
+		if got, _ := e.st.GetHost(context.Background(), old.ID); got.CertFingerprint != old.CertFingerprint {
+			t.Fatal("host replaced with a grant for another host")
+		}
+	})
+	t.Run("the grant is for one token", func(t *testing.T) {
+		e, _, old := setup(t)
+		e.svc.grantReplace(hashCode(e.newCode(nil)), old.ID, actor, e.clock.Now())
+		if w, _ := e.post(e.newCode(nil), "pi-kitchen", "192.0.2.77"); w.Code != http.StatusConflict {
+			t.Fatalf("status %d", w.Code)
+		}
+	})
+	t.Run("the grant expires", func(t *testing.T) {
+		e, code, old := setup(t)
+		e.svc.grantReplace(hashCode(code), old.ID, actor, e.clock.Now().Add(-2*replaceGrantTTL))
+		if w, _ := e.post(code, "pi-kitchen", "192.0.2.77"); w.Code != http.StatusConflict {
+			t.Fatalf("status %d", w.Code)
+		}
+	})
+	t.Run("an online host is not replaced", func(t *testing.T) {
+		e := newEnv(t, func(o *Options) { o.HostOnline = func(grid.HostID) bool { return true } })
+		_, first := e.post(e.newCode(nil), "pi-kitchen", "192.0.2.5")
+		code := e.newCode(nil)
+		e.svc.grantReplace(hashCode(code), first.HostID, actor, e.clock.Now())
+		if w, _ := e.post(code, "pi-kitchen", "192.0.2.77"); w.Code != http.StatusConflict {
+			t.Fatalf("status %d", w.Code)
+		}
+	})
+	t.Run("a revoked host stays revoked", func(t *testing.T) {
+		e, code, old := setup(t)
+		_ = e.st.RevokeHost(context.Background(), old.ID)
+		e.svc.grantReplace(hashCode(code), old.ID, actor, e.clock.Now())
+		w, _ := e.post(code, "pi-kitchen", "192.0.2.77")
+		if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "revoked") {
+			t.Fatalf("status %d: %s", w.Code, w.Body)
+		}
+	})
 }
 
 func TestEnrollRevokedHostIsRefused(t *testing.T) {
@@ -183,11 +273,13 @@ func TestEnrollInvalidTokensAreUniform(t *testing.T) {
 
 	var bodies []string
 	for name, token := range map[string]string{
-		"unknown": "GRID-AAAA-BBBB",
-		"used":    used,
-		"expired": expired,
-		"empty":   "",
-		"huge":    strings.Repeat("A", 500),
+		"unknown":   "GRID-AAAA-BBBB-CCCC-DDDD",
+		"old short": "GRID-AAAA-BBBB",
+		"bad chars": "GRID-AAAA-BBBB-CCCC-DDD0",
+		"used":      used,
+		"expired":   expired,
+		"empty":     "",
+		"huge":      strings.Repeat("A", 500),
 	} {
 		w, _ := e.post(token, "pi-two", "192.0.2.9")
 		if w.Code != http.StatusUnauthorized {
@@ -206,8 +298,16 @@ func TestEnrollInvalidTokensAreUniform(t *testing.T) {
 			denied++
 		}
 	}
-	if denied != 5 {
-		t.Fatalf("%d denied audit entries, want 5", denied)
+	if denied != 7 {
+		t.Fatalf("%d denied audit entries, want 7", denied)
+	}
+	// Failures are audited without the code that was presented (S-15).
+	for _, a := range e.auditActions() {
+		for _, secret := range []string{"GRID-AAAA", "GRID-AAAA-BBBB-CCCC-DDD0", used, expired} {
+			if strings.Contains(a.Detail+a.Host+a.User, secret) {
+				t.Fatalf("code in audit entry %+v", a)
+			}
+		}
 	}
 }
 
@@ -225,11 +325,11 @@ func TestEnrollTokenSingleUse(t *testing.T) {
 func TestEnrollRateLimitPerIP(t *testing.T) {
 	e := newEnv(t)
 	for i := 0; i < enrollRate; i++ {
-		if w, _ := e.post("GRID-WRNG-TOKN", "pi", "192.0.2.50"); w.Code != http.StatusUnauthorized {
+		if w, _ := e.post("GRID-AAAA-BBBB-CCCC-DDDD", "pi", "192.0.2.50"); w.Code != http.StatusUnauthorized {
 			t.Fatalf("attempt %d: status %d", i, w.Code)
 		}
 	}
-	w, _ := e.post("GRID-WRNG-TOKN", "pi", "192.0.2.50")
+	w, _ := e.post("GRID-AAAA-BBBB-CCCC-DDDD", "pi", "192.0.2.50")
 	if w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") == "" {
 		t.Fatalf("status %d", w.Code)
 	}
@@ -244,6 +344,89 @@ func TestEnrollRateLimitPerIP(t *testing.T) {
 	e.clock.Advance(61 * time.Second)
 	if w, _ := e.post(e.newCode(nil), "pi-later", "192.0.2.50"); w.Code != http.StatusOK {
 		t.Fatalf("after window: status %d", w.Code)
+	}
+}
+
+// Unauthenticated requests never reach the CSR (and so never the CA): a bad
+// token with a garbage CSR is a 401, not a 400 (S-10).
+func TestEnrollTokenIsCheckedBeforeTheCSR(t *testing.T) {
+	e := newEnv(t)
+	_, goodCSR, _ := pki.NewAgentKeyAndCSR("pi")
+	unknown := "GRID-AAAA-BBBB-CCCC-DDDD"
+	for _, tt := range []struct {
+		name, token, csr, hostname string
+	}{
+		{"unknown token, garbage CSR", unknown, "not a csr", "pi"},
+		{"unknown token, empty CSR", unknown, "", "pi"},
+		{"malformed token, garbage CSR", "nope", "not a csr", "pi"},
+		{"unknown token, bad host name", unknown, string(goodCSR), "bad_name!"},
+	} {
+		w, _ := e.postRaw(helloRequest(tt.token, tt.hostname, "linux", "arm64", tt.csr), "192.0.2.5")
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("%s: status %d, want 401", tt.name, w.Code)
+		}
+	}
+	// A valid token with a garbage CSR is a client error and keeps the code usable.
+	code := e.newCode(nil)
+	if w, _ := e.postRaw(helloRequest(code, "pi", "linux", "arm64", "not a csr"), "192.0.2.5"); w.Code != http.StatusBadRequest {
+		t.Fatalf("valid token, garbage CSR: status %d, want 400", w.Code)
+	}
+	if w, _ := e.post(code, "pi", "192.0.2.5"); w.Code != http.StatusOK {
+		t.Fatalf("code burned by the bad CSR: status %d", w.Code)
+	}
+}
+
+func TestLimitKey(t *testing.T) {
+	tests := []struct{ ip, want string }{
+		{"192.0.2.50", "192.0.2.50"},
+		{"2001:db8:1:2:aaaa:bbbb:cccc:dddd", "2001:db8:1:2::/64"},
+		{"2001:db8:1:2:1111:2222:3333:4444", "2001:db8:1:2::/64"},
+		{"2001:db8:1:3::1", "2001:db8:1:3::/64"},
+		{"::ffff:192.0.2.50", "192.0.2.50"},
+		{"fe80::1", "fe80::/64"},
+		{"garbage", "garbage"},
+	}
+	for _, tt := range tests {
+		if got := limitKey(tt.ip); got != tt.want {
+			t.Errorf("limitKey(%q) = %q, want %q", tt.ip, got, tt.want)
+		}
+	}
+}
+
+// One host can use any address of its /64; the limit must follow it (S-10).
+func TestEnrollRateLimitPerIPv6Prefix(t *testing.T) {
+	e := newEnv(t)
+	for i := 0; i < enrollRate; i++ {
+		ip := fmt.Sprintf("2001:db8:1:2:%x:%x:%x:%x", i+1, i+7, i+9, i+11) // a different address every time
+		if w, _ := e.post("GRID-AAAA-BBBB-CCCC-DDDD", "pi", ip); w.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: status %d", i, w.Code)
+		}
+	}
+	if w, _ := e.post("GRID-AAAA-BBBB-CCCC-DDDD", "pi", "2001:db8:1:2:ffff::1"); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("a new address in the same /64: status %d, want 429", w.Code)
+	}
+	if w, _ := e.post(e.newCode(nil), "pi-ok", "2001:db8:1:3::1"); w.Code != http.StatusOK {
+		t.Fatalf("another /64: status %d", w.Code)
+	}
+}
+
+// All clients together are limited as well, so many sources cannot grind
+// through codes in parallel (S-10).
+func TestEnrollGlobalRateLimit(t *testing.T) {
+	e := newEnv(t)
+	for i := 0; i < enrollGlobalRate; i++ {
+		ip := fmt.Sprintf("10.%d.%d.1", i/200, i%200) // one attempt per client
+		if w, _ := e.post("GRID-AAAA-BBBB-CCCC-DDDD", "pi", ip); w.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: status %d", i, w.Code)
+		}
+	}
+	w, _ := e.post(e.newCode(nil), "pi-ok", "203.0.113.9")
+	if w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") == "" {
+		t.Fatalf("status %d, want 429", w.Code)
+	}
+	e.clock.Advance(61 * time.Second)
+	if w, _ := e.post(e.newCode(nil), "pi-ok", "203.0.113.9"); w.Code != http.StatusOK {
+		t.Fatalf("after the window: status %d", w.Code)
 	}
 }
 

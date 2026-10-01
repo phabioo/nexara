@@ -752,7 +752,7 @@ func TestShellCloseAndErrors(t *testing.T) {
 	}
 }
 
-var codeRe = regexp.MustCompile(`^GRID-[A-Z0-9]{4}-[A-Z0-9]{4}$`)
+var codeRe = regexp.MustCompile(`^GRID(-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}){4}$`)
 
 func TestEnrollCode(t *testing.T) {
 	h, clk := newHub(t, 0.001)
@@ -807,8 +807,9 @@ func TestEnrollCodeSuperseded(t *testing.T) {
 	}
 }
 
+// sshReq is a phase 2 request with the host key phase 1 would have shown.
 func sshReq(addr string) grid.SSHLinkRequest {
-	return grid.SSHLinkRequest{Address: addr, User: "pi", Password: "s3cret-pw"}
+	return grid.SSHLinkRequest{Address: addr, User: "pi", Password: "s3cret-pw", HostKeySHA256: demoHostKey(addr, 0, false).SHA256}
 }
 
 func TestLinkViaSSH(t *testing.T) {
@@ -817,6 +818,7 @@ func TestLinkViaSSH(t *testing.T) {
 	var steps []grid.LinkStep
 	info, err := h.LinkViaSSH(context.Background(), grid.Actor{}, grid.SSHLinkRequest{
 		Address: "192.168.10.77", User: "pi", DisplayName: "Pi Zero", UseHubKey: true,
+		HostKeySHA256: demoHostKey("192.168.10.77", 0, false).SHA256,
 	}, func(s grid.LinkStep) { steps = append(steps, s) })
 	if err != nil {
 		t.Fatal(err)
@@ -882,11 +884,12 @@ func TestLinkViaSSHErrors(t *testing.T) {
 		req  grid.SSHLinkRequest
 		want error
 	}{
-		{"no address", grid.SSHLinkRequest{User: "pi", Password: "x"}, grid.ErrInvalidArgument},
-		{"no user", grid.SSHLinkRequest{Address: "a.local", Password: "x"}, grid.ErrInvalidArgument},
-		{"no auth", grid.SSHLinkRequest{Address: "a.local", User: "pi"}, grid.ErrInvalidArgument},
-		{"both auth", grid.SSHLinkRequest{Address: "a.local", User: "pi", Password: "x", UseHubKey: true}, grid.ErrInvalidArgument},
-		{"bad port", grid.SSHLinkRequest{Address: "a.local", User: "pi", Password: "x", Port: 70000}, grid.ErrInvalidArgument},
+		{"no address", grid.SSHLinkRequest{User: "pi", Password: "x", HostKeySHA256: demoHostKey("a.local", 0, false).SHA256}, grid.ErrInvalidArgument},
+		{"no user", grid.SSHLinkRequest{Address: "a.local", Password: "x", HostKeySHA256: demoHostKey("a.local", 0, false).SHA256}, grid.ErrInvalidArgument},
+		{"no auth", grid.SSHLinkRequest{Address: "a.local", User: "pi", HostKeySHA256: demoHostKey("a.local", 0, false).SHA256}, grid.ErrInvalidArgument},
+		{"no host key confirmation", grid.SSHLinkRequest{Address: "a.local", User: "pi", Password: "x"}, grid.ErrInvalidArgument},
+		{"both auth", grid.SSHLinkRequest{Address: "a.local", User: "pi", Password: "x", UseHubKey: true, HostKeySHA256: demoHostKey("a.local", 0, false).SHA256}, grid.ErrInvalidArgument},
+		{"bad port", grid.SSHLinkRequest{Address: "a.local", User: "pi", Password: "x", Port: 70000, HostKeySHA256: demoHostKey("a.local", 0, false).SHA256}, grid.ErrInvalidArgument},
 		{"online duplicate by name", sshReq("pi5-media"), grid.ErrHostExists},
 		{"online duplicate by address", sshReq("192.168.10.5"), grid.ErrHostExists},
 	}
@@ -905,14 +908,87 @@ func TestLinkViaSSHErrors(t *testing.T) {
 	}
 }
 
-func TestLinkBringsOfflineHostOnline(t *testing.T) {
+func TestProbeSSH(t *testing.T) {
 	h, _ := newHub(t, 0.001)
-	ch := sub(t, h)
-	info, err := h.LinkViaSSH(context.Background(), grid.Actor{}, sshReq("pi4.local"), nil)
+	ctx := context.Background()
+	a, err := h.ProbeSSH(ctx, grid.Actor{}, "pi-new.local", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Name != "pi4" || !info.Online || info.Model == "" {
+	if a.Type != "ssh-ed25519" || !demoFingerprintRE.MatchString(a.SHA256) {
+		t.Fatalf("probe = %+v", a)
+	}
+	if b, _ := h.ProbeSSH(ctx, grid.Actor{}, "PI-NEW.local", 22); b != a {
+		t.Errorf("the key is not stable per address and port: %+v vs %+v", b, a)
+	}
+	if c, _ := h.ProbeSSH(ctx, grid.Actor{}, "pi-new.local", 2222); c == a {
+		t.Error("another port, same key")
+	}
+	if _, err := h.ProbeSSH(ctx, grid.Actor{}, unreachableAddress, 22); !errors.Is(err, grid.ErrLinkFailed) {
+		t.Errorf("unreachable: %v", err)
+	}
+	if _, err := h.ProbeSSH(ctx, grid.Actor{}, "", 22); !errors.Is(err, grid.ErrInvalidArgument) {
+		t.Errorf("empty address: %v", err)
+	}
+}
+
+func TestLinkViaSSHHostKeyChanged(t *testing.T) {
+	h, _ := newHub(t, 0.001)
+	ctx := context.Background()
+	probed, err := h.ProbeSSH(ctx, grid.Actor{}, changedAddress, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := sshReq(changedAddress)
+	req.HostKeySHA256 = probed.SHA256
+	var steps []grid.LinkStep
+	_, err = h.LinkViaSSH(ctx, grid.Actor{}, req, func(s grid.LinkStep) { steps = append(steps, s) })
+	if !errors.Is(err, grid.ErrHostKeyMismatch) || !errors.Is(err, grid.ErrLinkFailed) {
+		t.Fatalf("err = %v", err)
+	}
+	if last := steps[len(steps)-1]; last.Step != grid.StepConnect || last.State != grid.LinkFailed {
+		t.Errorf("steps = %+v", steps)
+	}
+	if len(h.Hosts()) != 3 {
+		t.Error("a host was added")
+	}
+}
+
+// The offline host is only brought back by an explicit replace.
+func TestLinkExistingHost(t *testing.T) {
+	h, _ := newHub(t, 0.001)
+	ctx := context.Background()
+	var pi4 grid.HostInfo
+	for _, x := range h.Hosts() {
+		if x.Name == "pi4" {
+			pi4 = x
+		}
+	}
+	if pi4.Online {
+		t.Fatal("pi4 should be the offline demo host")
+	}
+
+	_, err := h.LinkViaSSH(ctx, grid.Actor{}, sshReq("pi4.local"), nil)
+	var he *grid.HostExistsError
+	if !errors.As(err, &he) || he.ID != pi4.ID || he.Name != "pi4" || !errors.Is(err, grid.ErrHostExists) {
+		t.Fatalf("without replace: %v", err)
+	}
+	if h2, _ := h.Host(pi4.ID); h2.Online {
+		t.Fatal("the offline host came online without an explicit replace")
+	}
+
+	req := sshReq("pi4.local")
+	req.ReplaceHostID = "0123456789abcdef"
+	if _, err := h.LinkViaSSH(ctx, grid.Actor{}, req, nil); !errors.Is(err, grid.ErrHostExists) {
+		t.Fatalf("replace of another host: %v", err)
+	}
+	req.ReplaceHostID = pi4.ID
+	ch := sub(t, h)
+	info, err := h.LinkViaSSH(ctx, grid.Actor{}, req, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.ID != pi4.ID || !info.Online || info.Model == "" {
 		t.Errorf("info = %+v", info)
 	}
 	waitFor(t, ch, kind(grid.EventHostOnline))
@@ -921,6 +997,18 @@ func TestLinkBringsOfflineHostOnline(t *testing.T) {
 	}
 	if s, _ := h.Snapshot(info.ID); s.Metrics == nil || s.Packages == nil {
 		t.Error("revived host has no data")
+	}
+
+	// An online host is never replaced.
+	req = sshReq("pi5-media")
+	req.ReplaceHostID = "pi5-media"
+	for _, x := range h.Hosts() {
+		if x.Name == "pi5-media" {
+			req.ReplaceHostID = x.ID
+		}
+	}
+	if _, err := h.LinkViaSSH(ctx, grid.Actor{}, req, nil); !errors.Is(err, grid.ErrHostExists) {
+		t.Fatalf("replace of an online host: %v", err)
 	}
 }
 

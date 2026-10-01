@@ -1,5 +1,6 @@
-{{/* Add-host dialog ("Link new host"). Data: views.AddHostDialog. GET /hosts/new returns
-     "addhost-dialog" for #modal-root; every step after that swaps "addhost-pane" (#addhost-pane, outerHTML). */}}
+{{/* Add-host dialog ("Link new host"). Data: httpserver addHostView (views.AddHostDialog plus the
+     two-phase SSH link states). GET /hosts/new returns "addhost-dialog" for #modal-root; every step after that
+     swaps "addhost-pane" (#addhost-pane, outerHTML). SSH link: form (address, user) -> fingerprint + credentials -> progress. */}}
 
 {{define "addhost-dialog"}}{{template "modal-open" (dict "ID" "addhost-title" "Title" "Link new host" "Variant" "hot" "Size" "lg")}}
 {{template "addhost-pane" .}}
@@ -7,6 +8,7 @@
 
 {{define "addhost-pane"}}<div id="addhost-pane" class="addhost-pane">
 {{if .Progress}}{{template "addhost-progress" .}}
+{{else if .Confirm}}{{template "addhost-confirm" .}}
 {{else}}
 <div class="tabs addhost-tabs" role="group" aria-label="Link method">
   <button type="button" class="tab" aria-pressed="{{if .IsSSH}}true{{else}}false{{end}}" hx-get="/hosts/new/pane" hx-target="#addhost-pane" hx-swap="outerHTML"><span class="tab-label">Via SSH</span></button>
@@ -18,7 +20,10 @@
 
 {{define "addhost-ssh"}}<form class="addhost-form" action="/hosts/new" method="post" hx-post="/hosts/new" hx-target="#addhost-pane" hx-swap="outerHTML" autocomplete="off" novalidate>
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-  <p class="card-text">Nexus logs in once over SSH, installs the Grid Agent and enrolls it. The credentials are used only for this and are never stored.</p>
+  {{with .Replace}}<input type="hidden" name="replace" value="{{.ID}}">
+  <p class="card-text addhost-replace">Replacing <b>{{.Name}}</b> (offline). The new device takes over its place and history; the certificate of the old agent is revoked.</p>
+  {{end}}
+  <p class="card-text">Step 1 of 2. Nexus connects to the device without logging in and shows its SSH host key. You compare the fingerprint, then confirm. No password is sent before that.</p>
   {{template "checker"}}
   <div class="addhost-grid">
     <div class="field"><label for="addhost-address" class="t-label">Address</label><input id="addhost-address" name="address" class="input" type="text" placeholder="192.168.10.30 or pi4.local" autocomplete="off" spellcheck="false" autocapitalize="none" inputmode="url" maxlength="253" value="{{.Form.Address}}"></div>
@@ -26,9 +31,29 @@
     <div class="field"><label for="addhost-user" class="t-label">User (with sudo)</label><input id="addhost-user" name="user" class="input" type="text" placeholder="pi" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="32" value="{{.Form.User}}"></div>
     <div class="field"><label for="addhost-name" class="t-label">Display name</label><input id="addhost-name" name="display_name" class="input" type="text" placeholder="from hostname" autocomplete="off" spellcheck="false" maxlength="64" value="{{.Form.DisplayName}}"></div>
   </div>
+  {{with .Error}}{{template "form-error" .}}{{end}}
+  <div class="modal-actions">
+    {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "NoIcon" true "Attrs" (attr "data-modal-close"))}}
+    {{template "btn-card" (dict "Label" "Check host key" "Type" "submit" "Icon" "arrow-right" "IconSize" 16)}}
+  </div>
+</form>{{end}}
+
+{{define "addhost-confirm"}}{{with .Confirm}}<form class="addhost-form addhost-confirm" action="/hosts/new/confirm" method="post" hx-post="/hosts/new/confirm" hx-target="#addhost-pane" hx-swap="outerHTML" autocomplete="off" novalidate>
+  <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+  <input type="hidden" name="probe" value="{{.ProbeID}}">
+  <div class="addhost-target">{{template "tag" (dict "Tone" "dark" "Text" .Target)}}<span class="tag addhost-state">Step 2 of 2</span></div>
+  {{with .Replace}}<p class="card-text addhost-replace">Replacing <b>{{.Name}}</b> (offline). The new device takes over its place and history; the certificate of the old agent is revoked.</p>{{end}}
+  <p class="card-text">Verify this fingerprint on the device. Only a device that presents exactly this host key is accepted.</p>
+  <div class="addhost-fp">
+    <span class="t-label">Host key ({{.KeyType}})</span>
+    <div class="cmd-line"><code id="addhost-fp" class="addhost-fp-value">{{.Fingerprint}}</code></div>
+    <span class="t-label">On the device, run</span>
+    <div class="cmd-line"><code id="addhost-fp-cmd">ssh-keygen -lf {{.KeyFile}}</code><button type="button" data-copy="#addhost-fp-cmd" data-copied="Copied">Copy</button></div>
+  </div>
+  {{template "checker"}}
   <div class="field addhost-auth">
-    <input type="radio" class="visually-hidden" name="auth" id="addhost-auth-password" value="password"{{if not .AuthKey}} checked{{end}}>
-    <input type="radio" class="visually-hidden" name="auth" id="addhost-auth-key" value="key"{{if .AuthKey}} checked{{end}}>
+    <input type="radio" class="visually-hidden" name="auth" id="addhost-auth-password" value="password"{{if not $.AuthKey}} checked{{end}}>
+    <input type="radio" class="visually-hidden" name="auth" id="addhost-auth-key" value="key"{{if $.AuthKey}} checked{{end}}>
     <span class="t-label" id="addhost-auth-label">Sign in with</span>
     <div class="tabs addhost-auth-tabs" role="group" aria-labelledby="addhost-auth-label">
       <label class="tab" for="addhost-auth-password"><span class="tab-label">Password</span></label>
@@ -40,16 +65,17 @@
     </div>
     <div class="field addhost-auth-key">
       <span class="t-label">Add this key to ~/.ssh/authorized_keys on the host</span>
-      {{if .HubKey}}<div class="cmd-line"><code id="addhost-hubkey">{{.HubKey}}</code><button type="button" data-copy="#addhost-hubkey" data-copied="Copied">Copy</button></div>
+      {{if $.HubKey}}<div class="cmd-line"><code id="addhost-hubkey">{{$.HubKey}}</code><button type="button" data-copy="#addhost-hubkey" data-copied="Copied">Copy</button></div>
       {{else}}<div class="cmd-line"><code>The hub has no SSH key available.</code></div>{{end}}
     </div>
   </div>
-  {{with .Error}}{{template "form-error" .}}{{end}}
+  <p class="hint">The credentials are used once to install the Grid Agent and are never stored.</p>
+  {{with $.Error}}{{template "form-error" .}}{{end}}
   <div class="modal-actions">
     {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "NoIcon" true "Attrs" (attr "data-modal-close"))}}
-    {{template "btn-card" (dict "Label" "Install agent & link" "Type" "submit" "Icon" "plus" "IconSize" 12)}}
+    {{template "btn-card" (dict "Label" "Confirm & link" "Type" "submit" "Icon" "plus" "IconSize" 12)}}
   </div>
-</form>{{end}}
+</form>{{end}}{{end}}
 
 {{define "addhost-code"}}<div class="addhost-code-pane">
   <p class="card-text">For hosts without SSH, and later Windows and macOS. Run this once on the host. It downloads the Grid Agent from this hub and enrolls it.</p>
@@ -77,11 +103,12 @@
     {{with .Fingerprint}}<div class="step-sub">Host key <b>{{.}}</b></div>{{end}}
     {{end}}
   </div>
-  {{if .HostKeyTip}}<p class="hint">The host key was accepted on first use. Compare the fingerprint with the one on the host (ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub).</p>{{end}}
+  {{if .HostKeyTip}}<p class="hint">Only the host key you confirmed was accepted.</p>{{end}}
   {{with .Error}}{{template "form-error" .}}{{end}}
   {{if .OpenURL}}{{template "btn-card" (dict "Label" (print "Open " .OpenLabel) "Href" .OpenURL "Icon" "arrow-right" "IconSize" 16)}}{{end}}
   {{if .Retry}}<div class="modal-actions">
     {{template "btn-card" (dict "Label" "Close" "Variant" "grey" "NoIcon" true "Attrs" (attr "data-modal-close"))}}
+    {{with $.ReplaceOffer}}{{template "btn-card" (dict "Label" (print "Replace " .Name) "Variant" "grey" "NoIcon" true "Attrs" (attr "hx-get" .URL "hx-target" "#addhost-pane" "hx-swap" "outerHTML"))}}{{end}}
     {{template "btn-card" (dict "Label" "Try again" "Icon" "plus" "IconSize" 12 "Attrs" (attr "hx-get" .RetryURL "hx-target" "#addhost-pane" "hx-swap" "outerHTML"))}}
   </div>{{end}}
 </div>{{end}}{{end}}

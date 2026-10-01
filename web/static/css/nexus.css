@@ -1312,6 +1312,9 @@ svg { flex: none; }
 #addhost-auth-key:checked ~ .addhost-auth-tabs label[for="addhost-auth-key"] { background: var(--lime); color: var(--ink); }
 #addhost-auth-password:focus-visible ~ .addhost-auth-tabs label[for="addhost-auth-password"],
 #addhost-auth-key:focus-visible ~ .addhost-auth-tabs label[for="addhost-auth-key"] { outline: 2px solid var(--ink); outline-offset: 2px; }
+.addhost-fp { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.addhost-fp-value { font-size: 14px; font-weight: 600; letter-spacing: .02em; }
+.addhost-replace { padding: 10px 12px; background: var(--chip-light); color: var(--ink); }
 .addhost-code { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; background: var(--lime); color: var(--ink); }
 .addhost-code-value { font-size: 24px; font-weight: 900; letter-spacing: .06em; overflow-wrap: anywhere; }
 .addhost-code-meta { font-size: 12px; font-weight: 600; text-align: right; }

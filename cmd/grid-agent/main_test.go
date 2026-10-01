@@ -30,7 +30,9 @@ func TestDispatch(t *testing.T) {
 		{[]string{"help"}, 0, ""},
 		{[]string{"run", "--config", "/nonexistent/agent.yaml"}, 1, "config: read"},
 		{[]string{"enroll"}, 2, "--hub is required"},
+		{[]string{"enroll", "--hub", "frpi5.local:8443"}, 2, "--token or --token-file is required"},
 		{[]string{"enroll", "--hub", "frpi5.local:8443", "--token", "abc"}, 2, "--ca-fingerprint is required"},
+		{[]string{"enroll", "--hub", "frpi5.local:8443", "--token", "abc", "--token-file", "x"}, 2, "either --token or --token-file"},
 		{[]string{"run", "--nope"}, 2, "flag provided but not defined"},
 	}
 	for _, tt := range tests {
