@@ -1,10 +1,15 @@
-# Nexara Nexus hub configuration (example, draft)
-# Copy to /etc/nexus/nexus.yaml. The setup wizard fills in hub.* on first run.
+# Nexara Nexus hub configuration (example).
+# Installed as /usr/share/nexara/nexus.example.yaml. The .deb writes
+# /etc/nexus/nexus.yaml (nexus:nexus, 0640) on the first install only, with the
+# same values except: hub.name = short host name, hub.timezone = system timezone,
+# and no hub.agent_address (the hub detects <hostname>.local until the setup
+# wizard asks for it). Upgrades never overwrite it. The setup wizard rewrites the
+# file (without comments), so edit with care.
 
 hub:
   name: frpi5
   timezone: Europe/Berlin
-  # Address agents use to reach the hub
+  # Address agents use to reach the hub (host[:port]); optional, the setup wizard sets it
   agent_address: frpi5.local
   listen: ":8443"
 

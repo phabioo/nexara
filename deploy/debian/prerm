@@ -1,0 +1,28 @@
+#!/bin/sh
+# Nexara Nexus .deb: pre-removal. Stops the services on remove; an upgrade keeps
+# them running until postinst restarts them with the new binaries.
+set -e
+
+stop_unit() {
+	[ -d /run/systemd/system ] || return 0
+	if command -v deb-systemd-invoke >/dev/null 2>&1; then
+		deb-systemd-invoke stop "$1" >/dev/null 2>&1 || true
+	else
+		systemctl stop "$1" >/dev/null 2>&1 || true
+	fi
+}
+
+case "$1" in
+remove | deconfigure)
+	# Agent first: it talks to the hub.
+	stop_unit grid-agent.service
+	stop_unit nexus.service
+	;;
+upgrade | failed-upgrade) ;;
+*)
+	echo "prerm called with unknown argument '$1'" >&2
+	exit 1
+	;;
+esac
+
+exit 0

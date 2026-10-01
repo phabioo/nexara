@@ -46,7 +46,8 @@ func TestDispatch(t *testing.T) {
 		{[]string{"dev", "--nope"}, 2, "flag provided but not defined"},
 		{[]string{"setup"}, 2, "Usage: nexus setup code"},
 		{[]string{"user"}, 2, "Usage: nexus user reset"},
-		{[]string{"uninstall"}, 2, "not implemented yet"},
+		{[]string{"uninstall", "--nope"}, 2, "flag provided but not defined"},
+		{[]string{"uninstall", "extra"}, 2, "unexpected argument"},
 		{[]string{"serve", "--nope"}, 2, "flag provided but not defined"},
 		{[]string{"serve", "--config", filepath.Join(t.TempDir(), "missing.yaml")}, 1, "cannot load configuration"},
 	}

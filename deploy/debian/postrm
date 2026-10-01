@@ -1,0 +1,39 @@
+#!/bin/sh
+# Nexara Nexus .deb: post-removal. `remove` keeps configuration and data; `purge`
+# deletes everything the package created, including the CA, keys, database and
+# the nexus user.
+set -e
+
+case "$1" in
+remove | purge)
+	rm -f /etc/systemd/system/grid-agent.service.d/10-package-binary.conf
+	rmdir /etc/systemd/system/grid-agent.service.d 2>/dev/null || true
+	if command -v deb-systemd-helper >/dev/null 2>&1; then
+		deb-systemd-helper mask nexus.service grid-agent.service >/dev/null 2>&1 || true
+	fi
+	if [ -d /run/systemd/system ]; then
+		systemctl daemon-reload || true
+	fi
+	;;
+upgrade | failed-upgrade | abort-install | abort-upgrade | disappear) ;;
+*)
+	echo "postrm called with unknown argument '$1'" >&2
+	exit 1
+	;;
+esac
+
+if [ "$1" = purge ]; then
+	if command -v deb-systemd-helper >/dev/null 2>&1; then
+		deb-systemd-helper purge nexus.service grid-agent.service >/dev/null 2>&1 || true
+		deb-systemd-helper unmask nexus.service grid-agent.service >/dev/null 2>&1 || true
+	fi
+	rm -rf /etc/nexus /var/lib/nexus /etc/grid-agent /var/lib/grid-agent
+	if getent passwd nexus >/dev/null 2>&1; then
+		deluser --quiet --system nexus >/dev/null 2>&1 || userdel nexus >/dev/null 2>&1 || true
+	fi
+	if getent group nexus >/dev/null 2>&1; then
+		delgroup --quiet --system nexus >/dev/null 2>&1 || groupdel nexus >/dev/null 2>&1 || true
+	fi
+fi
+
+exit 0
