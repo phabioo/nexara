@@ -1,0 +1,87 @@
+{{/* Add-host dialog ("Link new host"). Data: views.AddHostDialog. GET /hosts/new returns
+     "addhost-dialog" for #modal-root; every step after that swaps "addhost-pane" (#addhost-pane, outerHTML). */}}
+
+{{define "addhost-dialog"}}{{template "modal-open" (dict "ID" "addhost-title" "Title" "Link new host" "Variant" "hot" "Size" "lg")}}
+{{template "addhost-pane" .}}
+{{template "modal-close"}}{{end}}
+
+{{define "addhost-pane"}}<div id="addhost-pane" class="addhost-pane">
+{{if .Progress}}{{template "addhost-progress" .}}
+{{else}}
+<div class="tabs addhost-tabs" role="group" aria-label="Link method">
+  <button type="button" class="tab" aria-pressed="{{if .IsSSH}}true{{else}}false{{end}}" hx-get="/hosts/new/pane" hx-target="#addhost-pane" hx-swap="outerHTML"><span class="tab-label">Via SSH</span></button>
+  <button type="button" class="tab" aria-pressed="{{if .IsSSH}}false{{else}}true{{end}}" hx-post="/hosts/new/code" hx-target="#addhost-pane" hx-swap="outerHTML"><span class="tab-label">Enrollment code</span></button>
+</div>
+{{if .IsSSH}}{{template "addhost-ssh" .}}{{else}}{{template "addhost-code" .}}{{end}}
+{{end}}
+</div>{{end}}
+
+{{define "addhost-ssh"}}<form class="addhost-form" action="/hosts/new" method="post" hx-post="/hosts/new" hx-target="#addhost-pane" hx-swap="outerHTML" autocomplete="off" novalidate>
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <p class="card-text">Nexus logs in once over SSH, installs the Grid Agent and enrolls it. The credentials are used only for this and are never stored.</p>
+  {{template "checker"}}
+  <div class="addhost-grid">
+    <div class="field"><label for="addhost-address" class="t-label">Address</label><input id="addhost-address" name="address" class="input" type="text" placeholder="192.168.10.30 or pi4.local" autocomplete="off" spellcheck="false" autocapitalize="none" inputmode="url" maxlength="253" value="{{.Form.Address}}"></div>
+    <div class="field"><label for="addhost-port" class="t-label">SSH port</label><input id="addhost-port" name="port" class="input" type="text" inputmode="numeric" placeholder="22" autocomplete="off" maxlength="5" value="{{.Form.Port}}"></div>
+    <div class="field"><label for="addhost-user" class="t-label">User (with sudo)</label><input id="addhost-user" name="user" class="input" type="text" placeholder="pi" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="32" value="{{.Form.User}}"></div>
+    <div class="field"><label for="addhost-name" class="t-label">Display name</label><input id="addhost-name" name="display_name" class="input" type="text" placeholder="from hostname" autocomplete="off" spellcheck="false" maxlength="64" value="{{.Form.DisplayName}}"></div>
+  </div>
+  <div class="field addhost-auth">
+    <input type="radio" class="visually-hidden" name="auth" id="addhost-auth-password" value="password"{{if not .AuthKey}} checked{{end}}>
+    <input type="radio" class="visually-hidden" name="auth" id="addhost-auth-key" value="key"{{if .AuthKey}} checked{{end}}>
+    <span class="t-label" id="addhost-auth-label">Sign in with</span>
+    <div class="tabs addhost-auth-tabs" role="group" aria-labelledby="addhost-auth-label">
+      <label class="tab" for="addhost-auth-password"><span class="tab-label">Password</span></label>
+      <label class="tab" for="addhost-auth-key"><span class="tab-label">Hub SSH key</span></label>
+    </div>
+    <div class="field addhost-auth-password">
+      <label for="addhost-password" class="t-label">Password</label>
+      <input id="addhost-password" name="password" class="input" type="password" autocomplete="off" maxlength="1024">
+    </div>
+    <div class="field addhost-auth-key">
+      <span class="t-label">Add this key to ~/.ssh/authorized_keys on the host</span>
+      {{if .HubKey}}<div class="cmd-line"><code id="addhost-hubkey">{{.HubKey}}</code><button type="button" data-copy="#addhost-hubkey" data-copied="Copied">Copy</button></div>
+      {{else}}<div class="cmd-line"><code>The hub has no SSH key available.</code></div>{{end}}
+    </div>
+  </div>
+  {{with .Error}}{{template "form-error" .}}{{end}}
+  <div class="modal-actions">
+    {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "NoIcon" true "Attrs" (attr "data-modal-close"))}}
+    {{template "btn-card" (dict "Label" "Install agent & link" "Type" "submit" "Icon" "plus" "IconSize" 12)}}
+  </div>
+</form>{{end}}
+
+{{define "addhost-code"}}<div class="addhost-code-pane">
+  <p class="card-text">For hosts without SSH, and later Windows and macOS. Run this once on the host. It downloads the Grid Agent from this hub and enrolls it.</p>
+  {{template "checker"}}
+  {{with .Error}}{{template "form-error" .}}{{end}}
+  {{with .Code}}
+    {{if .Expired}}
+    {{template "form-error" "This code has expired. Create a new one."}}
+    {{else}}
+    <div class="addhost-code"><span class="addhost-code-value t-display" id="addhost-code">{{.Code}}</span><span class="addhost-code-meta">valid {{.ValidFor}} · one use</span></div>
+    <div class="cmd-line"><code id="addhost-cmd">{{.Command}}</code><button type="button" data-copy="#addhost-cmd" data-copied="Copied">Copy</button></div>
+    <div class="addhost-wait" role="status"{{if .PollURL}} hx-get="{{.PollURL}}" hx-trigger="every 2s" hx-target="#addhost-pane" hx-swap="outerHTML"{{end}}><i class="live" aria-hidden="true"></i><span>Waiting for the agent to connect…</span></div>
+    {{end}}
+  {{end}}
+  <div class="modal-actions">
+    {{template "btn-card" (dict "Label" "New code" "Variant" "grey" "NoIcon" true "Attrs" (attr "hx-post" "/hosts/new/code" "hx-target" "#addhost-pane" "hx-swap" "outerHTML"))}}
+    {{template "btn-card" (dict "Label" "Close" "Icon" "close" "IconSize" 12 "Attrs" (attr "data-modal-close"))}}
+  </div>
+</div>{{end}}
+
+{{define "addhost-progress"}}{{with .Progress}}<div class="addhost-progress" aria-live="polite"{{if .PollURL}} hx-get="{{.PollURL}}" hx-trigger="every {{.PollEvery}}" hx-target="#addhost-pane" hx-swap="outerHTML"{{end}}>
+  <div class="addhost-target">{{template "tag" (dict "Tone" "dark" "Text" .Target)}}<span class="tag addhost-state is-{{.State}}">{{.StateLabel}}</span></div>
+  <div class="addhost-steps">
+    {{range .Steps}}<div class="step-row {{.State}}"><span class="step-box">{{if eq .State "done"}}{{icon "check" 12}}{{else if eq .State "fail"}}{{icon "close" 10}}{{end}}</span><span class="addhost-step-label">{{.Label}}</span><span class="addhost-step-detail">{{.Detail}}</span></div>
+    {{with .Fingerprint}}<div class="step-sub">Host key <b>{{.}}</b></div>{{end}}
+    {{end}}
+  </div>
+  {{if .HostKeyTip}}<p class="hint">The host key was accepted on first use. Compare the fingerprint with the one on the host (ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub).</p>{{end}}
+  {{with .Error}}{{template "form-error" .}}{{end}}
+  {{if .OpenURL}}{{template "btn-card" (dict "Label" (print "Open " .OpenLabel) "Href" .OpenURL "Icon" "arrow-right" "IconSize" 16)}}{{end}}
+  {{if .Retry}}<div class="modal-actions">
+    {{template "btn-card" (dict "Label" "Close" "Variant" "grey" "NoIcon" true "Attrs" (attr "data-modal-close"))}}
+    {{template "btn-card" (dict "Label" "Try again" "Icon" "plus" "IconSize" 12 "Attrs" (attr "hx-get" .RetryURL "hx-target" "#addhost-pane" "hx-swap" "outerHTML"))}}
+  </div>{{end}}
+</div>{{end}}{{end}}

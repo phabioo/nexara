@@ -22,6 +22,7 @@ func (s *Server) layout(r *http.Request, active string, host *grid.HostInfo) vie
 	l := views.Layout{
 		ActiveNav:  active,
 		AddHostURL: "/hosts/new",
+		Operator:   operatorName(r),
 	}
 	if sess, ok := SessionFrom(r); ok {
 		l.CSRF = s.auth.CSRFToken(sess)
@@ -70,13 +71,26 @@ func (s *Server) layout(r *http.Request, active string, host *grid.HostInfo) vie
 				l.Uptime = formatUptime(m.UptimeSeconds)
 			}
 		}
-		if jobs := s.hub.Jobs(host.ID); len(jobs) > 0 {
-			l.Log = jobLogLine(jobs[0])
-		}
+		l.EventsURL = "/events?host=" + url.QueryEscape(host.Name)
+		jobs := s.hub.Jobs(host.ID)
+		l.Job = views.JobChipFor(hostURL(host.Name), jobs)
+		l.Log = statusLine(*host, jobs)
 	}
 
 	l.Nav = hostNav(updates, host)
 	return l
+}
+
+// statusLine is the default text of the status bar: the newest job, else the connection state.
+func statusLine(h grid.HostInfo, jobs []grid.Job) string {
+	switch {
+	case len(jobs) > 0:
+		return jobLogLine(jobs[0])
+	case h.Online:
+		return "Connected to " + hostLabel(h)
+	default:
+		return hostLabel(h) + " is offline"
+	}
 }
 
 func hostLabel(h grid.HostInfo) string {
@@ -88,12 +102,17 @@ func hostLabel(h grid.HostInfo) string {
 
 func hostURL(name string) string { return "/hosts/" + url.PathEscape(name) }
 
-// hostNav is views.DefaultNav with the per-host links filled in; without a
-// host the host-bound entries point at the overview.
+// hostNav is views.DefaultNav with the per-host links filled in, so the selected
+// host survives a click on the navigation; without a host the host-bound
+// entries point at the overview.
 func hostNav(updates int, host *grid.HostInfo) []views.NavItem {
 	nav := views.DefaultNav(updates)
 	for i := range nav {
 		switch nav[i].Key {
+		case "overview":
+			if host != nil {
+				nav[i].Href = hostURL(host.Name)
+			}
 		case "packages":
 			nav[i].Href = "/"
 			if host != nil {

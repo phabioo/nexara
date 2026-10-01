@@ -116,6 +116,8 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 func TestSSEDeliversFilteredEvents(t *testing.T) {
 	e := newEnv(t)
 	e.srv.sseHeartbeat = time.Hour
+	// A fresh registry: the stream must not depend on what the views registered.
+	e.srv.sse = newEventRegistry()
 	e.srv.sse.Register(grid.EventMetrics, func(r *http.Request, ev grid.Event) (string, string, bool) {
 		return "metrics", "<div>\n  cpu " + string(ev.Host) + "\n</div>", true
 	})

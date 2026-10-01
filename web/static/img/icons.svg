@@ -16,6 +16,7 @@
 <symbol id="i-warning" viewBox="0 0 18 18"><g fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 2 17 16H1z"/><path d="M9 7v4M9 13v.5"/></g></symbol>
 <symbol id="i-dots" viewBox="0 0 18 18"><g fill="currentColor"><rect x="2" y="8" width="3" height="3"/><rect x="7.5" y="8" width="3" height="3"/><rect x="13" y="8" width="3" height="3"/></g></symbol>
 <symbol id="i-eye" viewBox="0 0 18 14"><g fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 7s3-5.5 8-5.5S17 7 17 7s-3 5.5-8 5.5S1 7 1 7z"/><rect x="7" y="5" width="4" height="4"/></g></symbol>
+<symbol id="i-sign-out" viewBox="0 0 14 14"><g fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5.5 1.5H2v11h3.5M5 7h7.5M9.5 4L12.5 7l-3 3"/></g></symbol>
 <symbol id="i-lock" viewBox="0 0 14 14"><g fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="6" width="9" height="6.5"/><path d="M4.5 6V4a2.5 2.5 0 0 1 5 0v2"/></g></symbol>
 <symbol id="i-overview" viewBox="0 0 18 18"><g fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.5" y="1.5" width="6" height="6"/><rect x="10.5" y="1.5" width="6" height="6"/><rect x="1.5" y="10.5" width="6" height="6"/><rect x="10.5" y="10.5" width="6" height="6"/></g></symbol>
 <symbol id="i-copy" viewBox="0 0 14 14"><g fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4.5" y="4.5" width="8" height="8"/><path d="M9.5 4.5V1.5h-8v8h3"/></g></symbol>

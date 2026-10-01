@@ -672,11 +672,9 @@ func TestShell(t *testing.T) {
 	}
 	defer sh.Close()
 
-	banner := readUntil(t, sh, "pi@pi5-media:~ $ ")
-	for _, want := range []string{"nexara.shell.access", "SESSION: pi@pi5-media", "HOST: pi5-media", "ADDRESS: 192.168.10.21", "PROTOCOL: GRID", "USER: pi", "SHELL: bash"} {
-		if !strings.Contains(banner, want) {
-			t.Errorf("banner lacks %q", want)
-		}
+	// Like a real agent: no banner, the first output is the prompt.
+	if first := readUntil(t, sh, "pi@pi5-media:~ $ "); first != "pi@pi5-media:~ $ " {
+		t.Errorf("first output = %q, want the prompt only", first)
 	}
 	if err := sh.Resize(80, 24); err != nil {
 		t.Error(err)

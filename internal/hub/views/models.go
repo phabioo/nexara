@@ -10,6 +10,7 @@ type Layout struct {
 	Title     string // page title, rendered as "<Title> · Nexara Nexus"
 	ActiveNav string // key of the active nav item
 	CSRF      string // CSRF token for <meta name="csrf-token">
+	Operator  string // signed-in operator ID; empty on public pages
 
 	NodeNo   string // "01", number of the selected host
 	Uptime   string // "41D 06H"; empty hides the line
@@ -27,6 +28,7 @@ type Layout struct {
 
 	Log            string   // last action, left side of the status bar
 	Job            *JobChip // running background job, left of the log line
+	EventsURL      string   // SSE stream of the page (sse-connect on <body>); empty: no live updates
 	BodyClass      string
 	ConnectionLost bool   // renders the reconnecting state from the start
 	Toast          *Toast // server-rendered banner, hidden again by nexus.js

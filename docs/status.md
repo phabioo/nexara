@@ -1,8 +1,8 @@
 # Umsetzungsstand v0.1
 
-Stand: 30.09.2026 · Commit `eb1b87e` auf `main` · CI grün (Linux amd64 + arm64, `go test -race`)
+Stand: 01.10.2026 · `main` (nach Welle 3) · CI grün (Linux amd64 + arm64, `go test -race`)
 
-Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbeitenden Sonnet-Agents, jedes Ergebnis vom Orchestrator geprüft, gemergt und per GitHub Actions getestet. **Pausiert nach Welle 2** auf Wunsch.
+Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbeitenden Sonnet-Agents, jedes Ergebnis vom Orchestrator geprüft, gemergt und per GitHub Actions getestet. **Pausiert nach Welle 3** auf Wunsch. Integration und Welle 3 sind nach `main` gemergt.
 
 ## Fertig
 
@@ -21,25 +21,36 @@ Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbei
 | 2 | Kopplung | `internal/hub/enroll`, `internal/agent/enroll`, `cmd/grid-agent/enroll.go` | Enrollment-Codes, `install.sh`, SSH-Bootstrap, `grid-agent enroll`, Self-Link-Token |
 | 2 | Agent-Laufzeit | `internal/agent/runtime`, `cmd/grid-agent/run.go` | Verbindungsschleife mit Backoff, Puffer 10 min, Dispatch, Selbst-Update |
 | 2 | Demo-Modus | `internal/hub/demo` | Simulierte Hosts mit den Design-Beispieldaten, Jobs, Shell, Kopplung |
+| 2½ | Integration | `internal/hub/app`, `cmd/nexus`, `cmd/grid-agent/run.go` | `nexus serve` (TLS, Zertifikats-Erneuerung ohne Neustart, Setup-Codes, Admin-Socket, Grid, Enroll), `nexus dev --demo [--seed]`, `nexus setup code`/`user reset`, Self-Link über `enroll.token_file`, Setup-Commit-Hook, `gridStatus`-Mapping |
+| 3 | Login | `view_login.go`, `pages/login.html` | Anmeldung, TOTP-Schritt, „Access granted“ nach TOTP, Rate-Limit-Meldungen, „Hub online“ nach dem Setup |
+| 3 | Setup-Assistent | `view_setup*.go`, `views/qr.go` | 7 Schritte, Sperrzustand, QR als Inline-SVG, CA-Download (`.crt`, iOS-Profil), Commit über den Hook |
+| 3 | Overview | `view_overview.go`, `models_overview.go` | CPU/Prozesse, Memory & Storage mit SVG-Kurve, Services + Neustart, Host-Tabs Q/E, Offline-Karte, Live-Werte per SSE |
+| 3 | Packages | `view_packages.go`, `models_packages.go` | Filter, Suche, Kacheln, Wartungskarten, Confirm- und Job-Dialog mit Live-Ausgabe, Abbruch, Reboot-Hinweis |
+| 3 | Shell + Add host | `view_shell.go`, `view_addhost*.go`, `shell.js` | xterm.js mit Fit, mobile Tastenleiste, Reconnect; Add-Host-Dialog (SSH mit Fortschritt, Enrollment-Code) |
+| 3 | Querschnitt | Layout, `nexus.js`, `layout_live.go` | Abmelden, Job-Chip auf allen Seiten, eine SSE-Verbindung pro Seite, Live-Topbar, Fehler-Toasts mit echten Statuscodes, Session-Ablauf → Login |
 
 Zusätzlich vom Orchestrator: `internal/hub/agentbin` (eingebettete Agent-Binaries), CI-Workflow `.github/workflows/ci.yml`, Entscheidungen #27–#42 in `decisions.md`.
 
-Umfang: 148 Go-Dateien, davon 52 Testdateien.
+Umfang: 194 Go-Dateien, davon 78 Testdateien.
 
 ## Nächste Schritte
 
-1. **Integration (1 Agent, sequenziell):** `nexus serve` und `nexus dev --demo` zusammenstecken (Config, Store, Secret-Key, CA + Server-Zertifikat mit Erneuerungsschleife, Setup-Codes ins Journal, Admin-Socket, Auth, Grid, Enroll, HTTP-Server mit TLS, `NextProtos: http/1.1`), `grid-agent run` mit Self-Link über `enroll.token_file`, `OnEnrolled` → `grid.Register`. Danach ist der Hub im Browser bedienbar.
-2. **Welle 3 – Views (5 Agents parallel):** Login/TOTP, Setup-Assistent (QR mit `boombuler/barcode`), Overview, Packages mit Job- und Confirm-Dialog, Shell (xterm.js) + Add-Host-Dialog. Erweiterungspunkte: je eine `view_*.go` mit `routes<View>(mux)`, `s.layout(...)`, `s.sse.Register(...)`.
-3. **Welle 4 – Auslieferung:** `scripts/build.sh`, Release-Workflow (Binaries, `.deb`, `SHA256SUMS`, ed25519-Signatur), `install.sh` für den Hub, `nexus uninstall`, systemd-Units (`RuntimeDirectory=nexus` für den Admin-Socket).
-4. **Sicherheits-Review** durch einen read-only Agenten, danach Test auf den Pis (Gate: 2 Wochen stabil).
+1. **Welle 4 – Auslieferung (2 Agents, medium):** siehe unten.
+2. **Sicherheits-Review** durch einen read-only Agenten, danach Test auf den Pis (Gate: 2 Wochen stabil).
 
-## Offene Punkte für die Integration
+## Hinweise für Welle 4 (aus der Integration)
 
-- Setup-Commit (Schritt „Ready“) muss `codes.Invalidate()`, `sessions.Clear()` und `mode.Invalidate()` aufrufen.
-- `Options.SecureCookies` im HTTP-Server und die Cookies des Auth-Service aus derselben Einstellung speisen (dev: `false` auf 127.0.0.1).
-- `views.Layout` hat noch kein Operator-Feld; der Server liefert `operatorName(r)`.
-- Fehler-Mapping `grid.Err*` → HTTP-Status für die Views einheitlich festlegen.
-- Installer muss das Verzeichnis für das Self-Link-Token anlegen (Gruppe lesbar für den Agenten).
+- Self-Link-Token: `<Verzeichnis von storage.database>/self-enroll.token` (Standard `/var/lib/nexus/self-enroll.token`), vom Hub (Benutzer `nexus`) mit 0640 geschrieben; der Agent läuft als root und löscht es nach dem Enrollment.
+- `agent.yaml` des Installers muss schon valide sein: Platzhalter `hub.url` (z. B. `wss://127.0.0.1:8443/grid/connect`), `shell.user: <sudo-User>`, `enroll.token_file: /var/lib/nexus/self-enroll.token`.
+- `nexus.service`: `RuntimeDirectory=nexus` für `/run/nexus/admin.sock` (0660 root:nexus); `StateDirectory=nexus`.
+- Der Benutzer `nexus` muss `/etc/nexus/nexus.yaml` ersetzen dürfen (Verzeichnis schreibbar, Datei 0640), sonst scheitert der Setup-Commit vor dem Anlegen des Operators.
+- Installer-Ausgabe aus dem Journal: `msg="setup code" code=XXXX-XXXX`, `msg="CA fingerprint" sha256=…`, URL aus `msg="nexus listening"`.
+- Bekannte Grenze: Weicht der Agent-Port im Setup vom Listen-Port ab (NAT), zeigt die Self-Link-URL auf den falschen Port (`enroll.Service` kennt nur einen Port).
+
+## UI ausprobieren
+
+- `go run ./cmd/nexus dev --demo --seed` → http://127.0.0.1:8080, Anmeldung `demo` / `nexara-demo-passphrase`
+- `go run ./cmd/nexus dev --demo` → Setup-Assistent, Setup-Code steht auf der Konsole
 
 ## So geht es weiter (für eine neue Session)
 
@@ -53,23 +64,6 @@ Die Session, die weitermacht, arbeitet als **Orchestrator**: Sie schreibt selbst
 5. Nach der Welle: alle Branches nach `main` mergen, CI grün abwarten, pushen, `docs/status.md` aktualisieren, **pausieren** und auf Freigabe warten.
 
 **Pakete der nächsten Schritte**
-
-*Integration (1 Agent, high):* `cmd/nexus` `serve` und `dev --demo` verdrahten.
-- serve: Config laden, Store öffnen, `auth.LoadOrCreateSecretKey`, `pki.LoadOrCreateCA` + `EnsureServerCert(LocalNames, LocalIPs)` mit täglicher Prüfschleife, `setup.Codes` (Rotate beim Start, Ankündigung per slog ins Journal, `Run`), Admin-Socket (`setup-code`, `user-reset` → `auth.ResetOperators` + `Mode.Invalidate`), `grid.NewGrid` (HubVersion = buildinfo), `enroll.New` (OnEnrolled → `grid.Register`, WaitOnline über grid-Events), `httpserver.New` mit AgentHandler/AgentDownloadHandler/EnrollHandler, TLS über `pki.ServerTLSConfig(isRevoked = grid.IsRevoked)` mit `NextProtos: ["http/1.1"]`, sauberes Herunterfahren.
-- dev --demo: HTTP nur auf 127.0.0.1, temporärer Store, `demo.Hub` als Hub und Enroller (`go hub.Start(ctx)`), SecureCookies aus; Flag `--seed` legt einen Demo-Operator an und überspringt das Setup, ohne Flag startet der Setup-Assistent mit Code auf der Konsole.
-- `nexus setup code` / `nexus user reset` als Admin-Socket-Clients. `grid-agent run`: ohne Zertifikat und mit `enroll.token_file` zuerst `EnrollFromTokenFile`.
-- Offene Punkte aus dem Abschnitt oben erledigen.
-
-*Welle 3 – Views (5 Agents parallel, je eine `view_*.go` + Templates in `web/templates/pages` + eigene CSS-Sektion + Handler-Tests):*
-| Paket | Inhalt | Referenz |
-| --- | --- | --- |
-| Login | Login, TOTP-Schritt, Access granted, Logout (`renderLogin` ersetzen, Handler existieren) | `Sign-in@2x*.png`, `Mobile · Sign-in` |
-| Setup | 7 Schritte, Restore-Link ausgeblendet (#28), QR für Trust und TOTP (`boombuler/barcode`, inline SVG), Sperrzustand, Commit bei „Ready“ (User anlegen, TOTP versiegeln, `nexus.yaml` schreiben, Self-Link-Token) | `Setup@2x-*.png`, `Mobile · Setup` |
-| Overview | CPU/Prozesse, Memory & Storage mit SVG-Kurve, Services + Neustart, Host-Tabs mit Q/E, Offline-Karte ohne WoL, Connection-lost-Band, Toast; Live-Werte per `s.sse.Register` | `@2x-overview`, `@2x-deviceoffline`, `Mobile · Overview` |
-| Packages | Filter, Suche (inkl. `SearchPackages`), Ticker, Kacheln, drei Wartungskarten, Job-Dialog mit Live-Ausgabe (`job_started`/`job_output`/`job_done`), Hintergrund-Chip, Confirm-Dialog, Reboot-required | `@2x-packages`, `Mobile · Packages` |
-| Shell + Add host | xterm.js + Fit-Addon über `/hosts/{host}/shell/ws?csrf=…`, mobile Tastenleiste, Texte laut „Deviations“; Add-Host-Dialog (SSH, Code, Fortschritt, Fehler) | `@2x-shell`, `@2x-linknewhost*`, `Mobile · Shell` |
-
-Views späterer Versionen (History, Alerts, Containers, Settings, Power) werden nicht gerendert (#31).
 
 *Welle 4 – Auslieferung (2 Agents, medium):* `scripts/build.sh` (erst Agents linux/arm64+amd64 nach `internal/hub/agentbin/bin/`, dann Hub, `CGO_ENABLED=0`, ldflags `internal/buildinfo.Version/Commit`), Release-Workflow bei Tags (Binaries, `.deb` per `dpkg-deb`, `SHA256SUMS`, ed25519-Signatur aus einem GitHub-Secret — Schlüssel legt der Nutzer selbst an), `install.sh` für den Hub (Arch, Prüfsumme + Signatur via `openssl`, Benutzer/Verzeichnisse/Dienst, Agent mit `enroll.token_file`, Ausgabe URL + Setup-Code + Fingerprint), `nexus uninstall`, systemd-Units (`RuntimeDirectory=nexus`).
 

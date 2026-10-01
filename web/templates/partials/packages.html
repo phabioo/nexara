@@ -1,0 +1,84 @@
+{{/* Packages view fragments. Data: views.PackagesModel unless noted. */}}
+
+{{/* Everything the filter and the search swap: hidden filter state, chips, ticker, notices, tiles. */}}
+{{define "packages-results"}}<input type="hidden" id="pkg-filter" name="filter" value="{{.Filter}}">
+<div class="tabs" role="group" aria-label="Filter">
+  {{range .Filters}}{{template "tab" (dict "Label" .Label "Count" .Count "Active" .Active "Href" .Href "Attrs" .Attrs)}}{{end}}
+</div>
+{{template "ticker" (dict "Variant" "blue" "Text" .Ticker)}}
+{{range .Notices}}<div class="notice-bad" role="status"><span>{{.}}</span></div>
+{{end}}
+{{with .Note}}<p class="pkg-note" role="status">{{.}}</p>{{end}}
+<div class="grid-tiles phone-order-2">
+  {{range .Tiles}}{{template "tile" (dict "Tone" .Tone "Glyph" .Glyph "Label" .Label "Name" .Name "Desc" .Desc "Meta" .Meta "Badge" .Badge "ActionLabel" .ActionLabel "ActionClass" .ActionClass "ActionAttrs" .ActionAttrs)}}{{end}}
+  {{with .Empty}}<div class="tile-empty pkg-empty">{{.}}</div>{{end}}
+</div>{{end}}
+
+{{define "packages-card"}}<div class="card {{.Order}}">
+  {{template "card-head" (dict "Title" .Title "Variant" .Variant)}}
+  <div class="card-body">
+    {{template "tag" (dict "Tone" .TagTone "Text" .TagText)}}
+    <p class="card-text">{{.Text}}</p>
+    {{template "checker"}}
+    {{template "objective" (dict "Label" .ObjLabel "Value" .ObjValue "Strong" true "Pct" .Pct "Bad" .Bad "BoxIcon" .BoxIcon "BoxText" .BoxText "BoxUnit" .BoxUnit)}}
+    {{template "btn-card" (dict "Label" .ButtonLabel "Variant" .ButtonVariant "Attrs" .ButtonAttrs)}}
+  </div>
+</div>{{end}}
+
+{{define "packages-cards"}}{{template "packages-card" .Sync}}
+{{template "packages-card" .Upgrade}}
+{{template "packages-card" .Clean}}{{end}}
+
+{{/* Answer of GET .../packages to HTMX: the results plus the maintenance cards out of band. */}}
+{{define "packages-fragment"}}{{template "packages-results" .}}
+<div id="pkg-cards" class="pkg-cards" hx-swap-oob="true">{{template "packages-cards" .}}</div>{{end}}
+
+{{/* --- confirm dialog. Data: views.PackagesConfirm --- */}}
+{{define "packages-confirm"}}{{template "modal-open" (dict "ID" "confirm-title" "Title" .Title "Variant" .Variant "Size" "sm")}}
+<form class="pkg-confirm" hx-post="{{.PostURL}}" hx-target="#modal-root" hx-swap="innerHTML">
+  <span class="tag tag-dark">{{.HostLabel}}</span>
+  <p class="card-text">{{.Text}}</p>
+  {{template "checker"}}
+  <input type="hidden" name="package" value="{{.Package}}">
+  <div class="modal-actions">
+    {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}
+    {{template "btn-card" (dict "Label" .Label "Type" "submit" "Icon" .Icon)}}
+  </div>
+</form>
+{{template "modal-close"}}{{end}}
+
+{{/* --- job dialog. Data: views.JobView. The regions carry ids so the page's event stream
+     can replace them (hx-swap-oob) while the dialog is open. --- */}}
+{{define "packages-job-dialog"}}{{template "modal-open" (dict "ID" "job-title" "Title" (print "Job · " .Title) "Size" "xl")}}
+<div class="job-live">
+  {{template "packages-job-head" .}}
+  {{template "packages-job-term" .}}
+  {{template "packages-job-foot" .}}
+</div>
+{{template "modal-close"}}{{end}}
+
+{{define "packages-job-head"}}<div id="job-head-{{.ID}}" class="job-head" data-job-state="{{.StateKey}}"{{if .OOB}} hx-swap-oob="true"{{end}}>
+  <div class="job-tags"><span class="tag tag-dark">{{.HostLabel}}</span><span class="tag {{.StateTag}}">{{.StateLabel}}</span>{{if .RebootRequired}}<span class="tag tag-bad">Reboot required</span>{{end}}</div>
+  <div class="bar job-bar{{if .Busy}} is-busy{{end}}" role="progressbar" aria-label="Job progress"><i class="{{pct .Pct}}{{if .Bad}} bad{{end}}"></i></div>
+</div>{{end}}
+
+{{define "packages-job-line"}}<div class="job-line{{with .Class}} {{.}}{{end}}">{{if .Text}}{{.Text}}{{else}}&nbsp;{{end}}</div>{{end}}
+
+{{define "packages-job-term"}}<div id="job-term-{{.ID}}" class="job-terminal" aria-live="polite"{{if .OOB}} hx-swap-oob="true"{{end}}>
+  <div id="job-lines-{{.ID}}" class="job-lines"><div class="job-line is-cmd">$ {{.Command}}</div>{{range .Lines}}{{template "packages-job-line" .}}{{end}}</div>
+</div>{{end}}
+
+{{define "packages-job-foot"}}<div id="job-foot-{{.ID}}" class="modal-actions job-foot"{{if .OOB}} hx-swap-oob="true"{{end}}>
+  {{if .Active}}{{template "btn-card" (dict "Label" "Run in background" "Variant" "grey" "Icon" "arrow-right" "Attrs" (attr "data-modal-close"))}}
+  {{template "btn-card" (dict "Label" "Cancel job" "Icon" "close" "Attrs" .CancelAttrs)}}
+  {{else}}{{template "btn-card" (dict "Label" "Close" "Attrs" (attr "data-modal-close"))}}{{end}}
+</div>{{end}}
+
+{{/* --- live updates of the job dialog (payload of the "pkg-job" event).
+     Data: httpserver packagesJobEvent. --- */}}
+{{define "packages-job-state"}}{{template "packages-job-head" .Job}}
+{{template "packages-job-foot" .Job}}
+{{if .Job.Finished}}{{template "packages-job-term" .Job}}{{end}}
+{{with .Toast}}{{template "toasts" .}}{{end}}{{end}}
+
+{{define "packages-job-output"}}<div hx-swap-oob="beforeend:#job-lines-{{.ID}}">{{template "packages-job-line" .Line}}</div>{{end}}

@@ -1,0 +1,13 @@
+{{/* Packages view. Page data: Layout + P (views.PackagesModel). */}}
+{{define "content"}}{{with .P}}
+<div class="layout-split">
+  <div class="layout-split-main">
+    <div class="view-head">
+      <div class="view-heading"><span class="view-heading-title t-display">Packages</span>{{with .Count}}<span class="view-heading-count">{{.}}</span>{{end}}<span class="t-dim">APT · {{.HostLabel}}</span></div>
+      <div class="search"><label for="pkg-q">SEARCH</label><input id="pkg-q" name="q" class="input-search" type="text" placeholder="Package name" value="{{.Query}}" maxlength="64" autocomplete="off" autocapitalize="off" spellcheck="false" hx-get="{{.HostPath}}/packages" hx-trigger="input changed delay:300ms" hx-target="#pkg-results" hx-swap="innerHTML" hx-include="#pkg-filter" hx-replace-url="true" hx-sync="this:replace"></div>
+    </div>
+    <div id="pkg-results" class="pkg-results" hx-get="{{.HostPath}}/packages" hx-trigger="sse:pkg-changed" hx-swap="innerHTML" hx-include="#pkg-q, #pkg-filter" hx-disinherit="hx-include">{{template "packages-results" .}}</div>
+  </div>
+  <div class="layout-split-aside"><div id="pkg-cards" class="pkg-cards">{{template "packages-cards" .}}</div></div>
+</div>
+{{end}}{{end}}

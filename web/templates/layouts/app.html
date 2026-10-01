@@ -22,8 +22,9 @@
 <script src="{{static "js/nexus.js"}}" defer></script>
 {{block "scripts" .}}{{end}}
 </head>
-<body class="{{.BodyClass}}{{if .ConnectionLost}} is-lost{{end}}" hx-ext="sse">
+<body class="{{.BodyClass}}{{if .ConnectionLost}} is-lost{{end}}" hx-ext="sse"{{with .EventsURL}} sse-connect="{{.}}"{{end}}>
 {{sprite}}
+{{if .EventsURL}}<span hidden sse-swap="nx-live,pkg-job" hx-swap="none" data-oob-sink></span>{{end}}
 <div class="app">
 <span class="crosshair crosshair-a" aria-hidden="true"></span>
 <span class="crosshair crosshair-b" aria-hidden="true"></span>
@@ -38,6 +39,7 @@
 {{template "statusbar" .}}
 {{template "bottomnav" .}}
 </div>
+{{template "more-sheet" .}}
 <div id="toasts" class="toast-host" aria-live="polite">{{with .Toast}}{{template "toast" .}}{{end}}</div>
 <div id="modal-root">{{block "modals" .}}{{end}}</div>
 </body>

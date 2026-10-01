@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"math"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,7 @@ var iconSizes = map[string][2]int{
 	"dots":        {18, 18},
 	"eye":         {18, 14},
 	"lock":        {14, 14},
+	"sign-out":    {14, 14},
 	"overview":    {18, 18},
 	"copy":        {14, 14},
 	"circle":      {18, 18},
@@ -47,6 +49,7 @@ func (r *Renderer) funcMap() template.FuncMap {
 		"odd":      func(i int) bool { return i%2 != 0 },
 		"dict":     dict,
 		"has":      has,
+		"attr":     attr,
 		"icon":     r.icon,
 		"static":   r.static,
 		"sprite":   r.sprite,
@@ -82,6 +85,43 @@ func (r *Renderer) icon(name string, size ...int) (template.HTML, error) {
 		`<svg class="icon" width="%d" height="%d" aria-hidden="true" focusable="false"><use href="%s"></use></svg>`,
 		w, h, template.HTMLEscapeString(href))), nil
 }
+
+// attr builds a template.HTMLAttr for the Attrs parameters of the component templates:
+// {{attr "data-modal-close"}} for a bare attribute, or name/value pairs like
+// {{attr "hx-get" "/x" "hx-target" "#modal-root"}}. html/template rejects a plain string in attribute
+// position (it renders ZgotmplZ), so templates must go through this or pass an HTMLAttr from Go.
+// Names must be plain attribute names (no event handlers); values are escaped.
+func attr(args ...string) (template.HTMLAttr, error) {
+	if len(args) == 1 {
+		if err := checkAttrName(args[0]); err != nil {
+			return "", err
+		}
+		return template.HTMLAttr(args[0]), nil //nolint:gosec // name matched the allowlist
+	}
+	if len(args) == 0 || len(args)%2 != 0 {
+		return "", fmt.Errorf("attr: want one name or name/value pairs, got %d arguments", len(args))
+	}
+	var b strings.Builder
+	for i := 0; i < len(args); i += 2 {
+		if err := checkAttrName(args[i]); err != nil {
+			return "", err
+		}
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(args[i] + `="` + template.HTMLEscapeString(args[i+1]) + `"`)
+	}
+	return template.HTMLAttr(b.String()), nil //nolint:gosec // names matched the allowlist, values are escaped
+}
+
+func checkAttrName(name string) error {
+	if !attrNameRE.MatchString(name) || strings.HasPrefix(strings.ToLower(name), "on") {
+		return fmt.Errorf("attr: unsafe attribute name %q", name)
+	}
+	return nil
+}
+
+var attrNameRE = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_:-]*$`)
 
 // toFloat converts any Go number to float64.
 func toFloat(v any) (float64, bool) {

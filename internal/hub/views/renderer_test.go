@@ -26,6 +26,8 @@ func sampleLayout() Layout {
 		Title:     "Overview",
 		ActiveNav: "overview",
 		CSRF:      "csrf-token-value",
+		Operator:  "frank",
+		EventsURL: "/events?host=pi5-media",
 		NodeNo:    "01",
 		Uptime:    "41D 06H",
 		HostName:  "pi5-media",
@@ -106,7 +108,15 @@ func TestRenderAppLayout(t *testing.T) {
 		`data-host-step="-1"`,
 		`hx-get="/hosts/add"`,
 		`<span id="statusbar-log" role="status">Connected to pi5-media</span>`,
+		`<span id="job-chip-slot" class="job-chip-slot"><button type="button" class="btn-tool is-hot" hx-get="/jobs/1"`,
 		`JOB · apt upgrade · 42%`,
+		`id="pill-pkg"`, `id="pill-temp"`, `<div id="node-card-up" class="node-card-up">41D 06H <span>UP</span></div>`,
+		`hx-ext="sse" sse-connect="/events?host=pi5-media"`, `sse-swap="nx-live,pkg-job" hx-swap="none" data-oob-sink`,
+		// operator and sign out: sidebar block and More sheet, both POST /logout with the CSRF token
+		`<b class="account-name" title="frank">frank</b>`,
+		`<form class="signout" method="post" action="/logout">`, `<form class="sheet-signout" method="post" action="/logout">`,
+		`name="csrf_token" value="csrf-token-value"`,
+		`data-sheet-open="more-sheet"`, `id="more-sheet"`,
 		`class="toast"`,
 		`ONE-MARKER &lt;b&gt;x&lt;/b&gt;`,
 		`<use href="/static/img/icons.svg#i-mark">`,
@@ -115,10 +125,32 @@ func TestRenderAppLayout(t *testing.T) {
 			t.Errorf("output lacks %q", want)
 		}
 	}
-	// Phone navigation only carries the items of v0.1 (decision #31).
-	for _, unwanted := range []string{"History", "Containers", "Alerts", "Settings", "More"} {
+	// Phone navigation only carries the items of v0.1 (decision #31): the three views and the More sheet,
+	// which holds the account only.
+	for _, unwanted := range []string{"History", "Containers", "Alerts", "Settings"} {
 		if strings.Contains(out, unwanted) {
 			t.Errorf("output contains %q, which belongs to a later version", unwanted)
+		}
+	}
+	if n := strings.Count(out, `class="bnav-item`); n != 4 {
+		t.Errorf("bottom nav has %d items, want 4 (Overview, Packages, Shell, More)", n)
+	}
+	if strings.Contains(out, "ZgotmplZ") {
+		t.Error("output contains a filtered value (ZgotmplZ)")
+	}
+}
+
+func TestRenderAppLayoutWithoutOperatorOrStream(t *testing.T) {
+	r := newTestRenderer(t)
+	if err := r.AddPage("quiet", `{{define "content"}}x{{end}}`); err != nil {
+		t.Fatal(err)
+	}
+	l := sampleLayout()
+	l.Operator, l.EventsURL = "", ""
+	out := render(t, r, "quiet", pageData{Layout: l})
+	for _, unwanted := range []string{"account", "/logout", "data-sheet-open", "more-sheet", "sse-connect", "data-oob-sink"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("output contains %q without an operator or an event stream", unwanted)
 		}
 	}
 	if n := strings.Count(out, `class="bnav-item`); n != 3 {
@@ -246,20 +278,26 @@ func TestComponents(t *testing.T) {
 		{"objective", map[string]any{"Label": "Core 0", "Pct": 28, "BoxText": "28", "BoxUnit": "%", "Small": true}, `class="p-28"`},
 		{"objective", map[string]any{"Label": "smbd", "Value": "failed", "Pct": 100, "Bad": true, "BoxIcon": "close", "Small": true}, `p-100 bad`},
 		{"objective", map[string]any{"Label": "Sources read", "Value": "4/4", "Strong": true, "Pct": 50.4, "BoxIcon": "reboot"}, `<b>4/4</b>`},
-		{"btn-card", map[string]any{"Label": "Show processes"}, `#i-info`},
+		{"btn-card", map[string]any{"Label": "Show processes"}, `class="btn-card"><span>Show processes</span>`},
+		{"btn-card", map[string]any{"Label": "Cancel", "Variant": "grey", "NoIcon": true, "Attrs": mustAttr(t, "data-modal-close")}, `btn-card-grey" data-modal-close><span>Cancel</span></button>`},
+		{"btn-card", map[string]any{"Label": "Send", "Type": "submit", "Icon": "plus", "IconSize": 12}, `type="submit" class="btn-card"><span>Send</span><svg class="icon" width="12" height="12"`},
+		{"btn-card", map[string]any{"Label": "Open", "Href": "/x", "Attrs": mustAttr(t, "hx-boost", "true")}, `href="/x" hx-boost="true"`},
 		{"btn-card", map[string]any{"Label": "apt upgrade", "Variant": "light", "Attrs": template.HTMLAttr(`hx-post="/x"`)}, `btn-card btn-card-light" hx-post="/x"`},
 		{"btn-card", map[string]any{"Label": "Enter", "Href": "/", "Icon": "arrow-right"}, `<a class="btn-card" href="/"`},
 		{"tile", map[string]any{"Tone": "blue", "Glyph": "arrow-up", "Label": "Update", "Name": "libssl3", "Desc": "x", "Meta": "1 → 2", "Badge": "2.1 MB", "ActionLabel": "Update", "ActionClass": "btn-tool is-hot"}, `tile t-blue`},
 		{"tile", map[string]any{"Tone": "grey", "Label": "Installed", "Name": "bash"}, `<span></span>`},
 		{"tile-resource", map[string]any{"Tone": "blue", "Label": "RAM", "Value": "3.4 / 8 GB", "On": 7}, `<i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell on"></i><i class="cell"></i>`},
 		{"tab", map[string]any{"Label": "All", "Count": 0, "Active": true, "Href": "/p?f=all"}, `<span class="tab-count">0</span>`},
-		{"tab", map[string]any{"Label": "Password", "Active": false}, `aria-pressed="false"`},
+		{"tab", map[string]any{"Label": "Password", "Active": false}, `aria-pressed="false"><span class="tab-label">Password</span>`},
+		{"tab", map[string]any{"Label": "Updates", "Href": "/p", "Attrs": template.HTMLAttr(`hx-get="/p"`)}, `href="/p" hx-get="/p"`},
+		{"tile", map[string]any{"Tone": "lime", "Label": "Update", "Name": "x", "ActionLabel": "Go", "ActionAttrs": template.HTMLAttr(`hx-post="/go"`)}, `class="btn-tool" hx-post="/go">Go</button>`},
 		{"ticker", map[string]any{"Variant": "green", "Text": "nexara shell 1.0 (grid.session)"}, `ticker-green`},
 		{"toast", &Toast{Title: "Updated", Sub: "done"}, `toast-title`},
 		{"toasts", nil, `id="toasts"`},
 		{"modal-open", map[string]any{"ID": "m-title", "Title": "Link new host", "Variant": "hot", "Size": "lg"}, `modal modal-lg`},
 		{"modal-close", nil, `</div>`},
-		{"field", map[string]any{"ID": "f-addr", "Label": "Address", "Placeholder": "pi4.local"}, `for="f-addr"`},
+		{"field", map[string]any{"ID": "f-addr", "Label": "Address", "Placeholder": "pi4.local"}, `placeholder="pi4.local">`},
+		{"field", map[string]any{"ID": "f-x", "Label": "X", "Attrs": mustAttr(t, "maxlength", "5")}, `maxlength="5">`},
 		{"form-error", "Enter your operator ID.", `role="alert"`},
 		{"stat-chip", map[string]any{"Label": "LOAD", "Value": "0.42"}, `stat-chip`},
 	}
@@ -271,6 +309,9 @@ func TestComponents(t *testing.T) {
 		}
 		if !strings.Contains(rec.Body.String(), tc.want) {
 			t.Errorf("%s: output lacks %q:\n%s", tc.name, tc.want, rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), "ZgotmplZ") {
+			t.Errorf("%s: html/template filtered a value (ZgotmplZ): %s", tc.name, rec.Body.String())
 		}
 		if strings.Contains(rec.Body.String(), "no value") || strings.Contains(rec.Body.String(), "&lt;nil&gt;") {
 			t.Errorf("%s: leaked a missing value: %s", tc.name, rec.Body.String())
@@ -326,4 +367,63 @@ func TestTemplatesAreCSPClean(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkCSPClean(t, "rendered app shell", render(t, r, "csp", pageData{Layout: sampleLayout()}))
+}
+
+func mustAttr(t *testing.T, args ...string) template.HTMLAttr {
+	t.Helper()
+	a, err := attr(args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
+}
+
+func TestAttr(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		want    string
+		wantErr bool
+	}{
+		{"bare", []string{"data-modal-close"}, `data-modal-close`, false},
+		{"pair", []string{"hx-get", "/x"}, `hx-get="/x"`, false},
+		{"pairs", []string{"hx-post", "/a", "hx-target", "#t"}, `hx-post="/a" hx-target="#t"`, false},
+		{"value is escaped", []string{"title", `a"b<c&`}, `title="a&#34;b&lt;c&amp;"`, false},
+		{"event handler", []string{"onclick", "x()"}, "", true},
+		{"name with space", []string{"a b"}, "", true},
+		{"name with quote", []string{`a"b`, "x"}, "", true},
+		{"empty", nil, "", true},
+		{"odd pair count", []string{"a", "b", "c"}, "", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := attr(tc.args...)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+			if string(got) != tc.want {
+				t.Errorf("attr = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// Every shared template must render without html/template replacing a value it does not trust.
+func TestSharedTemplatesRenderWithoutFilteredValues(t *testing.T) {
+	r := newTestRenderer(t)
+	if err := r.AddPage("plain", `{{define "content"}}{{template "btn-card" (dict "Label" "x")}}{{template "tab" (dict "Label" "y")}}{{template "field" (dict "ID" "z" "Label" "Z")}}{{end}}`); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]any{"plain": pageData{Layout: sampleLayout()}} {
+		if out := render(t, r, name, data); strings.Contains(out, "ZgotmplZ") {
+			t.Errorf("%s contains ZgotmplZ", name)
+		}
+	}
+	auth := authData{AuthLayout: AuthLayout{Title: "x", Variant: "auth-login", Segments: []PillSegment{{Text: "LOCKED", Icon: "lock"}}}}
+	if err := r.AddPage("plainauth", `{{define "layout"}}auth{{end}}{{define "content"}}{{template "btn-card" (dict "Label" "x")}}{{end}}`); err != nil {
+		t.Fatal(err)
+	}
+	if out := render(t, r, "plainauth", auth); strings.Contains(out, "ZgotmplZ") {
+		t.Error("auth layout contains ZgotmplZ")
+	}
 }
