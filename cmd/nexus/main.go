@@ -16,10 +16,9 @@ import (
 
 // Exit codes.
 const (
-	exitOK           = 0
-	exitFailure      = 1
-	exitUsageOrStub  = 2 // bad usage, or a command that is not implemented yet
-	notImplementedMs = "not implemented yet"
+	exitOK          = 0
+	exitFailure     = 1
+	exitUsageOrStub = 2 // bad usage
 )
 
 func main() {
@@ -36,7 +35,7 @@ Commands:
   dev --demo [--addr <addr>] [--seed] run the hub with simulated agents (development)
   setup code                          print a new one-time setup code (run locally on the hub)
   user reset                          reset the operator account (run locally on the hub)
-  uninstall                           remove the hub from this device
+  uninstall [--purge] [--yes]         remove the hub package (--purge also deletes data, CA and keys)
   version                             print version information
 `
 
@@ -62,8 +61,7 @@ func runContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	case "user":
 		return cmdUser(rest, stdin, stdout, stderr)
 	case "uninstall":
-		fmt.Fprintf(stderr, "nexus uninstall: %s\n", notImplementedMs)
-		return exitUsageOrStub
+		return cmdUninstall(ctx, rest, stdin, stdout, stderr)
 	case "version", "--version", "-v":
 		fmt.Fprintln(stdout, buildinfo.String("nexus"))
 		return exitOK
