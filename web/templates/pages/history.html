@@ -1,0 +1,26 @@
+{{/* History view. Data: views.HistoryPage. The charts are server-rendered SVG (partials/history.html); the part
+     below the heading refreshes itself (hx-trigger "every") and is also what the range tabs navigate to as a
+     normal boosted page. */}}
+{{define "content"}}{{if eq .State "nohosts"}}<div class="view ov-empty">
+  <div class="ov-offline">
+    <div class="card ov-offline-card">
+      {{template "corners"}}
+      {{template "card-head" (dict "Title" "No hosts yet" "Variant" "hot")}}
+      <div class="card-body">
+        {{template "tag" (dict "Tone" "dark" "Text" "Nexara Grid")}}
+        <p class="card-text">No device is linked to this hub. History is recorded as soon as a host is online.</p>
+        {{template "checker"}}
+        {{with .AddHostURL}}<button type="button" class="btn-card" hx-get="{{.}}" hx-target="#modal-root" hx-swap="innerHTML"><span>Link a host</span>{{icon "arrow-right" 14}}</button>{{end}}
+      </div>
+    </div>
+  </div>
+</div>{{else}}<div class="view hist-view" data-history-range="{{.RangeKey}}">
+  <div class="view-head">
+    <span class="view-title">History: {{.Label}}{{with .Zone}}<span class="hist-zone t-dim">times in {{.}}</span>{{end}}</span>
+    <div class="tabs hist-ranges" role="group" aria-label="Time range">
+      {{range .Ranges}}<a class="tab{{if .Active}} on{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}} {{template "nx-boost"}}><span class="tab-label">{{.Label}}</span></a>
+      {{end}}
+    </div>
+  </div>
+  {{template "history-charts" .Charts}}
+</div>{{end}}{{end}}

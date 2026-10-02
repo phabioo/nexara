@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -181,44 +182,16 @@ func (s *Service) Series(ctx context.Context, host string, metric Metric, from, 
 	if err != nil {
 		return Series{}, err
 	}
-	if host == "" || step < time.Second || !to.After(from) {
-		return Series{}, fmt.Errorf("%w: host, step and range are required", ErrInvalidQuery)
+	out, q, err := s.plan(host, metric, from, to, step)
+	if err != nil {
+		return Series{}, err
 	}
-	now := s.now()
-	table := store.Metrics1h
-	if step < time.Hour && !from.Before(now.Add(-s.minuteRetention-minuteSlack)) {
-		table = store.Metrics1m
-	}
-	step = step.Truncate(time.Second)
-	if floor := time.Duration(table.Width()) * time.Second; step < floor {
-		step = floor
-	}
-	stepS := int64(step / time.Second)
-	fromU := floorDiv(from.Unix(), stepS) * stepS
-	toU := (to.Unix() + stepS - 1) / stepS * stepS
-	n := (toU - fromU) / stepS
-	if n > maxSeriesPoints {
-		return Series{}, fmt.Errorf("%w: %d points (max %d)", ErrTooManyPoints, n, maxSeriesPoints)
-	}
-
-	out := Series{
-		Host: host, Metric: metric, Unit: metric.unit(), From: time.Unix(fromU, 0).UTC(),
-		Step: step, Source: table, Points: make([]Point, n),
-	}
-	for i := range out.Points {
-		out.Points[i] = Point{Time: out.From.Add(time.Duration(i) * step), Avg: math.NaN(), Max: math.NaN()}
-	}
-	q := store.MetricQuery{
-		Table: table, Host: host, From: out.From, To: time.Unix(toU, 0).UTC(), Step: step,
-	}
-	if table == store.Metrics1h {
-		// Minutes of hours that are not rolled up yet: the current hour and,
-		// briefly after a restart, the previous one.
-		q.TailFrom = now.Truncate(time.Hour).Add(-time.Hour)
-	}
-
 	if mount, ok := metric.Mount(); ok {
-		return s.diskSeries(ctx, q, mount, out)
+		rows, err := s.st.QueryDiskRows(ctx, q)
+		if err != nil {
+			return Series{}, err
+		}
+		return diskSeries(rows, out, map[string]*Series{mount: &out})[mount], nil
 	}
 	col := map[Metric]store.MetricColumn{
 		MetricCPU: store.ColCPU, MetricMem: store.ColMem, MetricTemp: store.ColTemp,
@@ -240,39 +213,119 @@ func (s *Service) Series(ctx context.Context, host string, metric Metric, from, 
 	return out, nil
 }
 
-func (s *Service) diskSeries(ctx context.Context, q store.MetricQuery, mount string, out Series) (Series, error) {
+// DiskSeries is Series for every mount of a host at once: it reads the disk
+// rows of the range a single time (instead of once per mount) and returns one
+// Series per mount seen in the range, ordered by mount path. A host without
+// disk data yields an empty slice.
+func (s *Service) DiskSeries(ctx context.Context, host string, from, to time.Time, step time.Duration) ([]Series, error) {
+	out, q, err := s.plan(host, MetricDisk("/"), from, to, step)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := s.st.QueryDiskRows(ctx, q)
 	if err != nil {
-		return Series{}, err
+		return nil, err
 	}
-	type acc struct {
-		w, sum float64
-	}
-	accs := make([]acc, len(out.Points))
-	stepS := int64(out.Step / time.Second)
+	mounts := make(map[string]*Series)
 	for _, r := range rows {
-		i := int((r.Time.Unix() - out.From.Unix()) / stepS)
-		if i < 0 || i >= len(accs) {
+		for _, d := range r.Disks {
+			if mounts[d.Mount] != nil || !validMount(d.Mount) {
+				continue
+			}
+			ser := out
+			ser.Metric = MetricDisk(d.Mount)
+			ser.Points = make([]Point, len(out.Points))
+			copy(ser.Points, out.Points)
+			mounts[d.Mount] = &ser
+		}
+	}
+	diskSeries(rows, out, mounts)
+	res := make([]Series, 0, len(mounts))
+	for _, ser := range mounts {
+		res = append(res, *ser)
+	}
+	sort.Slice(res, func(i, j int) bool { return res[i].Metric < res[j].Metric })
+	return res, nil
+}
+
+// plan validates a query and builds the empty Series (the NaN grid) plus the
+// store query that fills it.
+func (s *Service) plan(host string, metric Metric, from, to time.Time, step time.Duration) (Series, store.MetricQuery, error) {
+	if host == "" || step < time.Second || !to.After(from) {
+		return Series{}, store.MetricQuery{}, fmt.Errorf("%w: host, step and range are required", ErrInvalidQuery)
+	}
+	now := s.now()
+	table := store.Metrics1h
+	if step < time.Hour && !from.Before(now.Add(-s.minuteRetention-minuteSlack)) {
+		table = store.Metrics1m
+	}
+	step = step.Truncate(time.Second)
+	if floor := time.Duration(table.Width()) * time.Second; step < floor {
+		step = floor
+	}
+	stepS := int64(step / time.Second)
+	fromU := floorDiv(from.Unix(), stepS) * stepS
+	toU := (to.Unix() + stepS - 1) / stepS * stepS
+	n := (toU - fromU) / stepS
+	if n > maxSeriesPoints {
+		return Series{}, store.MetricQuery{}, fmt.Errorf("%w: %d points (max %d)", ErrTooManyPoints, n, maxSeriesPoints)
+	}
+
+	out := Series{
+		Host: host, Metric: metric, Unit: metric.unit(), From: time.Unix(fromU, 0).UTC(),
+		Step: step, Source: table, Points: make([]Point, n),
+	}
+	for i := range out.Points {
+		out.Points[i] = Point{Time: out.From.Add(time.Duration(i) * step), Avg: math.NaN(), Max: math.NaN()}
+	}
+	q := store.MetricQuery{
+		Table: table, Host: host, From: out.From, To: time.Unix(toU, 0).UTC(), Step: step,
+	}
+	if table == store.Metrics1h {
+		// Minutes of hours that are not rolled up yet: the current hour and,
+		// briefly after a restart, the previous one.
+		q.TailFrom = now.Truncate(time.Hour).Add(-time.Hour)
+	}
+	return out, q, nil
+}
+
+// diskSeries fills the given per-mount series from the disk rows: usage is
+// averaged per bucket weighted by the samples of each row. grid carries the
+// bucket width and start. It returns the same map for convenience.
+func diskSeries(rows []store.DiskRow, grid Series, mounts map[string]*Series) map[string]Series {
+	type acc struct{ w, sum float64 }
+	accs := make(map[string][]acc, len(mounts))
+	for m := range mounts {
+		accs[m] = make([]acc, len(grid.Points))
+	}
+	stepS := int64(grid.Step / time.Second)
+	for _, r := range rows {
+		i := int((r.Time.Unix() - grid.From.Unix()) / stepS)
+		if i < 0 || i >= len(grid.Points) {
 			continue
 		}
 		for _, d := range r.Disks {
-			if d.Mount != mount {
+			a, ok := accs[d.Mount]
+			if !ok {
 				continue
 			}
-			a := &accs[i]
-			a.w += float64(r.Samples)
-			a.sum += float64(d.Used) * float64(r.Samples)
-			out.Total = math.Max(out.Total, float64(d.Total))
+			a[i].w += float64(r.Samples)
+			a[i].sum += float64(d.Used) * float64(r.Samples)
+			mounts[d.Mount].Total = math.Max(mounts[d.Mount].Total, float64(d.Total))
 		}
 	}
-	for i, a := range accs {
-		if a.w > 0 {
-			// Usage is stored as an average only: Max equals Avg.
-			out.Points[i].Avg = a.sum / a.w
-			out.Points[i].Max = out.Points[i].Avg
+	res := make(map[string]Series, len(mounts))
+	for m, ser := range mounts {
+		for i, a := range accs[m] {
+			if a.w > 0 {
+				// Usage is stored as an average only: Max equals Avg.
+				ser.Points[i].Avg = a.sum / a.w
+				ser.Points[i].Max = ser.Points[i].Avg
+			}
 		}
+		res[m] = *ser
 	}
-	return out, nil
+	return res
 }
 
 // Mounts lists the mount points of a host that appear in its latest history
