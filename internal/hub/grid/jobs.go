@@ -57,7 +57,7 @@ func (g *Grid) StartJob(_ context.Context, actor Actor, id HostID, spec JobSpec)
 	if st.conn == nil || !st.online {
 		return Job{}, ErrHostOffline
 	}
-	if !hasCap(st.host.Capabilities, protocol.CapPackages) {
+	if !st.capEnabled(protocol.CapPackages) {
 		return Job{}, ErrCapabilityDisabled
 	}
 	for _, rec := range st.queue {

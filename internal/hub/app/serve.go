@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -78,6 +79,9 @@ func Serve(ctx context.Context, o ServeOptions) error {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
+	// Settings › Diagnostics shows the recent hub log from memory.
+	logRing := NewLogRing(LogRingSize)
+	log = slog.New(logRing.Tee(log.Handler()))
 	now := o.Now
 	if now == nil {
 		now = time.Now
@@ -225,8 +229,9 @@ func Serve(ctx context.Context, o ServeOptions) error {
 		Auth:  authSvc,
 		Setup: httpserver.SetupDeps{Codes: codes, Sessions: sessions, Mode: mode, Commit: cm.Commit, CA: ca},
 		Services: httpserver.Services{
-			History: hist, Backup: backups, Updates: updater, Certs: g,
+			History: hist, Backup: backups, Updates: updater, Certs: g, Caps: g, Logs: logRing,
 			Settings: st.Settings(), Store: st, CA: ca, Restart: restart,
+			ServerCert: func() (*x509.Certificate, error) { return loadServerCert(cfg.TLS.Dir) },
 		},
 		Hub:           g,
 		Enroller:      enrollers,

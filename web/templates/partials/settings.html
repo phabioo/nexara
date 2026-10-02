@@ -1,0 +1,255 @@
+{{/* Settings cards and dialogs. See pages/settings.html. Card data: views.Settings*. */}}
+
+{{define "settings-check"}}<span class="rbox" aria-hidden="true">{{if .}}{{icon "check" 12}}{{end}}</span>{{end}}
+{{define "settings-download-icon"}}<svg class="icon" width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><path d="M6 1v8M2 5.5 6 9.5l4-4M1 11h10"/></svg>{{end}}
+
+{{/* --- 1. Operators --- */}}
+{{define "settings-operators"}}<section class="card set-card" id="set-operators" aria-labelledby="set-operators-h">
+  {{template "card-head" (dict "ID" "set-operators-h" "Title" "Operators" "Variant" "hot")}}
+  <div class="card-body">
+    {{template "tag" (dict "Tone" "dark" "Text" "1 operator")}}
+    <div class="set-rows">
+      <div class="set-row"><span>Operator ID</span><b>{{.ID}}</b></div>
+      <div class="set-row"><span>Role</span><b>{{.Role}}</b></div>
+      <div class="set-row"><span>Two-factor</span><b>{{.TwoFactor}}</b></div>
+      <div class="set-row"><span>Last sign-in</span><b>{{.LastSignIn}}</b></div>
+    </div>
+    <button type="button" class="btn-card btn-card-grey" hx-get="{{.PassphraseURL}}" hx-target="#modal-root" hx-swap="innerHTML"><span>Change passphrase</span>{{icon "lock" 14}}</button>
+  </div>
+</section>{{end}}
+
+{{/* --- 2. Security: facts, no switches (decisions #51, #52) --- */}}
+{{define "settings-security"}}<section class="card set-card" id="set-security" aria-labelledby="set-security-h">
+  {{template "card-head" (dict "ID" "set-security-h" "Title" "Security")}}
+  <div class="card-body">
+    <div class="set-rows">
+      <div class="set-row set-check">{{template "settings-check" true}}<span class="set-grow">Require two-factor login</span><b>Required</b></div>
+      <div class="set-row set-check">{{template "settings-check" true}}<span class="set-grow">Lock sign-in after 5 failed attempts</span><b>15 min</b></div>
+      <div class="set-row"><span>Session timeout</span><b>12 h</b></div>
+    </div>
+  </div>
+</section>{{end}}
+
+{{/* --- 3. Updates. Data: views.SettingsUpdates --- */}}
+{{define "settings-updates"}}<section class="card set-card" id="set-updates" aria-labelledby="set-updates-h"{{if .OOB}} hx-swap-oob="true"{{end}}{{if .Poll}} hx-get="/settings/updates/status" hx-trigger="every 3s" hx-swap="outerHTML"{{end}}>
+  {{template "card-head" (dict "ID" "set-updates-h" "Title" "Updates")}}
+  <div class="card-body">
+    {{template "tag" (dict "Tone" .TagTone "Text" .Tag)}}
+    <div class="set-rows">
+      <div class="set-row"><span>Nexus hub</span><b>{{.Hub}}</b></div>
+      <div class="set-row"><span>Grid Agents</span><b>{{.Agents}}</b></div>
+      <form hx-post="/settings/updates/config" hx-target="#set-updates" hx-swap="outerHTML">
+        <input type="hidden" name="check_github" value="{{if .CheckOn}}false{{else}}true{{end}}">
+        <button type="submit" class="set-row set-check set-toggle" role="switch" aria-checked="{{if .CheckOn}}true{{else}}false{{end}}">{{template "settings-check" .CheckOn}}<span class="set-grow">Check GitHub for new releases</span><b>{{if .CheckOn}}On{{else}}Off{{end}}</b></button>
+      </form>
+      {{if .CheckOn}}<div class="set-row set-row-wrap"><span>Channel</span>
+        <div class="tabs tabs-sm" role="group" aria-label="Update channel">{{range .Channels}}<form hx-post="/settings/updates/config" hx-target="#set-updates" hx-swap="outerHTML"><input type="hidden" name="channel" value="{{.Value}}"><button type="submit" class="tab" aria-pressed="{{if .On}}true{{else}}false{{end}}"><span class="tab-label">{{.Label}}</span></button></form>{{end}}</div>
+      </div>{{end}}
+    </div>
+    {{with .CheckNote}}<p class="set-note{{if $.CheckFailed}} is-bad{{end}}">{{.}}</p>{{end}}
+    {{with .Latest}}<div class="set-callout">
+      <div class="set-callout-text"><b>{{.Version}} is available</b><span class="card-text">Published {{.When}} on GitHub.</span></div>
+      {{if not .Staged}}<button type="button" class="btn-tool is-hot" hx-post="{{.StageURL}}" hx-target="#set-updates" hx-swap="outerHTML">Download</button>{{end}}
+    </div>{{end}}
+    {{with .Installing}}<div class="set-install" role="status">
+      <div class="set-callout-text"><b>Installing {{.Version}}</b><span class="card-text">Started {{.Since}}. The hub restarts during this; the page reconnects by itself.</span></div>
+      <div class="set-steps">{{range .Steps}}<div class="step-row {{.State}}"><span class="step-box" aria-hidden="true">{{if eq .State "done"}}{{icon "check" 12}}{{else if eq .State "bad"}}{{icon "close" 10}}{{end}}</span><span>{{.Label}}</span></div>{{end}}</div>
+      {{if .Stale}}<p class="set-note is-bad">Nothing has happened for 30 minutes. The update helper may not be running. You can start the update again.</p>{{end}}
+      {{with .CancelURL}}<button type="button" class="btn-tool" hx-post="{{.}}" hx-target="#set-updates" hx-swap="outerHTML">Cancel request</button>{{end}}
+    </div>{{end}}
+    {{with .Last}}<div class="set-result is-{{.Tone}}" role="status">
+      <div class="set-callout-text"><b>{{.Title}}</b><span class="card-text">{{.When}}{{with .Message}} · {{.}}{{end}}</span></div>
+      {{with .Log}}<details class="set-details"><summary>Helper log</summary><pre class="set-pre">{{.}}</pre></details>{{end}}
+    </div>{{end}}
+    {{range .Staged}}<div class="set-callout">
+      <div class="set-callout-text"><b>{{.Version}}</b><span class="card-text">{{.Detail}}</span></div>
+      <button type="button" class="btn-tool is-hot" hx-get="{{.InstallURL}}" hx-target="#modal-root" hx-swap="innerHTML"{{if or $.Busy (not $.CanInstall)}} disabled{{end}}>Install now</button>
+    </div>{{end}}
+    {{if and .Staged (not .CanInstall)}}<p class="set-note">This hub has no update helper, so installing from here is not available. The file stays verified and staged.</p>{{end}}
+    {{with .Err}}{{template "form-error" .}}{{end}}
+    <div class="set-btnrow">
+      <button type="button" class="btn-card" hx-post="/settings/updates/check" hx-target="#set-updates" hx-swap="outerHTML"{{if not .CheckOn}} disabled title="Turn on the GitHub check first"{{end}}><span>Check now</span>{{icon "info" 14}}</button>
+      <form class="set-upload-form" hx-post="/settings/updates/upload" hx-encoding="multipart/form-data" hx-target="#set-updates" hx-swap="outerHTML" hx-trigger="change">
+        <label class="btn-card btn-card-grey set-upload"><span class="set-upload-idle">Upload update file</span><span class="set-upload-busy">Uploading and verifying…</span>{{icon "arrow-up" 14}}<input class="visually-hidden" type="file" name="files" multiple aria-describedby="set-upload-hint"{{if .Busy}} disabled{{end}}></label>
+      </form>
+    </div>
+    <p class="set-note" id="set-upload-hint">Upload the .deb together with SHA256SUMS and SHA256SUMS.sig, or one .tar holding the three. The signature is checked before anything is installed.</p>
+  </div>
+</section>{{end}}
+
+{{define "settings-install-confirm"}}{{template "modal-open" (dict "ID" "install-title" "Title" "Install update" "Variant" "bad" "Size" "sm")}}
+<form class="set-form" hx-post="{{.PostURL}}" hx-target="#modal-root" hx-swap="innerHTML">
+  <span class="tag tag-dark">{{.Version}}</span>
+  <p class="card-text">Install {{.Version}} ({{.Detail}}) over {{.Current}}?</p>
+  {{if .Older}}<p class="card-text"><strong>This is an older version than the one running.</strong></p>{{end}}
+  <p class="card-text">The hub restarts during the update and is unreachable for about a minute. A backup is taken first. If the new version does not start, the previous one is restored.</p>
+  {{template "checker"}}
+  <input type="hidden" name="version" value="{{.Version0}}">
+  <div class="modal-actions">
+    {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}
+    {{template "btn-card" (dict "Label" "Install now" "Type" "submit" "Icon" "arrow-right")}}
+  </div>
+</form>
+{{template "modal-close"}}{{end}}
+
+{{/* --- 4. Backup. Data: views.SettingsBackup --- */}}
+{{define "settings-backup"}}<section class="card set-card" id="set-backup" aria-labelledby="set-backup-h"{{if .OOB}} hx-swap-oob="true"{{end}}>
+  {{template "card-head" (dict "ID" "set-backup-h" "Title" "Backup")}}
+  <div class="card-body">
+    <div class="set-rows">
+      <div class="set-row"><span>Automatic</span><b>{{.Schedule}}</b></div>
+      <div class="set-row"><span>Last backup</span><b>{{.Last}}</b></div>
+    </div>
+    <form class="set-schedule" hx-post="/settings/backup/schedule" hx-target="#set-backup" hx-swap="outerHTML">
+      <div class="field"><label for="set-bk-time" class="t-label">Nightly at</label><input id="set-bk-time" name="time" class="input" type="text" inputmode="numeric" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" maxlength="5" placeholder="03:00" value="{{.Time}}" required></div>
+      <div class="field"><label for="set-bk-keep" class="t-label">Keep</label><input id="set-bk-keep" name="keep" class="input" type="number" inputmode="numeric" min="1" max="100" value="{{.Keep}}" required></div>
+      <button type="submit" class="btn-tool is-hot set-schedule-save">Save</button>
+    </form>
+    {{if .Backups}}<div class="set-list scroll-thin" tabindex="0" role="region" aria-label="Local backups">
+      {{range .Backups}}<div class="set-brow">
+        <div class="set-brow-main"><b>{{.When}}</b><span class="tag tag-light">{{.Reason}}</span></div>
+        <span class="set-brow-size">{{if .Readable}}{{.Size}}{{else}}other hub{{end}}</span>
+        {{if .RestoreURL}}<button type="button" class="btn-tool" hx-get="{{.RestoreURL}}" hx-target="#modal-root" hx-swap="innerHTML">Restore</button>{{end}}
+      </div>{{end}}
+    </div>{{end}}
+    {{with .Err}}{{template "form-error" .}}{{end}}
+    <div class="set-btnrow">
+      <button type="button" class="btn-card" hx-post="/settings/backup/run" hx-target="#set-backup" hx-swap="outerHTML"><span>Back up now</span>{{icon "database" 12}}</button>
+      <button type="button" class="btn-card btn-card-grey" hx-get="/settings/backup/download" hx-target="#modal-root" hx-swap="innerHTML"><span>Download backup</span>{{template "settings-download-icon"}}</button>
+    </div>
+    <p class="set-note">The download is encrypted with a passphrase you choose. Keep it away from the hub: it is the copy that survives a failed SD card. Restore it in the setup wizard of a fresh hub.</p>
+  </div>
+</section>{{end}}
+
+{{define "settings-backup-download"}}{{template "modal-open" (dict "ID" "bk-title" "Title" "Download backup" "Size" "sm")}}
+<form class="set-form" hx-post="{{.PostURL}}" hx-target="#modal-root" hx-swap="innerHTML" autocomplete="off">
+  <p class="card-text">The file is encrypted with this passphrase. Without it the backup cannot be restored, and nobody can recover it for you.</p>
+  <div class="field"><label for="bk-pass" class="t-label">Passphrase for the download</label><input id="bk-pass" name="passphrase" class="input" type="password" autocomplete="new-password" placeholder="min. 12 characters" minlength="12" required></div>
+  <div class="field"><label for="bk-pass2" class="t-label">Repeat the passphrase</label><input id="bk-pass2" name="confirm" class="input" type="password" autocomplete="new-password" required></div>
+  {{with .Error}}{{template "form-error" .}}{{end}}
+  <div class="modal-actions">
+    {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}
+    {{template "btn-card" (dict "Label" "Continue" "Type" "submit" "Icon" "arrow-right")}}
+  </div>
+</form>
+{{template "modal-close"}}{{end}}
+
+{{/* Step 2: the passphrase was accepted. A plain form posts it again (no script), the answer is the file. */}}
+{{define "settings-backup-ready"}}{{template "modal-open" (dict "ID" "bk-title" "Title" "Backup ready" "Variant" "hot" "Size" "sm")}}
+<form class="set-form" method="post" action="{{.PostURL}}">
+  <p class="card-text">The backup is created when you download it and encrypted with your passphrase.</p>
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <input type="hidden" name="passphrase" value="{{.Passphrase}}">
+  <div class="modal-actions">
+    {{template "btn-card" (dict "Label" "Close" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}
+    <button type="submit" class="btn-card"><span>Download backup</span>{{template "settings-download-icon"}}</button>
+  </div>
+</form>
+{{template "modal-close"}}{{end}}
+
+{{define "settings-restore-confirm"}}{{template "modal-open" (dict "ID" "restore-title" "Title" "Restore backup" "Variant" "bad" "Size" "sm")}}
+<form class="set-form" hx-post="{{.PostURL}}" hx-target="#modal-root" hx-swap="innerHTML">
+  <span class="tag tag-dark">{{.When}} · {{.Reason}}</span>
+  <p class="card-text">Restore this backup? The database, the certificates and the keys are replaced by their state at that time, and everything changed since is lost. The hub restarts, and you may have to sign in again.</p>
+  {{template "checker"}}
+  <input type="hidden" name="name" value="{{.Name}}">
+  <div class="modal-actions">
+    {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}
+    {{template "btn-card" (dict "Label" "Restore and restart" "Type" "submit" "Icon" "reboot")}}
+  </div>
+</form>
+{{template "modal-close"}}{{end}}
+
+{{/* Shown after a restore until a new hub process answers. Data: views.SettingsRestarting. */}}
+{{define "settings-restarting"}}{{$title := "Hub restarting…"}}{{if .Done}}{{$title = "Hub restarted"}}{{end}}{{template "modal-open" (dict "ID" "restart-title" "Title" $title "Variant" "hot" "Size" "sm")}}
+<div class="set-form"{{if not .Done}} hx-get="{{.PollURL}}" hx-trigger="every 2s" hx-target="#modal-root" hx-swap="innerHTML"{{end}} role="status">
+  {{if .Done}}<p class="card-text">The hub is back with the restored data.</p>
+  <div class="modal-actions">{{template "btn-card" (dict "Label" "Close" "Attrs" (attr "data-modal-close"))}}</div>
+  {{else}}<p class="card-text">Restarting the hub with the restored data. This page reconnects by itself. If your session is not part of the backup you are asked to sign in.</p>
+  <div class="bar job-bar is-busy" aria-hidden="true"><i></i></div>{{end}}
+</div>
+{{template "modal-close"}}{{end}}
+
+{{/* --- 5. Hosts & capabilities --- */}}
+{{define "settings-hosts"}}<section class="card set-card" id="set-hosts" aria-labelledby="set-hosts-h">
+  {{template "card-head" (dict "ID" "set-hosts-h" "Title" "Hosts & capabilities")}}
+  <div class="card-body">
+    {{template "tag" (dict "Tone" "dark" "Text" .Tag)}}
+    <div class="set-hostlist">{{range .Hosts}}{{template "settings-host" .}}{{end}}</div>
+  </div>
+</section>{{end}}
+
+{{define "settings-host"}}<div class="set-host" id="{{.DomID}}">
+  <div class="set-host-head">
+    <div class="set-host-id"><b>{{.Name}}</b><span class="card-text">{{.Address}} · {{.Role}}{{if not .Online}} · offline{{end}}</span></div>
+    {{with .RemoveURL}}<button type="button" class="btn-tool is-bad" hx-get="{{.}}" hx-target="#modal-root" hx-swap="innerHTML">Remove</button>{{end}}
+  </div>
+  <div class="tabs tabs-sm set-caps" role="group" aria-label="Capabilities of {{.Name}}">{{range .Caps}}{{if .PostURL}}<form hx-post="{{.PostURL}}" hx-target="#{{$.DomID}}" hx-swap="outerHTML"><input type="hidden" name="enabled" value="{{.Next}}"><button type="submit" class="tab" aria-pressed="{{if eq .State "on"}}true{{else}}false{{end}}" title="{{.Label}} is {{.State}}. {{if eq .State "on"}}Click to switch it off.{{else}}Click to switch it on.{{end}}"><span class="tab-label">{{.Label}}</span></button></form>{{else}}<button type="button" class="tab" aria-pressed="{{if eq .State "on"}}true{{else}}false{{end}}" disabled{{if eq .State "unavailable"}} title="Not offered by this agent"{{end}}><span class="tab-label">{{.Label}}</span></button>{{end}}{{end}}</div>
+  {{with .Hint}}<p class="set-note">{{.}}</p>{{end}}
+</div>{{end}}
+
+{{/* --- 6. Certificates. Data: views.SettingsCerts --- */}}
+{{define "settings-certs"}}<section class="card set-card" id="set-certs" aria-labelledby="set-certs-h"{{if .OOB}} hx-swap-oob="true"{{end}}>
+  {{template "card-head" (dict "ID" "set-certs-h" "Title" "Certificates")}}
+  <div class="card-body">
+    <div class="set-rows">
+      <div class="set-row"><span>Nexara CA</span><b{{with .CAFull}} title="SHA-256 {{.}}"{{end}}>{{.CA}}</b></div>
+      <div class="set-row"><span>Hub certificate</span><b>{{.Hub}}</b></div>
+      <div class="set-row"><span>Names</span><b>{{.Names}}</b></div>
+      <div class="set-row"><span>Agent certificates</span><b>{{.Agents}}</b></div>
+      {{range .Hosts}}<div class="set-row set-certhost{{if eq .State "expired"}} is-bad{{end}}"><span>{{.Name}}</span>
+        <span class="set-certhost-end"><span class="set-certhost-until">{{.Until}}</span>{{if .RenewURL}}<button type="button" class="btn-tool" hx-post="{{.RenewURL}}" hx-target="#set-certs" hx-swap="outerHTML" aria-label="Renew the certificate of {{.Name}}">Renew</button>{{else}}<span class="set-certhost-off">{{if .Online}}–{{else}}offline{{end}}</span>{{end}}</span></div>{{end}}
+    </div>
+    <a class="btn-card btn-card-grey" href="{{.DownloadURL}}" download="nexara-ca.crt"><span>Download CA certificate</span>{{template "settings-download-icon"}}</a>
+  </div>
+</section>{{end}}
+
+{{/* --- 7. Diagnostics --- */}}
+{{define "settings-diag"}}<section class="card set-card" id="set-diag" aria-labelledby="set-diag-h">
+  {{template "card-head" (dict "ID" "set-diag-h" "Title" "Diagnostics")}}
+  <div class="card-body">
+    <p class="card-text">{{.Text}}</p>
+    {{with .HubLogURL}}<div class="set-btnrow is-start"><button type="button" class="btn-tool is-hot" hx-get="{{.}}" hx-target="#modal-root" hx-swap="innerHTML">Hub log</button></div>{{end}}
+  </div>
+</section>{{end}}
+
+{{define "settings-hub-log"}}{{template "modal-open" (dict "ID" "log-title" "Title" "Hub log" "Size" "xl")}}
+<div class="set-log">
+  <div class="job-tags">
+    {{template "tag" (dict "Tone" "dark" "Text" (printf "%d of %d" .Shown .Total))}}
+    <div class="tabs tabs-sm" role="group" aria-label="Show">{{range .Filters}}{{template "tab" (dict "Label" .Label "Active" .On "Attrs" (attr "hx-get" .URL "hx-target" "#modal-root" "hx-swap" "innerHTML"))}}{{end}}</div>
+  </div>
+  <div class="log-terminal" tabindex="0" role="log" aria-label="Hub log, newest first">{{range .Lines}}<div class="log-line {{.Class}}"><span class="log-time">{{.Time}}</span><span class="log-level">{{.Level}}</span><span class="log-text">{{.Text}}</span></div>{{else}}<div class="log-line is-info">{{.Empty}}</div>{{end}}</div>
+  <p class="set-note">Newest first. The hub keeps the last 1000 records in memory; the journal holds the rest.</p>
+  <div class="modal-actions">
+    {{template "btn-card" (dict "Label" "Close" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}
+    {{range .Filters}}{{if .On}}{{template "btn-card" (dict "Label" "Refresh" "Icon" "arrow-right" "Attrs" (attr "hx-get" .URL "hx-target" "#modal-root" "hx-swap" "innerHTML"))}}{{end}}{{end}}
+  </div>
+</div>
+{{template "modal-close"}}{{end}}
+
+{{/* --- 8. Audit log --- */}}
+{{define "settings-audit"}}<section class="card set-card" id="set-audit" aria-labelledby="set-audit-h">
+  {{template "card-head" (dict "ID" "set-audit-h" "Title" "Audit log")}}
+  <div class="card-body">
+    {{template "tag" (dict "Tone" "light" "Text" .Tag)}}
+    <div class="set-rows">{{range .Rows}}<div class="set-row set-audit-row{{if .Bad}} is-bad{{end}}"><span class="set-audit-time">{{.Time}}</span><b class="set-audit-host">{{.Host}}</b><span class="set-audit-text">{{.Text}}</span></div>{{end}}</div>
+    {{template "btn-card" (dict "Label" "View all" "Variant" "grey" "Href" .AllURL "Boost" true "Icon" "arrow-right")}}
+  </div>
+</section>{{end}}
+
+{{/* --- Change passphrase --- */}}
+{{define "settings-passphrase"}}{{template "modal-open" (dict "ID" "pass-title" "Title" "Change passphrase" "Size" "sm")}}
+<form class="set-form" hx-post="{{.PostURL}}" hx-target="#modal-root" hx-swap="innerHTML" autocomplete="off">
+  <p class="card-text">All other sessions are signed out. Use at least 12 characters.</p>
+  <div class="field"><label for="pw-current" class="t-label">Current passphrase</label><input id="pw-current" name="current" class="input" type="password" autocomplete="current-password" required></div>
+  <div class="field"><label for="pw-new" class="t-label">New passphrase</label><input id="pw-new" name="passphrase" class="input" type="password" autocomplete="new-password" minlength="12" required></div>
+  <div class="field"><label for="pw-confirm" class="t-label">Repeat the new passphrase</label><input id="pw-confirm" name="confirm" class="input" type="password" autocomplete="new-password" required></div>
+  {{with .Error}}{{template "form-error" .}}{{end}}
+  <div class="modal-actions">
+    {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}
+    {{template "btn-card" (dict "Label" "Change passphrase" "Type" "submit" "Icon" "lock")}}
+  </div>
+</form>
+{{template "modal-close"}}{{end}}
+{{define "settings-nothing"}}{{end}}
