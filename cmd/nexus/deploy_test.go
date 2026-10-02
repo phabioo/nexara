@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/phabioo/nexara/internal/config"
+	"github.com/phabioo/nexara/internal/hub/update"
 )
 
 func deployFile(t *testing.T, rel ...string) string {
@@ -142,5 +143,93 @@ func TestScriptsAreValidShell(t *testing.T) {
 		if out, err := exec.Command(sh, "-n", path).CombinedOutput(); err != nil {
 			t.Errorf("%s: %v\n%s", path, err, out)
 		}
+	}
+}
+
+// The root helper (decision #50): the path unit watches exactly the file the
+// hub writes, the service runs the helper command, and the package ships,
+// enables and removes both.
+func TestUpdateUnits(t *testing.T) {
+	path := deployFile(t, "systemd", "nexus-update.path")
+	for _, want := range []string{
+		"PathExists=" + update.DefaultDataDir + "/" + update.UpdatesDirName + "/" + update.RequestFile,
+		"Unit=nexus-update.service",
+		"WantedBy=multi-user.target",
+	} {
+		if !strings.Contains(path, want) {
+			t.Errorf("nexus-update.path lacks %q", want)
+		}
+	}
+
+	svc := deployFile(t, "systemd", "nexus-update.service")
+	for _, want := range []string{
+		"Type=oneshot",
+		"ExecStart=/usr/bin/nexus update-apply\n",
+		"ConditionPathExists=" + update.DefaultDataDir + "/" + update.UpdatesDirName + "/" + update.RequestFile,
+		"StateDirectory=" + filepath.Base(update.DefaultStateDir),
+		"PrivateNetwork=true", "PrivateTmp=true", "ProtectHome=true", "NoNewPrivileges=true",
+		"RestrictAddressFamilies=AF_UNIX\n", "ProtectKernelModules=true",
+	} {
+		if !strings.Contains(svc, want) {
+			t.Errorf("nexus-update.service lacks %q", want)
+		}
+	}
+	// It must run as root (apt) and must not be enabled on its own.
+	for _, bad := range []string{"\nUser=", "\nGroup=", "[Install]", "ProtectSystem="} {
+		if strings.Contains(svc, bad) {
+			t.Errorf("nexus-update.service contains %q", bad)
+		}
+	}
+	if update.DefaultStateDir != "/var/lib/"+filepath.Base(update.DefaultStateDir) {
+		t.Errorf("state dir %s is not what StateDirectory= creates", update.DefaultStateDir)
+	}
+	// The hub may write the updates directory (ReadWritePaths of the hub unit).
+	if hub := deployFile(t, "systemd", "nexus.service"); !strings.Contains(hub, "ReadWritePaths="+update.DefaultDataDir+" ") {
+		t.Errorf("nexus.service does not allow writing %s", update.DefaultDataDir)
+	}
+}
+
+func TestPackagingShipsAndEnablesTheUpdateUnits(t *testing.T) {
+	pkg, err := os.ReadFile(filepath.Join("..", "..", "scripts", "package-deb.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, unit := range []string{"nexus-update.path", "nexus-update.service"} {
+		if n := strings.Count(string(pkg), "deploy/systemd/"+unit); n < 2 { // required-file check + install
+			t.Errorf("package-deb.sh mentions %s %d times, want the existence check and the install", unit, n)
+		}
+	}
+	if !strings.Contains(deployFile(t, "debian", "postinst"), `activate nexus-update.path "$2"`) {
+		t.Error("postinst does not enable nexus-update.path")
+	}
+	if !strings.Contains(deployFile(t, "debian", "prerm"), "stop_unit nexus-update.path") {
+		t.Error("prerm does not stop nexus-update.path")
+	}
+	post := deployFile(t, "debian", "postrm")
+	for _, want := range []string{"purge nexus.service grid-agent.service nexus-update.path", "/var/lib/nexus-update"} {
+		if !strings.Contains(post, want) {
+			t.Errorf("postrm lacks %q", want)
+		}
+	}
+}
+
+// install.sh keeps the verified package for the first update's rollback
+// (decision #50) exactly where and how the root update helper looks for it.
+func TestInstallShKeepsRollbackMaterial(t *testing.T) {
+	script := deployFile(t, "install.sh")
+	if !strings.Contains(script, "KEEP="+update.DefaultStateDir+"\n") {
+		t.Errorf("install.sh does not keep the package under %s", update.DefaultStateDir)
+	}
+	for _, want := range []string{
+		`install -m 0644 "$TMP/$DEB" "$TMP/SHA256SUMS" "$TMP/SHA256SUMS.sig" "$KEEP/installed.new/"`,
+		`mv "$KEEP/installed.new" "$KEEP/installed"`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("install.sh lacks %q", want)
+		}
+	}
+	// The copy follows a successful apt install, never precedes it.
+	if strings.Index(script, "KEEP=") < strings.Index(script, "apt-get install -y \"$TMP/$DEB\"") {
+		t.Error("rollback material is kept before the package is installed")
 	}
 }

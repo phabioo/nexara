@@ -26,6 +26,26 @@
   }
   function currentPath() { return window.location.pathname + window.location.search; }
 
+  // The request for the main area in flight: a navigation (boosted link, HX-Location, goHome) or a refresh. htmx
+  // syncs them on <body> (hx-sync on the links), so a second one would abort the first - and htmx reports every
+  // abort as an error in the console. Links therefore wait for the one in flight (see "Navigation queue" below),
+  // and everything that changes the page on its own (refreshes, goHome) waits for a navigation: a request that
+  // started for the old page must not land after the new one.
+  var mainXhr = null;
+  var mainPath = '';
+  var mainIsNav = false;
+  var supersededXhr = null; // a navigation nobody wants any more: it finishes, its page is not swapped in
+  function inFlight(x) { return !!x && x.readyState > 0 && x.readyState < 4; }
+  function busy() { return inFlight(mainXhr); }
+  function navInFlight() { return inFlight(mainXhr) && mainIsNav; }
+  document.addEventListener('htmx:beforeRequest', function (e) {
+    var d = e.detail;
+    if (!d || !d.xhr || !d.target || d.target.id !== 'main') { return; }
+    mainXhr = d.xhr;
+    mainIsNav = !isRefresh(d);
+    mainPath = (d.pathInfo && d.pathInfo.requestPath) || '';
+  }, true);
+
   // --- connection state: the body class drives the pink "reconnecting" band and live square ---
   function setLost(lost) {
     document.body.classList.toggle('is-lost', lost);
@@ -98,19 +118,26 @@
   function scheduleRefresh(withMain) {
     refreshMain = refreshMain || withMain;
     if (refreshTimer) { return; }
-    refreshTimer = setTimeout(function () {
-      var m = refreshMain;
-      refreshTimer = null;
-      refreshMain = false;
-      refresh(m && !shellLive());
-    }, REFRESH_MS);
+    refreshTimer = setTimeout(runRefresh, REFRESH_MS);
+  }
+
+  function runRefresh() {
+    // htmx queues a request that starts while a navigation is in flight and sends it afterwards, aimed at the
+    // main area and the regions of the page that is gone by then. The navigation brings everything up to date
+    // anyway, so wait for it.
+    if (navInFlight()) { refreshTimer = setTimeout(runRefresh, REFRESH_MS); return; }
+    var m = refreshMain;
+    refreshTimer = null;
+    refreshMain = false;
+    refresh(m && !shellLive());
   }
 
   // Leave a page whose host is gone (removed from another browser or by this one): continue at the overview.
   function goHome(host) {
-    setTimeout(function () {
+    setTimeout(function again() {
       // The remover's own browser already moved on with HX-Location; do not navigate twice.
       if (curHost() !== host || !window.htmx) { return; }
+      if (navInFlight()) { setTimeout(again, REFRESH_MS); return; }
       htmx.ajax('GET', '/', { target: '#main', select: '#main', swap: 'outerHTML', selectOOB: regions(), replace: 'true' });
     }, 400);
   }
@@ -151,8 +178,22 @@
     var target = d && d.target;
     if (!target || target.id !== 'main' || !d.xhr) { return; }
     var path = (d.pathInfo && d.pathInfo.requestPath) || '';
+    if (d.xhr === supersededXhr) {
+      d.shouldSwap = false;
+      d.isError = false;
+      return;
+    }
     if (isRefresh(d) && path !== currentPath()) {
       d.shouldSwap = false;
+      return;
+    }
+    // A host tab whose host was removed a moment ago: stay where we are and let the refresh drop the tab, instead of
+    // loading the plain "Not found" page over the whole app.
+    if (!isRefresh(d) && d.xhr.status === 404 && /^\/hosts\//.test(path)) {
+      d.shouldSwap = false;
+      d.isError = false;
+      showToast('Not found', 'This host is no longer linked');
+      scheduleRefresh(false);
       return;
     }
     var type = d.xhr.getResponseHeader('Content-Type') || '';
@@ -165,9 +206,32 @@
     }
   });
 
+  // The answer to a GET for another host than the one on screen is a late one: the operator moved on while it was
+  // on its way (a dialog, a page of the package list, a fragment of the old view). Its target may still exist
+  // (#modal-root, #toasts), so it would put the old host's content into the new host's view. Actions (POST) are
+  // different: their answer is the operator's feedback and names its host.
+  var HOST_PATH = /^\/hosts\/([^/?#]+)\//;
+  function requestHost(path) {
+    var m = HOST_PATH.exec(path || '');
+    if (!m) { return ''; }
+    try { return decodeURIComponent(m[1]); } catch (err) { return m[1]; }
+  }
+  document.addEventListener('htmx:beforeSwap', function (e) {
+    var d = e.detail;
+    var cfg = d && d.requestConfig;
+    if (!d || !d.target || d.target.id === 'main' || !cfg || cfg.verb !== 'get') { return; }
+    var host = requestHost(d.pathInfo && d.pathInfo.requestPath);
+    if (host && host !== 'new' && curHost() && host !== curHost()) {
+      d.shouldSwap = false;
+      d.isError = false;
+    }
+  });
+
   // After a navigation (not after a refresh): drop dialogs of the old page, scroll to the top, put the focus on
   // the new view's heading and announce it. A refresh keeps everything as it is.
   var announceTimer = null;
+  // The title is the same for every host of a view; name the host so that a switch is heard as one.
+  function announcement() { return document.title + (curHost() ? ' · ' + curHost() : ''); }
   function announce(text) {
     var live = document.getElementById('nx-announce');
     if (!live) { return; }
@@ -175,19 +239,22 @@
     clearTimeout(announceTimer);
     announceTimer = setTimeout(function () { live.textContent = text; }, 60);
   }
-  document.addEventListener('htmx:afterSwap', function (e) {
-    var main = e.target;
-    if (!(main instanceof Element) || main.id !== 'main' || isRefresh(e.detail)) { return; }
+  function dropDialogs() {
     Array.prototype.forEach.call(document.querySelectorAll('[data-modal]'), function (m) {
       if (m.parentNode) { m.parentNode.removeChild(m); }
     });
     closeSheets();
+  }
+  document.addEventListener('htmx:afterSwap', function (e) {
+    var main = e.target;
+    if (!(main instanceof Element) || main.id !== 'main' || isRefresh(e.detail)) { return; }
+    dropDialogs();
     main.scrollTop = 0;
     window.scrollTo(0, 0);
     var heading = main.querySelector('.view-title, .view-heading-title') || main;
     if (!heading.hasAttribute('tabindex')) { heading.setAttribute('tabindex', '-1'); }
     heading.focus({ preventScroll: true });
-    announce(document.title);
+    announce(announcement());
   });
 
   // Back and forward: htmx loads the page again (the history cache is off, the content is live) and swaps the
@@ -202,7 +269,14 @@
       ['data-host', 'data-view'].forEach(function (a) { main.setAttribute(a, fresh.getAttribute(a) || ''); });
     }
     htmx.swap(main || 'body', html, { swapStyle: 'none' }, { selectOOB: regions() });
+    // Same as after a navigation: nothing of the page we came from stays open.
+    dropDialogs();
+    if (main) { main.scrollTop = 0; }
+    window.scrollTo(0, 0);
+    announce(announcement());
   });
+  // A navigation that is still on its way must not land on top of the page the operator just went back to.
+  window.addEventListener('popstate', cancelWanted);
 
   // --- events of the stream ---------------------------------------------------------------------------------
   // The stream is not filtered by host: it stays open while the operator moves between hosts. Events about one
@@ -272,14 +346,108 @@
     if (keep) { htmx.swap(sink, keep, { swapStyle: 'none' }); }
   });
 
-  // --- host tabs: Q / E (and the key buttons) switch to the previous / next host ---
-  function stepHost(delta) {
-    var tabs = Array.prototype.slice.call(document.querySelectorAll('[data-host-tabs] a.tab'));
-    if (tabs.length < 2) { return; }
-    var cur = tabs.findIndex(function (t) { return t.classList.contains('on') || t.hasAttribute('aria-current'); });
-    var next = tabs[(Math.max(cur, 0) + delta + tabs.length) % tabs.length];
-    next.click();
+  // --- Navigation queue and host tabs. Q / E (and the key buttons) do exactly what a click on the neighbouring tab
+  // does: the tab links point at the same view of the other host (httpserver/layout.go). A click on a link while
+  // another request for the main area is on its way (a held key, quick clicks, a slow Pi) does not start a second
+  // request: it becomes "the page I want", the one in flight is dropped when it arrives (nobody sees a terminal open
+  // for a host that was only passed on the way), and the wanted page is requested right after. Presses of Q / E
+  // add up: the base of a press is the page asked for last, not the one still on screen. ---
+  var STEP_GAP_MS = 120;
+  var wantHref = '';  // the page the operator asked for last, until it has been requested
+  var wantTimer = null;
+  var wantAt = 0;
+  var passing = false; // our own click on the wanted link must reach htmx
+
+  function hostTabs() { return Array.prototype.slice.call(document.querySelectorAll('[data-host-tabs] a.tab')); }
+  function isOn(tab) { return tab.classList.contains('on') || tab.hasAttribute('aria-current'); }
+  function linkTo(href) {
+    return Array.prototype.find.call(document.querySelectorAll('a[hx-boost]'), function (a) { return a.getAttribute('href') === href; });
   }
+
+  function supersedeNav() { if (navInFlight()) { supersededXhr = mainXhr; } }
+
+  function cancelWanted() {
+    clearTimeout(wantTimer);
+    wantTimer = null;
+    wantHref = '';
+    supersedeNav();
+  }
+
+  function wantPage(href) {
+    wantHref = href;
+    supersedeNav();
+    if (wantTimer) { return; }
+    wantTimer = setTimeout(runWant, Math.max(0, wantAt + STEP_GAP_MS - Date.now()));
+  }
+
+  function runWant() {
+    wantTimer = null;
+    if (!wantHref) { return; }
+    if (busy()) { wantTimer = setTimeout(runWant, 30); return; }
+    var href = wantHref;
+    wantHref = '';
+    var link = linkTo(href);
+    if (!link || (link.closest('[data-host-tabs]') && isOn(link))) { return; } // already there
+    wantAt = Date.now();
+    passing = true;
+    try { link.click(); } finally { passing = false; }
+  }
+
+  // While the operator is stepping through the hosts the next view must not take the keyboard: a terminal that
+  // grabs the focus on open would swallow the following presses (and the held key would type "eeee" into the
+  // shell of the host just reached). <body data-stepping> tells shell.js to leave the focus alone; when the
+  // presses stop, "nx:stepend" lets it focus the terminal after all.
+  var STEP_IDLE_MS = 700;
+  var stepIdle = null;
+  function touchStepping() {
+    document.body.setAttribute('data-stepping', '');
+    clearTimeout(stepIdle);
+    stepIdle = setTimeout(function () {
+      document.body.removeAttribute('data-stepping');
+      document.dispatchEvent(new CustomEvent('nx:stepend'));
+    }, STEP_IDLE_MS);
+  }
+
+  function stepHost(delta) {
+    var tabs = hostTabs();
+    if (tabs.length < 2) { return; }
+    touchStepping();
+    var base = wantHref || (navInFlight() && mainXhr !== supersededXhr ? mainPath : '');
+    var cur = base ? tabs.findIndex(function (t) { return t.getAttribute('href') === base; }) : -1;
+    if (cur < 0) { cur = tabs.findIndex(isOn); }
+    wantPage(tabs[(Math.max(cur, 0) + delta + tabs.length) % tabs.length].getAttribute('href'));
+  }
+
+  document.addEventListener('click', function (e) {
+    if (passing || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) { return; }
+    var link = e.target instanceof Element ? e.target.closest('a[hx-boost]') : null;
+    if (!link) { return; }
+    // The tab of the host on screen is not a link to anywhere: following it would reload the view the operator is
+    // in (a terminal session would start over, the package list back at the top). It still cancels a switch that
+    // is on its way, so a click on it means "stay here".
+    var onTab = !!link.closest('[data-host-tabs]') && isOn(link);
+    if (!onTab && !busy() && !wantTimer && !wantHref) { return; } // nothing in the way: htmx follows the link
+    e.preventDefault();
+    e.stopPropagation();
+    if (onTab) { cancelWanted(); } else { wantPage(link.getAttribute('href')); }
+  }, true);
+
+  // The tab row is replaced by every switch and every refresh. A replacement starts scrolled to the left, which on a
+  // phone can hide the tab of the host on screen: keep the position and bring that tab into view.
+  var tabsScroll = 0;
+  function fitTabs(row) {
+    if (!row) { return; }
+    row.scrollLeft = tabsScroll;
+    var on = row.querySelector('.tab.on');
+    if (!on) { return; }
+    var a = on.getBoundingClientRect();
+    var r = row.getBoundingClientRect();
+    if (a.left < r.left) { row.scrollLeft -= r.left - a.left + 8; } else if (a.right > r.right) { row.scrollLeft += a.right - r.right + 8; }
+    tabsScroll = row.scrollLeft;
+  }
+  document.addEventListener('scroll', function (e) {
+    if (e.target instanceof Element && e.target.id === 'nx-tabs') { tabsScroll = e.target.scrollLeft; }
+  }, true);
 
   function isTyping(el) {
     if (!el) { return false; }
@@ -481,6 +649,17 @@
   // --- observe the page so fragments swapped in by htmx behave like server-rendered ones ---
   function init() {
     armToasts(document);
+    var bar = document.querySelector('.topbar');
+    if (bar) {
+      fitTabs(document.getElementById('nx-tabs'));
+      new MutationObserver(function (records) {
+        records.forEach(function (r) {
+          Array.prototype.forEach.call(r.addedNodes, function (n) {
+            if (n.nodeType === 1 && n.id === 'nx-tabs') { fitTabs(n); }
+          });
+        });
+      }).observe(bar, { childList: true });
+    }
     watchTerminals();
     // The whole body, not #toasts: an out-of-band swap may replace the #toasts element itself.
     new MutationObserver(function (records) {

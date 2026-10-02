@@ -228,7 +228,9 @@
           everOpened = true;
           logLine('Shell session opened on ' + hostLabel);
           sendResize();
-          term.focus();
+          // Not while the operator steps through the hosts with Q / E (nexus.js): the next press must still
+          // reach the page, not this terminal. "nx:stepend" below focuses it once the presses stop.
+          if (!document.body.hasAttribute('data-stepping')) { term.focus(); }
         };
         sock.onmessage = function (e) {
           if (e.data instanceof ArrayBuffer) { term.write(new Uint8Array(e.data)); }
@@ -292,6 +294,8 @@
         releaseMods();
         return out;
       }
+
+      me.focus = function () { term.focus(); };
 
       term.onData(function (data) {
         if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -406,6 +410,17 @@
   } else {
     onLoad(document.body);
   }
+
+  // The presses of Q / E stopped: the terminal that was left alone meanwhile takes the keyboard, unless the
+  // operator put it somewhere else (a field, a button) in the meantime.
+  document.addEventListener('nx:stepend', function () {
+    var me = session;
+    var active = document.activeElement;
+    if (!me || !me.focus || !me.root.isConnected) { return; }
+    // The page puts the focus on the view's heading (or <main>) after a navigation: that is "nowhere".
+    if (active && active !== document.body && active.id !== 'main' && !active.classList.contains('view-title')) { return; }
+    me.focus();
+  });
 
   // The view is replaced (navigation, history, refresh) ...
   document.addEventListener('htmx:beforeCleanupElement', function (e) {

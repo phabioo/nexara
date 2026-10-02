@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -30,6 +31,14 @@ type session struct {
 
 	// limited: the hub refused us with update_required; only agent.update is served.
 	limited bool
+
+	// Certificate renewal (renew.go).
+	renewMu   sync.Mutex
+	renewSeq  int
+	renewID   string
+	renewCh   chan protocol.Envelope
+	noRenewal atomic.Bool // the hub does not know cert.csr; stop asking on this connection
+	reconnect atomic.Bool // the connection was ended to switch certificates
 
 	jobMu sync.Mutex
 	job   *runningJob
@@ -124,6 +133,9 @@ func (s *session) start() {
 	s.spawn(s.writeLoop)
 	if !s.limited && s.a.has(protocol.CapMonitoring) {
 		s.spawn(s.metricsPump)
+	}
+	if !s.limited && s.a.certs != nil {
+		s.spawn(s.renewLoop)
 	}
 }
 
@@ -274,7 +286,13 @@ func (s *session) dispatch(env protocol.Envelope) {
 		}
 	case protocol.TypeAgentUpdate:
 		s.agentUpdate(env)
-	case protocol.TypeResult, protocol.TypeError, protocol.TypeHelloAck:
+	case protocol.TypeCertRenew:
+		s.certRenewMsg(env)
+	case protocol.TypeCertIssued:
+		s.deliverRenewal(env)
+	case protocol.TypeError:
+		s.deliverRenewal(env) // an answer to cert.csr, if we are waiting for one; never answered itself
+	case protocol.TypeResult, protocol.TypeHelloAck:
 		// Answers to nothing we asked; never answer them (no error ping-pong).
 	default:
 		s.fail(env.ID, protocol.CodeUnknownType, "unknown message type "+quoteShort(env.Type))

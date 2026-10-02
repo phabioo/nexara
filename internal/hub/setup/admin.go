@@ -10,6 +10,8 @@ import (
 	"net"
 	"os"
 	"time"
+
+	"github.com/phabioo/nexara/internal/buildinfo"
 )
 
 // Admin commands (decision #35).
@@ -18,6 +20,9 @@ const (
 	CmdUserReset = "user-reset"
 	// CmdLoginUnlock clears the login rate-limit counters (locked-out accounts and IPs).
 	CmdLoginUnlock = "login-unlock"
+	// CmdVersion is read-only: it answers with the running hub's version. The
+	// update helper uses it as health check after installing a new package.
+	CmdVersion = "version"
 )
 
 const (
@@ -38,6 +43,8 @@ type AdminResponse struct {
 	Message string     `json:"message"`
 	Code    string     `json:"code,omitempty"`
 	Expires *time.Time `json:"expires,omitempty"`
+	// Version is set for version only.
+	Version string `json:"version,omitempty"`
 }
 
 // AdminHandlers implement the admin commands; the caller wires them to Codes
@@ -82,6 +89,8 @@ func (h AdminHandlers) dispatch(ctx context.Context, cmd string) AdminResponse {
 			return AdminResponse{Message: err.Error()}
 		}
 		return AdminResponse{OK: true, Message: msg}
+	case CmdVersion:
+		return AdminResponse{OK: true, Version: buildinfo.Version, Message: buildinfo.String("nexus")}
 	default:
 		return AdminResponse{Message: "unknown command"}
 	}

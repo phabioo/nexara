@@ -62,7 +62,7 @@ Sizes: card header 14px, section label 11px, body 12–13px, micro text 8px/10px
 
 ## Layout (1440×900 reference, desktop)
 
-- **Top bar (72px):** left = pill group (lime segment with mark + node number, dark segment with online count, two light-grey segments: packages up-to-date, temperature; rounded 19px ends). Right = host tabs (Nexara Grid) with `Q`/`E` key buttons and a dashed "+ Host" button. Tiny micro text lines at the top.
+- **Top bar (72px):** left = pill group (lime segment with mark + node number, dark segment with online count, two light-grey segments: packages up-to-date, temperature; rounded 19px ends). Right = host tabs (Nexara Grid) with `Q`/`E` key buttons and a dashed "+ Host" button. A host tab opens the view that is on screen for that host (decision #49). Tiny micro text lines at the top.
 - **Sidebar (208px):** lime node card (title, uptime, `+` corner marks, big mark), nav (Overview / Packages / Shell; active = light grey, has-badge = lime + count box), host "portrait" card at bottom (pixel-art board on violet).
 - **Main:** one of three views.
 - **Bottom bar (44px):** left = last action log line (`>` in lime). Right = live indicator + host + IP + mark + NEXARA NEXUS wordmark. No game-style buttons.

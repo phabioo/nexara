@@ -77,9 +77,9 @@ func TestLayoutModel(t *testing.T) {
 	}
 
 	wantTabs := []views.HostTab{
-		{Name: "alpha", Href: "/hosts/alpha", Active: true, Badge: 1},
-		{Name: "Beta Pi", Href: "/hosts/beta", Offline: true, Reboot: true, Badge: 2},
-		{Name: "gamma", Href: "/hosts/gamma"},
+		{Name: "alpha", Href: "/hosts/alpha/packages", Active: true, Badge: 1},
+		{Name: "Beta Pi", Href: "/hosts/beta/packages", Offline: true, Reboot: true, Badge: 2},
+		{Name: "gamma", Href: "/hosts/gamma/packages"},
 	}
 	if len(got.Hosts) != len(wantTabs) {
 		t.Fatalf("tabs = %+v", got.Hosts)

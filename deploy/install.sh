@@ -134,6 +134,19 @@ NEXARA_RELEASE_PUBKEY
 		die "apt could not install the package. If dependencies are missing, run 'sudo apt-get update' and try again."
 	fi
 
+	# Keep the verified package as rollback material for the first update from
+	# Settings (decision #50): the root update helper reinstalls it if a new
+	# version does not come up, and checks its signature again before use.
+	KEEP=/var/lib/nexus-update
+	if install -d -m 0755 "$KEEP" && rm -rf "$KEEP/installed.new" &&
+		install -d -m 0755 "$KEEP/installed.new" &&
+		install -m 0644 "$TMP/$DEB" "$TMP/SHA256SUMS" "$TMP/SHA256SUMS.sig" "$KEEP/installed.new/" &&
+		rm -rf "$KEEP/installed" && mv "$KEEP/installed.new" "$KEEP/installed"; then
+		:
+	else
+		say "Note: could not keep a copy of the package for rollbacks; the first update from Settings will need 'sudo nexus update-apply --no-rollback'."
+	fi
+
 	# --- report ------------------------------------------------------------------------
 
 	have_journal() { command -v journalctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; }

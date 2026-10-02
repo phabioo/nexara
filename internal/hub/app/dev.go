@@ -53,6 +53,8 @@ type DevOptions struct {
 	Now        func() time.Time
 	HashParams auth.HashParams
 	Demo       demo.Options
+	// SkipHistoryBackfill leaves the demo history empty (tests).
+	SkipHistoryBackfill bool
 }
 
 // DevReady describes a running dev hub.
@@ -155,6 +157,10 @@ func RunDev(ctx context.Context, o DevOptions) error {
 
 	hub := demo.New(o.Demo)
 	defer hub.Close()
+	hist, err := newDevHistory(ctx, st, hub, cfg, now, log, o.SkipHistoryBackfill)
+	if err != nil {
+		return err
+	}
 
 	// The commit works in the demo as well; there is no nexus.yaml to write
 	// and no own agent to link.
@@ -188,6 +194,7 @@ func RunDev(ctx context.Context, o DevOptions) error {
 	for _, fn := range []func(){
 		func() { hub.Start(runCtx) },
 		func() { codes.Run(runCtx) },
+		func() { hist.Run(runCtx) },
 	} {
 		wg.Add(1)
 		go func() {

@@ -1,0 +1,51 @@
+# Nexara Nexus update helper. Shipped in the .deb as
+# /lib/systemd/system/nexus-update.service and started by nexus-update.path,
+# never enabled on its own. It runs as root because it installs a package;
+# the hub process itself never gets root (decision #50).
+#
+# The helper trusts nothing the hub wrote: it verifies the signed SHA256SUMS
+# and the checksum itself, backs up, runs apt-get, checks that the new hub
+# answers and reinstalls the previous package if it does not.
+[Unit]
+Description=Nexara Nexus update helper
+Documentation=https://github.com/phabioo/nexara
+ConditionPathExists=/var/lib/nexus/updates/request.json
+# A broken helper must not loop on a request it cannot consume.
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/nexus update-apply
+# Backup (minutes), apt-get with the dpkg lock wait (up to 5 minutes), the
+# 60 second health check, and the same again for a rollback.
+TimeoutStartSec=45min
+# Root-owned rollback material and work area: /var/lib/nexus-update.
+StateDirectory=nexus-update
+StateDirectoryMode=0755
+UMask=0022
+
+# Hardening, as far as installing a package allows. ProtectSystem cannot be
+# used: dpkg writes /usr, /etc and /var/lib/dpkg.
+#  - PrivateNetwork: installing a local .deb needs no network. The admin
+#    socket (health check) is a filesystem socket and stays reachable, and
+#    so does systemd's private socket under /run that the maintainer
+#    scripts use for `systemctl`. A package that gains a new dependency
+#    fails here instead of silently fetching it from a mirror; the hub
+#    would roll back. Remove this line in a drop-in if you want that.
+#  - NoNewPrivileges, Protect*, Restrict*: nothing in the nexus maintainer
+#    scripts needs them.
+PrivateNetwork=true
+PrivateTmp=true
+ProtectHome=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
