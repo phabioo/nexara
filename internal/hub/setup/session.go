@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 )
@@ -71,6 +72,10 @@ type SessionOptions struct {
 	InsecureCookie bool
 	// Wizard is passed to every new wizard.
 	Wizard WizardOptions
+	// UploadDir is where backup files uploaded for the restore are kept until
+	// they are restored (the hub's backup directory, not a RAM-backed
+	// /tmp). Empty means os.TempDir().
+	UploadDir string
 }
 
 // Session is the single active setup session.
@@ -79,6 +84,9 @@ type Session struct {
 	lastSeen time.Time
 	// Wizard holds the collected, not yet persisted setup data.
 	Wizard *Wizard
+
+	umu    sync.Mutex
+	upload *Upload // pending backup of the restore path, see restore.go
 }
 
 // Sessions holds at most one setup session; a new unlock replaces the old one.
@@ -87,6 +95,8 @@ type Sessions struct {
 	idle   time.Duration
 	secure bool
 	wizard WizardOptions
+	upDir  string
+	limits *RestoreLimits
 
 	mu  sync.Mutex
 	cur *Session
@@ -94,9 +104,13 @@ type Sessions struct {
 
 // NewSessions creates an empty session holder.
 func NewSessions(o SessionOptions) *Sessions {
-	s := &Sessions{now: o.Now, idle: o.Idle, secure: !o.InsecureCookie, wizard: o.Wizard}
+	s := &Sessions{now: o.Now, idle: o.Idle, secure: !o.InsecureCookie, wizard: o.Wizard, upDir: o.UploadDir}
 	if s.now == nil {
 		s.now = time.Now
+	}
+	s.limits = NewRestoreLimits(s.now)
+	if s.upDir == "" {
+		s.upDir = os.TempDir()
 	}
 	if s.idle <= 0 {
 		s.idle = SessionIdle
@@ -118,8 +132,12 @@ func (s *Sessions) Unlock() (string, *Session, error) {
 		Wizard:   NewWizard(s.wizard),
 	}
 	s.mu.Lock()
+	old := s.cur
 	s.cur = sess
 	s.mu.Unlock()
+	if old != nil {
+		old.DropUpload()
+	}
 	return token, sess, nil
 }
 
@@ -140,6 +158,7 @@ func (s *Sessions) Lookup(token string) (*Session, bool) {
 	}
 	now := s.now()
 	if now.Sub(s.cur.lastSeen) >= s.idle {
+		s.cur.DropUpload()
 		s.cur = nil
 		return nil, false
 	}
@@ -159,9 +178,19 @@ func (s *Sessions) FromRequest(r *http.Request) (*Session, bool) {
 // Clear ends the active session (after commit or on explicit cancel).
 func (s *Sessions) Clear() {
 	s.mu.Lock()
+	old := s.cur
 	s.cur = nil
 	s.mu.Unlock()
+	if old != nil {
+		old.DropUpload()
+	}
 }
+
+// UploadDir is the directory for uploaded backup files.
+func (s *Sessions) UploadDir() string { return s.upDir }
+
+// RestoreLimits returns the attempt limits of the restore path.
+func (s *Sessions) RestoreLimits() *RestoreLimits { return s.limits }
 
 // Cookie builds the session cookie for a token. It is a browser-session cookie
 // (no Max-Age); the server enforces the idle timeout.

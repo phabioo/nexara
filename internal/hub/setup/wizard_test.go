@@ -138,21 +138,26 @@ func TestTwoFactor(t *testing.T) {
 	}
 	w.SubmitTrust()
 	w.SubmitOperator(validOperator())
-	var ve ValidationError
-	if err := w.SubmitTwoFactor(false, " "); !errors.As(err, &ve) {
-		t.Fatalf("err = %v", err)
+	for _, secret := range []string{"", " ", "\t\n"} {
+		var ve ValidationError
+		if err := w.SubmitTwoFactor(secret); !errors.As(err, &ve) || ve["totp"] == "" {
+			t.Fatalf("secret %q: err = %v, want a totp validation error", secret, err)
+		}
+		if w.Done(StepTwoFactor) {
+			t.Fatalf("secret %q completed the step", secret)
+		}
 	}
-	if err := w.SubmitTwoFactor(false, "JBSWY3DPEHPK3PXP"); err != nil {
+	if err := w.SubmitTwoFactor(" JBSWY3DPEHPK3PXP "); err != nil {
 		t.Fatal(err)
 	}
-	if w.res.TOTPSecret != "JBSWY3DPEHPK3PXP" || w.res.TOTPSkipped {
-		t.Fatalf("res = %+v", w.res)
+	if w.res.TOTPSecret != "JBSWY3DPEHPK3PXP" || w.Current() != StepHub {
+		t.Fatalf("res = %+v, current %v", w.res, w.Current())
 	}
-	if err := w.SubmitTwoFactor(true, "ignored"); err != nil {
-		t.Fatal(err)
-	}
-	if w.res.TOTPSecret != "" || !w.res.TOTPSkipped {
-		t.Fatalf("skip kept secret: %+v", w.res)
+	// Going back and confirming another secret replaces the first one.
+	must(t, w.Goto(StepTwoFactor))
+	must(t, w.SubmitTwoFactor("KRSXG5CTMVRXEZLU"))
+	if w.res.TOTPSecret != "KRSXG5CTMVRXEZLU" {
+		t.Fatalf("secret not replaced: %+v", w.res)
 	}
 }
 
@@ -175,7 +180,7 @@ func TestNavigation(t *testing.T) {
 		t.Fatalf("current = %v", w.Current())
 	}
 	must(t, w.SubmitOperator(validOperator()))
-	must(t, w.SubmitTwoFactor(true, ""))
+	must(t, w.SubmitTwoFactor("JBSWY3DPEHPK3PXP"))
 	must(t, w.SubmitHub(validHub()))
 	if w.Current() != StepSelfLink {
 		t.Fatalf("current = %v", w.Current())
@@ -196,7 +201,7 @@ func TestNavigation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.OperatorID != "fabio" || res.Hub.Name != "frpi5" || !res.TOTPSkipped || !res.SelfLink.Enabled {
+	if res.OperatorID != "fabio" || res.Hub.Name != "frpi5" || res.TOTPSecret != "JBSWY3DPEHPK3PXP" || !res.SelfLink.Enabled {
 		t.Fatalf("result = %+v", res)
 	}
 	for w.Back() > StepTrust {
@@ -241,7 +246,7 @@ func TestDraft(t *testing.T) {
 		t.Error("the draft must never carry the passphrase")
 	}
 	// The wizard itself still has it for the final Result.
-	must(t, w.SubmitTwoFactor(true, ""))
+	must(t, w.SubmitTwoFactor("JBSWY3DPEHPK3PXP"))
 	must(t, w.SubmitHub(validHub()))
 	must(t, w.SubmitSelfLink(SelfLinkInput{Enabled: true, Capabilities: []string{"shell", "monitoring"}}))
 	res, err := w.Result()
@@ -253,5 +258,20 @@ func TestDraft(t *testing.T) {
 	d.SelfLink.Capabilities[0] = "bogus"
 	if got := w.Draft().SelfLink.Capabilities[0]; got == "bogus" {
 		t.Error("draft shares the capability slice with the wizard")
+	}
+}
+
+func TestHubStepIsLockedUntilTwoFactorIsConfirmed(t *testing.T) {
+	w := NewWizard(WizardOptions{})
+	must(t, w.SubmitTrust())
+	must(t, w.SubmitOperator(validOperator()))
+	if err := w.Goto(StepHub); !errors.Is(err, ErrStepLocked) {
+		t.Fatalf("hub before two-factor: %v", err)
+	}
+	if err := w.SubmitHub(validHub()); !errors.Is(err, ErrStepLocked) {
+		t.Fatalf("SubmitHub before two-factor: %v", err)
+	}
+	if _, err := w.Result(); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("Result: %v", err)
 	}
 }

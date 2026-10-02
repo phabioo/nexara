@@ -1,0 +1,62 @@
+{{/* Two-factor enrollment of an operator who has none yet (decision #51): QR, manual key, 6-digit confirm.
+     Data: httpserver.totpView. Auth shell, because the session may reach nothing else. */}}
+{{define "layout"}}auth{{end}}
+
+{{define "head"}}{{if gt .RefreshSeconds 0}}<meta http-equiv="refresh" content="{{.RefreshSeconds}};url=/">{{end}}{{end}}
+
+{{define "content"}}
+<span class="login-xh login-xh-tl" aria-hidden="true"></span>
+<span class="login-xh login-xh-tr" aria-hidden="true"></span>
+<span class="login-xh login-xh-bl" aria-hidden="true"></span>
+<span class="login-xh login-xh-br" aria-hidden="true"></span>
+<div class="auth-band">
+  {{template "ticker" (dict "Variant" "blue" "Text" "restricted access · nexara grid")}}
+  <div class="auth-band-body">
+    <div class="micro auth-band-micro">[operator access] / nexara grid / second factor</div>
+    {{template "lockup" (dict)}}
+    {{template "lockup-sub" (dict "Tagline" "SYSTEM MANAGEMENT CONSOLE")}}
+  </div>
+  {{template "ticker" (dict "Variant" "blue" "Text" "restricted access · nexara grid")}}
+</div>
+
+<div class="auth-card" role="region" aria-labelledby="totpTitle">
+  {{template "corners"}}
+  {{template "card-head" (dict "ID" "totpTitle" "Title" "Two-factor login" "Variant" "hot")}}
+
+  {{if eq .Step "enroll"}}
+  <form class="card-body" method="post" action="/account/totp" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    {{template "tag" (dict "Tone" "dark" "Text" "Required")}}
+    <p class="card-text">Two-factor login is required for every operator{{with .Operator}}, including <b>{{.}}</b>{{end}}. Scan the code with an authenticator app and confirm it with the current 6-digit code.</p>
+    {{template "checker"}}
+    <div class="totp-enroll">
+      <div class="totp-qr">{{.QR}}<span class="hint">Scan with your app</span></div>
+      <div class="totp-key field"><span class="t-label">Or enter the key manually</span><div class="setup-code-box is-plain setup-key">{{.Key}}</div></div>
+    </div>
+    <div class="field">
+      <label for="t-code" class="t-label">6-digit code</label>
+      <input id="t-code" name="code" class="input input-code" type="text" inputmode="numeric" pattern="[0-9 ]*" autocomplete="one-time-code" placeholder="000000" maxlength="7" autofocus>
+    </div>
+    {{with .Error}}{{template "form-error" .}}{{end}}
+    <button type="submit" class="btn-card"><span>Enable and continue</span>{{icon "arrow-right"}}</button>
+    <button type="submit" formaction="/logout" formnovalidate class="setup-link totp-signout">Sign out instead</button>
+    <p class="card-text hint">Lost your authenticator later? An operator can start over with <b>sudo nexus user reset</b> on the host.</p>
+  </form>
+  {{end}}
+
+  {{if eq .Step "granted"}}
+  <div class="card-body" aria-live="polite">
+    {{template "tag" (dict "Tone" "lime" "Text" "Two-factor on")}}
+    <div class="auth-granted">
+      <span class="crosshair-mark" aria-hidden="true"></span>
+      <span class="auth-granted-title t-serif">Access granted</span>
+      <span class="crosshair-mark" aria-hidden="true"></span>
+    </div>
+    <p class="card-text">Two-factor login is on for <b>{{.Operator}}</b>. Your other sessions were signed out.</p>
+    {{template "checker"}}
+    <a class="btn-card btn-card-lime" href="/"><span>Enter Nexus</span>{{icon "arrow-right"}}</a>
+  </div>
+  {{end}}
+</div>
+<div class="micro auth-foot-micro">auth_gate_01<br>[argon2id · totp]</div>
+{{end}}

@@ -35,6 +35,14 @@ type Config struct {
 	// OnAuditError is called when an audit entry cannot be written (may be nil).
 	// The package itself never logs.
 	OnAuditError func(error)
+
+	// DemoPasswordOnly lets operators without TOTP use the whole UI instead of
+	// being sent to the enrollment page (decision #51). It exists only for
+	// `nexus dev --demo --seed`, whose seeded operator would otherwise need an
+	// authenticator for a throw-away demo. NewService refuses it together with
+	// Secure cookies: the production hub always serves TLS with Secure
+	// cookies, so there is no configuration in which this can be switched on.
+	DemoPasswordOnly bool
 }
 
 // ConfigFromHub fills a Config from the hub configuration.
@@ -53,6 +61,7 @@ type Service struct {
 	store      *store.Store
 	csrfKey    []byte // HKDF subkey of secret.key for the CSRF HMAC
 	sealKey    []byte // HKDF subkey of secret.key for AES-GCM sealing
+	enrollKey  []byte // HKDF subkey of secret.key for the pending TOTP secrets of enrollment
 	params     HashParams
 	now        func() time.Time
 	sessions   *Manager
@@ -60,6 +69,9 @@ type Service struct {
 	limiter    *loginLimits
 	totp       *TOTPVerifier
 	onAuditErr func(error)
+
+	passwordOnly bool // Config.DemoPasswordOnly
+	enrollMu     sync.Mutex
 
 	chMu       sync.Mutex
 	challenges map[string]*challenge
@@ -111,10 +123,15 @@ func NewService(cfg Config) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	enrollKey, err := deriveKey(cfg.SecretKey, hkdfInfoEnroll)
+	if err != nil {
+		return nil, err
+	}
 	s := &Service{
 		store:      cfg.Store,
 		csrfKey:    csrfKey,
 		sealKey:    sealKey,
+		enrollKey:  enrollKey,
 		params:     cfg.HashParams,
 		now:        cfg.Now,
 		sessions:   NewManager(cfg.Store, cfg.IdleTimeout, cfg.Now),
@@ -124,6 +141,12 @@ func NewService(cfg Config) (*Service, error) {
 		onAuditErr: cfg.OnAuditError,
 		challenges: map[string]*challenge{},
 		hashSem:    make(chan struct{}, 2),
+	}
+	if cfg.DemoPasswordOnly {
+		if s.cookies.Secure() {
+			return nil, errors.New("auth: DemoPasswordOnly is only allowed with plain-HTTP (non-Secure) cookies")
+		}
+		s.passwordOnly = true
 	}
 	s.limiter.load = s.knownLoginsFromAudit
 	// The store has no bulk user delete yet; use it as soon as it grows one.
@@ -222,6 +245,9 @@ const (
 	ActionSecondFact  = "login.2fa"
 	ActionLogout      = "logout"
 	ActionUserReset   = "user.reset"
+	// ActionTOTPEnroll records that an operator set up two-factor login
+	// after signing in with the passphrase only (decision #51).
+	ActionTOTPEnroll = "user.totp_enroll"
 
 	// ActionShellSessionEnded records that an open shell was closed by the
 	// hub because the operator's session ended (the grid writes shell.close).

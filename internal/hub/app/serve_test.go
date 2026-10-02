@@ -5,19 +5,25 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/pquerna/otp/totp"
+
+	"github.com/phabioo/nexara/internal/config"
 	"github.com/phabioo/nexara/internal/hub/auth"
 	"github.com/phabioo/nexara/internal/hub/setup"
+	"github.com/phabioo/nexara/internal/hub/store"
 	"github.com/phabioo/nexara/internal/pki"
 )
 
@@ -122,6 +128,35 @@ func (h *hubProc) get(path string) *http.Response {
 	t := h.t
 	t.Cleanup(func() { resp.Body.Close() })
 	return resp
+}
+
+var (
+	pageKeyRe   = regexp.MustCompile(`setup-key">([A-Z2-7 ]+)<`)
+	pageTokenRe = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
+)
+
+// enrollTOTP walks the enrollment page of the signed-in operator like a
+// browser: read the key, confirm it with a code, keep the rotated session.
+func (h *hubProc) enrollTOTP() {
+	h.t.Helper()
+	resp := h.get("/account/totp")
+	page, _ := io.ReadAll(resp.Body)
+	key, tok := pageKeyRe.FindSubmatch(page), pageTokenRe.FindSubmatch(page)
+	if resp.StatusCode != http.StatusOK || key == nil || tok == nil {
+		h.t.Fatalf("enrollment page: status %d, key found %v, token found %v", resp.StatusCode, key != nil, tok != nil)
+	}
+	code, err := totp.GenerateCode(strings.ReplaceAll(string(key[1]), " ", ""), time.Now())
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	post, err := h.client.PostForm(h.base+"/account/totp", url.Values{"csrf_token": {string(tok[1])}, "code": {code}})
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	post.Body.Close()
+	if post.StatusCode != http.StatusOK {
+		h.t.Fatalf("POST /account/totp = %d", post.StatusCode)
+	}
 }
 
 func TestServeSetupMode(t *testing.T) {
@@ -265,6 +300,16 @@ func TestServeWithOperatorSignsIn(t *testing.T) {
 	if session == nil || !session.Secure || !session.HttpOnly || session.SameSite != http.SameSiteStrictMode {
 		t.Errorf("session cookie = %+v, want Secure HttpOnly SameSite=Strict", session)
 	}
+	// The operator has no two-factor login (a v0.1 installation): the production
+	// wiring has no bypass, so the session reaches the enrollment page only
+	// (decision #51).
+	if resp := h.get("/"); resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/account/totp" {
+		t.Errorf("GET / without two-factor login = %d -> %q, want 303 -> /account/totp", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	if resp := h.get("/events"); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("/events without two-factor login = %d, want 403", resp.StatusCode)
+	}
+	h.enrollTOTP()
 	if resp := h.get("/"); resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusUnauthorized {
 		t.Errorf("signed-in GET / = %d, want an authenticated answer", resp.StatusCode)
 	}
@@ -330,5 +375,30 @@ func TestServeStartupErrors(t *testing.T) {
 	err = Serve(context.Background(), ServeOptions{ConfigPath: cfg, Logger: log})
 	if err == nil || !strings.Contains(err.Error(), "cannot listen") {
 		t.Errorf("busy port: %v", err)
+	}
+}
+
+// The hub's auth configuration never enables the demo exemption from two-factor
+// login (decision #51); only RunDev sets it, and auth.NewService refuses it
+// together with Secure cookies.
+func TestAuthConfigHasNoTwoFactorBypass(t *testing.T) {
+	for _, secure := range []bool{true, false} {
+		c := authConfig(config.DefaultHub(), nil, make([]byte, auth.SecretKeyLen), secure, auth.HashParams{}, time.Now, slog.New(slog.DiscardHandler))
+		if c.DemoPasswordOnly {
+			t.Errorf("authConfig(secure=%v) enables DemoPasswordOnly", secure)
+		}
+	}
+	c := authConfig(config.DefaultHub(), nil, make([]byte, auth.SecretKeyLen), true, auth.HashParams{}, time.Now, slog.New(slog.DiscardHandler))
+	c.DemoPasswordOnly = true
+	// A TLS hub (Secure cookies) cannot be built with the exemption.
+	st, err := store.Open(filepath.Join(t.TempDir(), "nexus.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	c.Store = st
+	c.SecretKey = make([]byte, auth.SecretKeyLen)
+	if _, err := auth.NewService(c); err == nil {
+		t.Error("auth.NewService accepted DemoPasswordOnly with Secure cookies")
 	}
 }

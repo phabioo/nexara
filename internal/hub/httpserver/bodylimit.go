@@ -18,9 +18,15 @@ const bodyReadTimeout = 30 * time.Second
 // WebSocket and the agent endpoints (WebSocket connection and its mTLS
 // helpers). A read deadline on those would end the connection, because
 // net/http cancels a request whose background read times out.
+//
+// The setup restore upload is exempt as well: it is a backup file of hundreds
+// of megabytes at most, which neither fits maxFormBody nor the fixed deadline.
+// Its handler sits behind the setup session, applies its own size cap and a
+// rolling idle timeout, and checks the CSRF token before reading the file.
 func exemptFromBodyLimits(p string) bool {
 	return p == "/events" || strings.HasPrefix(p, "/events/") || strings.HasSuffix(p, "/shell/ws") ||
-		p == "/grid/connect" || strings.HasPrefix(p, "/grid/agent/")
+		p == "/grid/connect" || strings.HasPrefix(p, "/grid/agent/") ||
+		isRestoreUpload(p)
 }
 
 // bodyLimits gives every request that has a body a read deadline and a size

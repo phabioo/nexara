@@ -1,7 +1,7 @@
 {{/* First-run setup wizard: one page template for all seven steps (internal/hub/httpserver/view_setup.go).
      Data: httpserver.setupPage. The step bodies live in partials/setup.html. */}}
 {{define "layout"}}auth{{end}}
-{{define "head"}}<script src="{{static "js/setup.js"}}" defer></script>{{end}}
+{{define "head"}}<script src="{{static "js/setup.js"}}" defer></script>{{if eq .Key "restore-done"}}<script src="{{static "js/restore.js"}}" defer></script>{{end}}{{end}}
 {{define "auth-top"}}{{template "ticker" (dict "Variant" "blue" "Text" "first run · nexara nexus setup")}}{{end}}
 {{define "content"}}
 <div class="auth-setup-side">
@@ -23,6 +23,9 @@
       {{if .LeadShort}}<p class="card-text"><span class="lead-wide">{{.Lead}}</span><span class="lead-short">{{.LeadShort}}</span></p>{{else}}<p class="card-text">{{.Lead}}</p>{{end}}
       {{template "checker"}}
       {{if eq .Key "unlock"}}{{template "setup-unlock" .}}
+      {{else if eq .Key "restore"}}{{template "setup-restore" .}}
+      {{else if eq .Key "restore-preview"}}{{template "setup-restore-preview" .}}
+      {{else if eq .Key "restore-done"}}{{template "setup-restore-done" .}}
       {{else if eq .Key "trust"}}{{template "setup-trust" .}}
       {{else if eq .Key "operator"}}{{template "setup-operator" .}}
       {{else if eq .Key "two-factor"}}{{template "setup-two-factor" .}}

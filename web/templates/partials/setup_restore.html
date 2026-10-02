@@ -1,0 +1,30 @@
+{{/* Restore from a backup inside the setup wizard (httpserver/view_setup_restore.go). Data: httpserver.setupPage.
+     The upload form is multipart; its csrf_token field comes first because the handler checks it before it reads the file. */}}
+
+{{define "setup-restore"}}<form class="setup-form" method="post" action="/setup/restore/upload" enctype="multipart/form-data" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <div class="field"><label for="f-bk" class="t-label">Backup file (.nxbk)</label><input id="f-bk" name="backup" class="input input-file" type="file" accept=".nxbk"></div>
+  <div class="field"><label for="f-bkp" class="t-label">Backup passphrase</label><input id="f-bkp" name="passphrase" class="input" type="password" autocomplete="off"></div>
+  <span class="hint">Restores operators, hosts, history, certificates and settings. Grid Agents reconnect on their own. Up to {{.Restore.MaxSize}}.</span>
+  {{template "setup-errors" .}}
+  <div class="setup-actions">
+    <a class="btn-card btn-card-grey" href="/setup/unlock"><span>Back</span></a>
+    <button type="submit" class="btn-card"><span>{{.NextLabel}}</span>{{icon "arrow-right" 16}}</button>
+  </div>
+</form>{{end}}
+
+{{define "setup-restore-preview"}}<div class="setup-form">
+  <div class="setup-rows">{{range .Restore.Rows}}<div class="setup-row"><span>{{.Label}}</span><b>{{.Value}}</b></div>{{end}}</div>
+  <span class="hint">The setup code stops working once the backup is restored.</span>
+  {{template "setup-errors" .}}
+  <div class="setup-actions">
+    <form method="post" action="/setup/restore/cancel" class="setup-actions-form"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button type="submit" class="btn-card btn-card-grey"><span>Cancel</span></button></form>
+    <form method="post" action="/setup/restore/confirm" class="setup-actions-form setup-actions-main"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button type="submit" class="btn-card"><span>{{.NextLabel}}</span>{{icon "arrow-right" 16}}</button></form>
+  </div>
+</div>{{end}}
+
+{{define "setup-restore-done"}}<div class="setup-form" aria-live="polite" data-restore-wait{{if .Restore.AutoRestart}} data-restore-auto{{end}}>
+  <div class="setup-banner"><span class="setup-banner-cross" aria-hidden="true"></span><span class="setup-banner-title t-serif">{{.Banner}}</span><span class="setup-banner-cross" aria-hidden="true"></span></div>
+  <p class="hint" data-restore-status>{{if .Restore.AutoRestart}}Nexus restarts…{{else}}Restart Nexus to use the restored data.{{end}}</p>
+  <div class="setup-actions"><a class="btn-card btn-card-lime" href="/login"><span>Go to sign-in</span>{{icon "arrow-right" 16}}</a></div>
+</div>{{end}}
