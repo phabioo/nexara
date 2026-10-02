@@ -77,3 +77,23 @@ func (s *Store) ListAudit(ctx context.Context, limit int) ([]AuditEntry, error) 
 	}
 	return out, rows.Err()
 }
+
+// AuditKeepNewest is the number of newest audit entries PruneAudit never
+// deletes, however old they are (a quiet hub keeps its last trace).
+const AuditKeepNewest = 1000
+
+// PruneAudit deletes audit entries older than before, except the newest keep
+// entries (ordered like ListAudit). It returns the number of deleted rows.
+func (s *Store) PruneAudit(ctx context.Context, before time.Time, keep int) (int64, error) {
+	if keep < 0 {
+		keep = 0
+	}
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM audit_log WHERE ts < ?
+		 AND id NOT IN (SELECT id FROM audit_log ORDER BY ts DESC, id DESC LIMIT ?)`,
+		unix(before), keep)
+	if err != nil {
+		return 0, fmt.Errorf("store: prune audit: %w", err)
+	}
+	return res.RowsAffected()
+}

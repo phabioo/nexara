@@ -12,10 +12,8 @@ import (
 	"github.com/phabioo/nexara/internal/hub/store"
 )
 
-// backupSettings is the settings store for backup.time and backup.keep. The
-// settings table comes with the history work; until it is wired here the
-// backup runs with its defaults (03:00, keep 7).
-func backupSettings(*store.Store) backup.Settings { return nil }
+// backupSettings is the settings store for backup.time and backup.keep.
+func backupSettings(st *store.Store) backup.Settings { return st.Settings() }
 
 // newBackupService wires the backup service of a running hub: snapshots come
 // from the open store, audit entries go to the audit log.

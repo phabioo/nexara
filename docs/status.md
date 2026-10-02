@@ -1,8 +1,8 @@
 # Umsetzungsstand v0.1
 
-Stand: 01.10.2026 · nach Welle 6 · CI grün (Linux amd64 + arm64, `go test -race`)
+Stand: 02.10.2026 · nach Welle 7 · CI grün (Linux amd64 + arm64, `go test -race`)
 
-Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbeitenden Sonnet-Agents, jedes Ergebnis vom Orchestrator geprüft, gemergt und per GitHub Actions getestet. **Pausiert nach Welle 6** (Feedback aus dem ersten Pi-Test) auf Wunsch. `v0.1.0-rc1` läuft auf frpi5; Welle 6 liegt auf dem Session-Branch (PR nach `main`).
+Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbeitenden Sonnet-Agents, jedes Ergebnis vom Orchestrator geprüft, gemergt und per GitHub Actions getestet. **v0.2 in Arbeit:** Welle 7 (Unterbau) fertig, Welle 8 (Ansichten) als Nächstes. Das 2-Wochen-Gate für v0.1 wurde auf Wunsch übersprungen; rc2 läuft weiter auf frpi5.
 
 ## Fertig
 
@@ -32,6 +32,7 @@ Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbei
 | 4 | Install & Paket | `deploy/`, `cmd/nexus/uninstall.go`, `internal/hub/app/uninstall.go` | systemd-Units (Hub gehärtet, `RuntimeDirectory=nexus`), Maintainer-Skripte (Benutzer `nexus`, Verzeichnisse, Configs, Self-Link-Agent), `install.sh` (Signatur + Prüfsumme, Ausgabe URL, Setup-Code, Fingerprint), `nexus uninstall [--purge]` |
 | 5 | Sicherheits-Fixes | siehe `docs/security-review-v0.1.md` | Review ohne kritische/hohe Befunde; behoben: Streams enden mit der Session, Body-Zeitlimit, Login-Sperre pro Konto+IP, HSTS, `__Host-`-Cookies, HKDF-Teilschlüssel; zweistufiger SSH-Link mit Fingerprint-Bestätigung (#41), keine stille Host-Übernahme (#46), längere Codes, Token nicht mehr in `ps`; CA mit NameConstraints, 5 Jahre (#45); Host entfernen mit Widerruf (#47); Go 1.26.8 + `govulncheck` in CI, Release-Environment, `nexus.db` 0600, kein Self-Update paketierter Agents, Setup-Sperre pro IP, mehr Audit, `nexus user unlock`, mehr systemd-Härtung |
 | 6 | Pi-Feedback | `nexus.js`, `layout*.go`, `sse.go`, Templates, `nexus.css`, `demo/large.go` | Navigation ohne Neuladen (htmx boost + OOB-Regionen, eine SSE-Verbindung, Ereignisse tauschen Fragmente, #48); Ansichten passen ab 1024 px in die Fensterhöhe, Listen scrollen in der Karte; Paketliste seitenweise (60) mit Updates zuerst; Services: fehlgeschlagene zuerst, inaktive gedimmt; Laufbänder lückenlos bei jeder Breite; `nexus dev --demo --demo-large` |
+| 7 | v0.2-Unterbau | `history`, `backup`, `update`, `grid/renew.go`, `store` | Host-Tabs bleiben in der Ansicht (#54); Verlauf (`metrics_1m/1h`, Aggregation, Aufbewahrung, Abfragen 24 h/7 d/30 d), Tabelle `settings`, Audit-Aufräumen; Agent-Zertifikate erneuern sich über mTLS (#47); verschlüsselte Backups (nächtlich, vor Updates, Download, Restore, #55); Self-Update mit Root-Helfer `nexus-update.path/.service`, Signaturprüfung, Rollback (#50); `install.sh` legt das Paket als Rollback-Material ab |
 
 Zusätzlich vom Orchestrator: `internal/hub/agentbin` (eingebettete Agent-Binaries), CI-Workflow `.github/workflows/ci.yml`, Entscheidungen #27–#42 in `decisions.md`.
 
@@ -39,9 +40,8 @@ Umfang: 224 Go-Dateien, davon 98 Testdateien.
 
 ## Nächste Schritte
 
-1. **Erstes Release:** Nach dem Merge Tag `v0.1.0-rc1` vom eigenen Rechner pushen (die Session darf keine Tags pushen). Der Release-Job wartet auf die Freigabe im Environment `release` (Secret `NEXARA_RELEASE_SIGNING_KEY` liegt dort, #43).
-2. **Test auf den Pis** durch den Nutzer: `curl -fsSL https://github.com/phabioo/nexara/releases/download/v0.1.0-rc1/install.sh | NEXARA_BASE_URL=https://github.com/phabioo/nexara/releases/download/v0.1.0-rc1 sudo -E sh` (Pre-Releases zählen nicht als „latest“), Gate: 2 Wochen stabil.
-3. **v0.2:** Agent-Zertifikate über den mTLS-Kanal erneuern (#47, vor Ablauf nach 1 Jahr), Audit-Ansicht, Backup/Restore, Selbst-Update, TOTP verpflichtend.
+1. **Welle 8 – v0.2-Ansichten:** Settings (8 Karten laut Mockup; 2FA fest „Required“ #51, Session-Timeout fest 12 h #52, Capabilities nur Shell/Packages #31), History-Ansicht, Audit-Log (Karte + Vollansicht), TOTP-Pflicht beim Login (#51), „Restore from backup“ im Setup (danach Neustart, #55).
+2. **Welle 9:** Sicherheits-Review v0.2, Fixes, Release `v0.2.0`.
 
 ## Offene Punkte
 

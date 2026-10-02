@@ -212,3 +212,24 @@ func TestPackagingShipsAndEnablesTheUpdateUnits(t *testing.T) {
 		}
 	}
 }
+
+// install.sh keeps the verified package for the first update's rollback
+// (decision #50) exactly where and how the root update helper looks for it.
+func TestInstallShKeepsRollbackMaterial(t *testing.T) {
+	script := deployFile(t, "install.sh")
+	if !strings.Contains(script, "KEEP="+update.DefaultStateDir+"\n") {
+		t.Errorf("install.sh does not keep the package under %s", update.DefaultStateDir)
+	}
+	for _, want := range []string{
+		`install -m 0644 "$TMP/$DEB" "$TMP/SHA256SUMS" "$TMP/SHA256SUMS.sig" "$KEEP/installed.new/"`,
+		`mv "$KEEP/installed.new" "$KEEP/installed"`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("install.sh lacks %q", want)
+		}
+	}
+	// The copy follows a successful apt install, never precedes it.
+	if strings.Index(script, "KEEP=") < strings.Index(script, "apt-get install -y \"$TMP/$DEB\"") {
+		t.Error("rollback material is kept before the package is installed")
+	}
+}

@@ -50,6 +50,8 @@ func startDev(t *testing.T, seed bool) *devProc {
 			Seed: seed, Console: d.console, Logger: log, Listener: ln, HashParams: cheapParams,
 			Ready: func(r DevReady) { ready <- r },
 			Demo:  demo.Options{TimeScale: 0.001},
+			// The backfill has its own test; it would only slow these down.
+			SkipHistoryBackfill: true,
 		})
 	}()
 	select {

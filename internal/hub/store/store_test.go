@@ -56,14 +56,14 @@ func TestMigrationsIdempotent(t *testing.T) {
 	if got, err := s.GetUserByID(ctx, u.ID); err != nil || got.OperatorID != "alice" {
 		t.Fatalf("data lost: %+v %v", got, err)
 	}
-	for _, tbl := range []string{"users", "sessions", "hosts", "enroll_tokens", "audit_log"} {
+	for _, tbl := range []string{"users", "sessions", "hosts", "enroll_tokens", "audit_log", "metrics_1m", "metrics_1h", "settings"} {
 		if _, err := s.db.ExecContext(ctx, "SELECT 1 FROM "+tbl+" LIMIT 1"); err != nil {
 			t.Errorf("table %s: %v", tbl, err)
 		}
 	}
-	for _, tbl := range []string{"metrics_1m", "metrics_1h", "alerts"} {
+	for _, tbl := range []string{"alerts"} {
 		if _, err := s.db.ExecContext(ctx, "SELECT 1 FROM "+tbl); err == nil {
-			t.Errorf("table %s must not exist in v0.1", tbl)
+			t.Errorf("table %s must not exist before v0.3", tbl)
 		}
 	}
 }

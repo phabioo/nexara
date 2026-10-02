@@ -13,6 +13,8 @@
 //     transaction open across calls into other packages.
 //   - Not-found and uniqueness problems are reported with the sentinel errors
 //     ErrNotFound and ErrExists (use errors.Is).
+//   - History (metrics_1m, metrics_1h; metrics.go) and key-value settings
+//     (settings.go, key namespace documented there) arrived with schema 2.
 //   - The schema version is tracked in PRAGMA user_version. Migrations are
 //     embedded files migrations/NNNN_name.sql, applied in order, one
 //     transaction each. New tables/columns need a new migration file; never
