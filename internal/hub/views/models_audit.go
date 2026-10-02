@@ -31,7 +31,7 @@ type AuditGroup struct {
 // writes belongs to at most one group; actions without a group (for example
 // "audit.prune") show up only in the unfiltered list.
 var AuditGroups = []AuditGroup{
-	{Key: "signin", Label: "Sign-in", Actions: []string{"login", "login.locked", "login.2fa", "logout", "user.reset", "admin.user_reset", "admin.login_unlock"}},
+	{Key: "signin", Label: "Sign-in", Actions: []string{"login", "login.locked", "login.2fa", "logout", "user.passphrase", "user.totp_enroll", "user.reset", "admin.user_reset", "admin.login_unlock"}},
 	{Key: "setup", Label: "Setup", Actions: []string{"admin.setup_code"}, Prefixes: []string{"setup."}},
 	{Key: "hosts", Label: "Hosts", Actions: []string{"agent.update"}, Prefixes: []string{"host.", "enroll."}},
 	{Key: "packages", Label: "Packages & jobs", Prefixes: []string{"job."}},
@@ -362,6 +362,10 @@ var auditFormats = map[string]auditForms{
 	"login.locked":        {OK: "Sign-in locked for {user} after repeated failures", Denied: "Sign-in locked for {user} after repeated failures"},
 	"login.2fa":           {OK: "{who} passed the two-factor check", Denied: "Two-factor code refused for {user}", Error: "Two-factor check failed for {user}"},
 	"logout":              {OK: "{who} signed out"},
+	"user.passphrase":     {OK: "{who} changed the passphrase", Denied: "Passphrase change refused for {user}", Error: "Changing the passphrase failed for {user}"},
+	"user.totp_enroll":    {OK: "{who} set up two-factor login", Denied: "Two-factor setup code refused for {user}", Error: "Two-factor setup failed for {user}"},
+	"backup.schedule":     {OK: "{who} changed the backup schedule ({detail})", Error: "Changing the backup schedule failed"},
+	"host.capabilities":   {OK: "Capability on {host}: {detail}", Error: "Switching a capability on {host} failed", Denied: "Switching a capability on {host} refused"},
 	"user.reset":          {OK: "All operators were removed (reset)", Error: "Operator reset failed"},
 	"admin.setup_code":    {OK: "A new setup code was issued from the console", Error: "Issuing a setup code failed"},
 	"admin.user_reset":    {OK: "Operators were reset from the console", Error: "Resetting operators from the console failed"},

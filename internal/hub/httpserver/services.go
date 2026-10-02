@@ -2,6 +2,9 @@ package httpserver
 
 import (
 	"context"
+	"crypto/x509"
+	"log/slog"
+	"time"
 
 	"github.com/phabioo/nexara/internal/hub/backup"
 	"github.com/phabioo/nexara/internal/hub/grid"
@@ -26,8 +29,35 @@ type Services struct {
 	// CA is the hub's certificate authority (Settings › Certificates).
 	CA *pki.CA
 	// Restart stops the hub so systemd starts it again on restored data
-	// (decision #55). Nil means restarting is not possible (tests, demo).
+	// (decision #55). Nil means restarting is not possible (tests, demo); the
+	// Settings view then offers no restore.
 	Restart func()
+	// Caps switches capabilities of a host on and off (Settings › Hosts &
+	// capabilities). Nil shows the capabilities read-only.
+	Caps grid.CapabilityController
+	// Logs is the hub's recent log (Settings › Diagnostics). Nil hides the
+	// hub log button.
+	Logs LogSource
+	// ServerCert returns the hub's current TLS certificate (Settings ›
+	// Certificates: expiry and names). Nil, or an error, shows "not available".
+	ServerCert func() (*x509.Certificate, error)
+	// HubHost tells whether a host is the device the hub runs on ("Hub +
+	// agent"). Nil uses a host name / loopback address match.
+	HubHost func(grid.HostInfo) bool
+}
+
+// LogRecord is one line of the hub log kept for the Diagnostics card. Text
+// already holds the message and its attributes, formatted and cleaned.
+type LogRecord struct {
+	Time  time.Time
+	Level slog.Level
+	Text  string
+}
+
+// LogSource gives the recent hub log.
+type LogSource interface {
+	// Records returns the retained records, newest first.
+	Records() []LogRecord
 }
 
 // SettingsStore is the settings table (store.KV implements it).

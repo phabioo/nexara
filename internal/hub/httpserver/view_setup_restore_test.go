@@ -156,7 +156,7 @@ type mpPart struct {
 	data           []byte
 }
 
-func multipartBody(t *testing.T, parts ...mpPart) (body []byte, contentType string) {
+func restoreMultipart(t *testing.T, parts ...mpPart) (body []byte, contentType string) {
 	t.Helper()
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
@@ -195,7 +195,7 @@ func (b *setupBrowser) uploadAs(file []byte, pass string, extra ...reqOpt) *http
 
 func (b *setupBrowser) uploadParts(parts ...mpPart) *httptest.ResponseRecorder {
 	b.t.Helper()
-	body, ct := multipartBody(b.t, parts...)
+	body, ct := restoreMultipart(b.t, parts...)
 	return b.do(http.MethodPost, setupRestoreUpload, nil, func(r *http.Request) {
 		r.Body = readerCloser{bytes.NewReader(body)}
 		r.ContentLength = int64(len(body))
@@ -435,7 +435,7 @@ func TestSetupRestoreUploadCSRF(t *testing.T) {
 		})
 	}
 	t.Run("a header token is not enough", func(t *testing.T) {
-		body, ct := multipartBody(t, pass, file)
+		body, ct := restoreMultipart(t, pass, file)
 		rec := b.do(http.MethodPost, setupRestoreUpload, nil, func(r *http.Request) {
 			r.Body = readerCloser{bytes.NewReader(body)}
 			r.ContentLength = int64(len(body))

@@ -73,6 +73,9 @@ func RunDev(ctx context.Context, o DevOptions) error {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
+	// Settings › Diagnostics shows the recent log of the dev hub.
+	logRing := NewLogRing(LogRingSize)
+	log = slog.New(logRing.Tee(log.Handler()))
 	console := o.Console
 	if console == nil {
 		console = io.Discard
@@ -180,16 +183,25 @@ func RunDev(ctx context.Context, o DevOptions) error {
 	if err != nil {
 		return fmt.Errorf("cannot load templates: %w", err)
 	}
+	capHub := newDevCapHub(hub, st, log, now)
+	seedDevLog(logRing, now())
+	services, err := devSettingsServices(devSettingsArgs{
+		Dir: dir, TLSDir: tlsDir, Store: st, CA: ca, History: hist, Hub: capHub, Logs: logRing,
+		Now: now, Log: log, SeedBackup: !o.SkipHistoryBackfill,
+	})
+	if err != nil {
+		return err
+	}
 	srv, err := httpserver.New(httpserver.Options{
 		Auth:         authSvc,
 		Setup:        httpserver.SetupDeps{Codes: codes, Sessions: sessions, Mode: mode, Commit: cm.Commit, CA: ca},
-		Hub:          hub,
+		Hub:          capHub,
 		Enroller:     hub,
 		Renderer:     renderer,
 		Static:       web.Static,
 		SSHPublicKey: func() string { return DevSSHPublicKey },
-		// Backup and updates are wired by the views that need them in the demo.
-		Services:      httpserver.Services{History: hist, Settings: st.Settings(), Store: st, CA: ca},
+		// Backup, updates, certificates and capabilities of the demo: dev_settings.go.
+		Services:      services,
 		Logger:        log.With("component", "http"),
 		SecureCookies: secure,
 		Now:           now,

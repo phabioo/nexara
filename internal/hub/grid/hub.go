@@ -56,7 +56,11 @@ type HostInfo struct {
 	// Latency is the round-trip time of the last hub<->agent ping (shown in
 	// the top bar, e.g. "4 MS"); 0 means unknown (offline or not measured yet).
 	Latency      time.Duration
-	Capabilities []string // enabled capability names (protocol.Cap*)
+	Capabilities []string // enabled capability names (protocol.Cap*): offered by the agent and not switched off
+	// DisabledCapabilities are the capabilities the agent offers but the
+	// operator has switched off in the hub (Settings). A capability in neither
+	// list is not offered by the agent.
+	DisabledCapabilities []string
 	// UpdateRequired is true when the agent is too old to be accepted and needs
 	// the manual "Update required" action.
 	UpdateRequired bool

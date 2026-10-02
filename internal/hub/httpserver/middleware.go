@@ -281,9 +281,9 @@ func (s *Server) csrf(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, maxFormBody)
+		r.Body = http.MaxBytesReader(w, r.Body, bodyCap(p))
 		submitted := r.Header.Get(auth.CSRFHeader)
-		if submitted == "" {
+		if submitted == "" && p != uploadPathUpdate { // a big upload is never parsed for a token: the header or nothing
 			// Only the body is consulted; a token in the URL would end up in logs.
 			submitted = r.PostFormValue(auth.CSRFFormField)
 		}
