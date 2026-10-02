@@ -55,6 +55,9 @@ type Options struct {
 	// DefaultRetentionDays is the hour retention while the setting
 	// history.retention_days is unset: storage.history.hour_days of nexus.yaml.
 	DefaultRetentionDays int
+	// Location is the hub's time zone (hub.timezone); the History view labels
+	// its time axis with it. Nil means time.Local.
+	Location *time.Location
 }
 
 // Service aggregates, stores and serves the metrics history.
@@ -68,6 +71,7 @@ type Service struct {
 	grace           time.Duration
 	minuteRetention time.Duration
 	defaultDays     int
+	loc             *time.Location
 
 	flushMu sync.Mutex // serializes flushes and forget (writes happen outside mu)
 	mu      sync.Mutex // guards open, pending, maintHour, lastAuditPrune
@@ -88,6 +92,7 @@ func New(o Options) *Service {
 	s := &Service{
 		st: o.Store, hub: o.Hub, log: o.Logger, now: o.Now, tick: o.Ticks,
 		grace: o.FlushGrace, minuteRetention: o.MinuteRetention, defaultDays: o.DefaultRetentionDays,
+		loc:  o.Location,
 		open: make(map[bucketKey]*bucket),
 	}
 	if s.log == nil {
@@ -95,6 +100,9 @@ func New(o Options) *Service {
 	}
 	if s.now == nil {
 		s.now = time.Now
+	}
+	if s.loc == nil {
+		s.loc = time.Local
 	}
 	if s.grace <= 0 {
 		s.grace = DefaultFlushGrace
@@ -107,6 +115,13 @@ func New(o Options) *Service {
 	}
 	return s
 }
+
+// Location is the time zone to show timestamps of the history in.
+func (s *Service) Location() *time.Location { return s.loc }
+
+// Now is the service's clock. Callers that issue several queries for one page
+// take it once, so all series share the same time grid.
+func (s *Service) Now() time.Time { return s.now() }
 
 // Run aggregates events until ctx ends, then flushes the open minute and
 // returns. Database problems are logged and retried at the next check.

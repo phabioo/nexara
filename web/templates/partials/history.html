@@ -1,0 +1,46 @@
+{{/* History view fragments. */}}
+
+{{/* The part of the view that refreshes itself. Data: views.HistoryCharts. A request with HX-Target
+     "hist-charts" gets exactly this fragment, whose root carries the next poll. */}}
+{{define "history-charts"}}<div id="hist-charts" class="hist-charts" data-state="{{.State}}"{{with .PollURL}} hx-get="{{.}}" hx-trigger="every {{$.PollEvery}}" hx-target="this" hx-swap="outerHTML" hx-sync="this:replace"{{end}}>
+  {{with .Notice}}<div class="notice-bad" role="status"><span>{{.}}</span></div>{{end}}
+  {{if eq .State "ok"}}
+  <div class="hist-grid hist-grid-main">
+    {{range .Charts}}{{template "history-card" .}}{{end}}
+  </div>
+  {{with .Disks}}<div class="hist-grid hist-grid-disks">
+    {{range .}}{{template "history-card" .}}{{end}}
+  </div>{{end}}
+  {{else}}
+  <div class="ov-offline">
+    <div class="card ov-offline-card">
+      {{template "corners"}}
+      {{if eq .State "unavailable"}}{{template "card-head" (dict "Title" "History is not available" "Variant" "bad")}}{{else}}{{template "card-head" (dict "Title" "No history yet" "Variant" "hot")}}{{end}}
+      <div class="card-body">
+        {{template "tag" (dict "Tone" "dark" "Text" "Nexara Grid")}}
+        <p class="card-text">{{.Message}}</p>
+      </div>
+    </div>
+  </div>
+  {{end}}
+</div>{{end}}
+
+{{/* One chart card. Data: views.HistoryChart. */}}
+{{define "history-card"}}<div class="tile hist-card t-{{.Tone}}" data-chart="{{.Key}}">
+  <div class="tile-strip"><b><span>{{.Title}}</span></b><span class="tile-pixels" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
+  <div class="hist-body">
+    <div class="hist-head">
+      <span class="hist-now t-display">{{.Now}}{{with .Unit}}<span class="hist-unit"> {{.}}</span>{{end}}</span>
+      <span class="hist-stats">{{.Stats}}{{with .Stats2}}<span class="hist-stats-2">{{.}}</span>{{end}}</span>
+    </div>
+    <div class="hist-plot">
+      <svg viewBox="0 0 300 100" preserveAspectRatio="none" role="img" aria-label="{{.Label}}">
+        {{with .Area}}<path class="hist-area" d="{{.}}"/>{{end}}
+        {{with .Line}}<path class="hist-line" d="{{.}}"/>{{end}}
+        {{with .Line2}}<path class="hist-line hist-line-2" d="{{.}}"/>{{end}}
+      </svg>
+      {{with .Empty}}<span class="hist-empty">{{.}}</span>{{end}}
+    </div>
+    <div class="hist-axis"><span>{{.X0}}</span><span class="hist-note">{{.Note}}</span><span>{{.XMid}}</span><span>{{.X1}}</span></div>
+  </div>
+</div>{{end}}
