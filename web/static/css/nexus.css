@@ -1455,6 +1455,64 @@ svg { flex: none; }
 /* --- end view: history --- */
 
 /* === view: audit === */
+.audit-view { min-width: 0; }
+.audit-back { gap: 8px; }
+.audit-back-icon { display: inline-flex; transform: rotate(180deg); }
+.audit-bar { display: flex; flex-direction: column; gap: 8px; flex: none; }
+.audit-bar-tabs { display: flex; flex-wrap: wrap; gap: 6px 20px; }
+.audit-tabs-group { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.audit-tabs-group > span { font-size: 11px; letter-spacing: .06em; color: var(--muted); }
+.audit-bar-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.audit-bar-fields .field { flex: 0 1 180px; }
+.audit-bar-fields .search { flex: 1 1 260px; width: auto; }
+.audit-select { height: 32px; background: #18191b; border: 1px solid #2c2f32; font-size: 13px; }
+.audit-select:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.audit-tab { cursor: pointer; }
+.audit-tab:has(input:checked) { background: var(--lime); color: var(--ink); }
+.audit-tab:has(input:focus-visible) { outline: 2px solid var(--text); outline-offset: 2px; }
+.audit-card { flex: 1 1 auto; min-height: 320px; }
+.audit-results { overflow-y: auto; overscroll-behavior: contain; gap: 6px; }
+.audit-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.audit-meta .tag { align-self: center; }
+.audit-list { display: flex; flex-direction: column; }
+.audit-empty { margin: 0; padding: 14px 0; font-family: var(--font-mono); font-size: 12px; color: var(--card-note); }
+.audit-day {
+  padding: 10px 0 4px; font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--card-note);
+}
+.audit-row { border-top: 1px solid var(--card-line); font-family: var(--font-mono); font-size: 11.5px; color: var(--card-text); }
+.audit-day + .audit-row { border-top-color: transparent; }
+.audit-sum {
+  display: flex; align-items: flex-start; gap: 0; padding: 7px 0; cursor: pointer; list-style: none;
+}
+.audit-sum::-webkit-details-marker { display: none; }
+.audit-sum:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.audit-row:hover > .audit-sum { background: rgba(255, 255, 255, .22); }
+.audit-time { width: 72px; flex: none; }
+.audit-host { width: 100px; flex: none; font-weight: 700; overflow-wrap: anywhere; padding-right: 6px; }
+.audit-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.audit-sum .tag { align-self: flex-start; flex: none; height: 18px; margin-left: 8px; font-size: 10px; }
+.audit-row.is-error .audit-text { color: var(--pink-deep); }
+.audit-raw { margin: 0 0 8px; padding: 8px 10px; display: grid; gap: 4px; background: var(--card-head); font-size: 11px; }
+.audit-raw > div { display: flex; gap: 10px; min-width: 0; }
+.audit-raw dt { width: 72px; flex: none; color: var(--card-note); }
+.audit-raw dd { margin: 0; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.audit-more { display: flex; padding: 10px 0 2px; }
+.audit-more .btn-card { margin-top: 0; }
+.audit-more .btn-card:disabled { opacity: .7; }
+@media (min-width: 1024px) {
+  .audit-view { flex: 1 1 0; min-height: 560px; }
+  .audit-card { min-height: 0; overflow: hidden; }
+}
+@media (max-width: 767.98px) {
+  .audit-bar-fields .field { flex: 1 1 100%; }
+  .audit-bar-fields .search { flex: 1 1 100%; }
+  .audit-time { width: 72px; }
+  .audit-host { flex: 1 1 0; width: auto; min-width: 0; }
+  .audit-sum { flex-wrap: wrap; row-gap: 2px; }
+  .audit-text { flex: 1 1 100%; order: 3; padding-top: 2px; }
+  .audit-sum .tag { margin-left: auto; order: 2; }
+}
 /* --- end view: audit --- */
 
 /* === view: auth v0.2 (totp enrollment, setup restore) === */
