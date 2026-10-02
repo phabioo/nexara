@@ -44,7 +44,7 @@ func (s *Server) layout(r *http.Request, active string, host *grid.HostInfo) vie
 		snap, ok := s.hub.Snapshot(h.ID)
 		tab := views.HostTab{
 			Name:    hostLabel(h),
-			Href:    hostURL(h.Name),
+			Href:    hostViewURL(active, h.Name),
 			Offline: !h.Online,
 			Reboot:  h.RebootRequired,
 		}
@@ -108,6 +108,21 @@ func hostLabel(h grid.HostInfo) string {
 
 func hostURL(name string) string { return "/hosts/" + url.PathEscape(name) }
 
+// hostViewURL is the page of the view active (the nav key) for a host. The host tabs and the Q/E keys use it, so
+// switching hosts stays in the view on screen: the packages list of the next host, the terminal of the next host,
+// the overview of the next host. It carries no filter or search term: a filter chip that makes sense for one host
+// (updates) can be empty on the next, and the plain URL is what a reload or the history entry reproduces.
+// Anything but packages and shell (the overview, pages that are not host views) goes to the host's overview.
+func hostViewURL(active, name string) string {
+	switch active {
+	case "packages":
+		return hostURL(name) + "/packages"
+	case "shell":
+		return hostURL(name) + "/shell"
+	}
+	return hostURL(name)
+}
+
 // hostNav is views.DefaultNav with the per-host links filled in, so the selected
 // host survives a click on the navigation; without a host the host-bound
 // entries point at the overview.
@@ -119,15 +134,10 @@ func hostNav(updates int, host *grid.HostInfo) []views.NavItem {
 			if host != nil {
 				nav[i].Href = hostURL(host.Name)
 			}
-		case "packages":
+		case "packages", "shell":
 			nav[i].Href = "/"
 			if host != nil {
-				nav[i].Href = hostURL(host.Name) + "/packages"
-			}
-		case "shell":
-			nav[i].Href = "/"
-			if host != nil {
-				nav[i].Href = hostURL(host.Name) + "/shell"
+				nav[i].Href = hostViewURL(nav[i].Key, host.Name)
 			}
 		}
 	}
