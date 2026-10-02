@@ -177,8 +177,8 @@ func TestAuditPaging(t *testing.T) {
 		t.Fatalf("more: %d", more.Code)
 	}
 	mb := more.Body.String()
-	if got := strings.Count(mb, `class="audit-row`); got != 31 { // 130 seeded + the sign-in of the test operator - 100 on the first page
-		t.Errorf("second page has %d rows, want 31", got)
+	if got := strings.Count(mb, `class="audit-row`); got != 30 { // 130 seeded - 100 on the first page (signIn writes no audit entry)
+		t.Errorf("second page has %d rows, want 30", got)
 	}
 	if strings.Contains(mb, "audit-more") || strings.Contains(mb, "<title>") {
 		t.Errorf("second page should be rows only without a sentinel")
@@ -214,7 +214,7 @@ func TestAuditCSV(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(recs) != 5 { // header + 3 seeded within 7 days + the sign-in of the test operator
+	if len(recs) != 4 { // header + 3 seeded within 7 days (signIn writes no audit entry)
 		t.Fatalf("%d records: %v", len(recs), recs)
 	}
 	if strings.Join(recs[0], ",") != "time,operator,host,action,result,detail" {
