@@ -125,7 +125,7 @@ func RunDev(ctx context.Context, o DevOptions) error {
 		return err
 	}
 
-	codes, mode, sessions := newSetupParts(st, log, now, secure, func(code string, expires time.Time) {
+	codes, mode, sessions := newSetupParts(st, log, now, secure, "", func(code string, expires time.Time) {
 		fmt.Fprintf(console, "Setup code: %s (valid until %s)\n", setup.FormatCode(code), expires.Local().Format("15:04"))
 	})
 

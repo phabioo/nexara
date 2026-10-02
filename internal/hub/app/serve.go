@@ -22,6 +22,7 @@ import (
 	"github.com/phabioo/nexara/internal/buildinfo"
 	"github.com/phabioo/nexara/internal/config"
 	"github.com/phabioo/nexara/internal/hub/auth"
+	"github.com/phabioo/nexara/internal/hub/backup"
 	"github.com/phabioo/nexara/internal/hub/enroll"
 	"github.com/phabioo/nexara/internal/hub/grid"
 	"github.com/phabioo/nexara/internal/hub/httpserver"
@@ -143,7 +144,7 @@ func Serve(ctx context.Context, o ServeOptions) error {
 	if err != nil {
 		return err
 	}
-	codes, mode, sessions := newSetupParts(st, log, now, true)
+	codes, mode, sessions := newSetupParts(st, log, now, true, backup.LayoutFor(o.ConfigPath, cfg).BackupDir)
 	codes.SetAudit(setupAudit(st, log))
 	setupMode := mode.Active(ctx)
 	if setupMode {
@@ -363,8 +364,9 @@ func authConfig(cfg config.HubConfig, st *store.Store, key []byte, secure bool, 
 // newSetupParts creates the setup-mode objects. The setup code is announced
 // through the logger (journal); this is the one deliberate place where a
 // secret is logged (see setup.CodeOptions.Announce). secure is the single
-// source for the setup cookie's Secure flag.
-func newSetupParts(users setup.UserCounter, log *slog.Logger, now func() time.Time, secure bool, extraAnnounce ...func(code string, expires time.Time)) (*setup.Codes, *setup.Mode, *setup.Sessions) {
+// source for the setup cookie's Secure flag. uploadDir keeps backup files
+// uploaded for a restore (empty: os.TempDir()).
+func newSetupParts(users setup.UserCounter, log *slog.Logger, now func() time.Time, secure bool, uploadDir string, extraAnnounce ...func(code string, expires time.Time)) (*setup.Codes, *setup.Mode, *setup.Sessions) {
 	codes := setup.NewCodes(setup.CodeOptions{
 		Now: now,
 		Announce: func(code string, expires time.Time) {
@@ -377,6 +379,7 @@ func newSetupParts(users setup.UserCounter, log *slog.Logger, now func() time.Ti
 	sessions := setup.NewSessions(setup.SessionOptions{
 		Now:            now,
 		InsecureCookie: !secure,
+		UploadDir:      uploadDir,
 		Wizard:         setup.WizardOptions{CheckPassphrase: checkWizardPassphrase},
 	})
 	return codes, setup.NewMode(users), sessions
