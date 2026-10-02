@@ -133,6 +133,9 @@ func RunDev(ctx context.Context, o DevOptions) error {
 			return fmt.Errorf("cannot create the demo operator: %w", err)
 		}
 		mode.Invalidate()
+		if err := demo.SeedAudit(ctx, st, time.Now()); err != nil {
+			return fmt.Errorf("cannot seed the demo audit log: %w", err)
+		}
 	}
 	setupMode := mode.Active(ctx)
 	var setupCode string

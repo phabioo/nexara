@@ -859,6 +859,7 @@ svg { flex: none; }
   .phone-order-2 { order: 2; }
   .phone-order-3 { order: 3; }
   .search { flex-direction: column; align-items: stretch; gap: 6px; }
+  .search .input-search { flex: none; }
 
   /* top bar: pill + latency, host tabs in their own 48px row */
   .topbar {
