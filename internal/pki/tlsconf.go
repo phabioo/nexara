@@ -84,6 +84,11 @@ func AgentTLSConfig(caPEM []byte, certFile, keyFile string) (*tls.Config, error)
 	if !pool.AppendCertsFromPEM(caPEM) {
 		return nil, errors.New("pki: no valid CA certificate in ca_pem")
 	}
+	// A crash while a renewed certificate was activated can leave key and
+	// certificate from different pairs; repair that before the pair is loaded.
+	if _, err := (AgentFiles{Cert: certFile, Key: keyFile}).Recover(); err != nil {
+		return nil, err
+	}
 	if _, err := tls.LoadX509KeyPair(certFile, keyFile); err != nil {
 		return nil, fmt.Errorf("pki: load agent certificate: %w", err)
 	}

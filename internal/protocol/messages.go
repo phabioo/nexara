@@ -253,6 +253,40 @@ type AgentUpdate struct {
 	Path string `json:"path"`
 }
 
+// CertRenew asks the agent to renew its client certificate now (hub->agent,
+// type "cert.renew"; decision #47). The agent answers with Result (OK = it will
+// start a renewal, or one is already running) and then sends CertCSR. An
+// agent that does not know the message answers Error with CodeUnknownType; the
+// hub then relies on the automatic agent update first.
+type CertRenew struct {
+	// Force makes the agent renew although its certificate is not within the
+	// renewal window yet (operator action). The hub still decides whether it
+	// signs the request.
+	Force bool `json:"force,omitempty"`
+}
+
+// CertCSR requests a new client certificate (agent->hub, type "cert.csr"),
+// either on the agent's own schedule (its certificate expires within 30 days)
+// or after CertRenew. The agent creates a fresh P-256 key and sends only the
+// certificate request, never the private key. The CSR's common name must be the
+// host ID the agent already authenticated with; the hub signs the public key
+// only and takes every name from the authenticated connection, not from the
+// CSR. Answered by CertIssued (same ID), or Error: CodeBusy (a renewal is in
+// progress), CodeInvalidArgument (bad CSR, or the certificate is not due),
+// CodeUnsupported (the hub cannot renew), CodeInternal.
+type CertCSR struct {
+	CSRPEM string `json:"csr_pem"`
+}
+
+// CertIssued answers CertCSR (hub->agent, type "cert.issued", same ID). The
+// agent keeps its current certificate, stages the new pair next to it and
+// connects with the new certificate first; the hub accepts both until the new
+// one has been used once (or 24 hours have passed).
+type CertIssued struct {
+	CertPEM  string    `json:"cert_pem"`
+	NotAfter time.Time `json:"not_after"`
+}
+
 // Result is the generic answer to a request (type "result", same ID as the request).
 type Result struct {
 	OK    bool   `json:"ok"`

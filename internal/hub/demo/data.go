@@ -140,6 +140,7 @@ func (h *Hub) seed() {
 			ID: hostPi5, Name: "pi5-media", DisplayName: "pi5-media", Address: "192.168.10.21",
 			OS: "linux", Arch: "arm64", AgentVersion: agentVersion, Model: pi5Model,
 			Kernel: "6.6.51+rpt-rpi-2712", Capabilities: append([]string(nil), defaultCaps...),
+			CertNotAfter: now.Add(certLeft(344)), // enrolled three weeks ago
 		},
 		prof: profile{
 			cpuBase: []float64{28, 20, 25, 22}, cpuAmp: 4, tempBase: 47.2,
@@ -185,6 +186,7 @@ func (h *Hub) seed() {
 			ID: hostPi3, Name: "pi3-dns", DisplayName: "pi3-dns", Address: "192.168.10.5",
 			OS: "linux", Arch: "arm64", AgentVersion: agentVersion, Model: "Raspberry Pi 3 Model B Plus Rev 1.3",
 			Kernel: "6.6.51+rpt-rpi-v8", Capabilities: append([]string(nil), defaultCaps...),
+			CertNotAfter: now.Add(certLeft(253)), // enrolled almost four months ago
 		},
 		prof: profile{
 			cpuBase: []float64{10, 8, 9, 7}, cpuAmp: 2, tempBase: 54.8,
@@ -223,6 +225,7 @@ func (h *Hub) seed() {
 		info: grid.HostInfo{
 			ID: hostPi4, Name: "pi4", DisplayName: "pi4", Address: "192.168.10.30",
 			OS: "linux", Arch: "arm64", Capabilities: append([]string(nil), defaultCaps...),
+			CertNotAfter: now.Add(certLeft(331)),
 		},
 	}
 
@@ -238,6 +241,11 @@ func (h *Hub) seed() {
 		h.activate(hst, now)
 	}
 }
+
+// certLeft is a plausible remaining lifetime of an agent certificate in the
+// demo: agent certificates last a year and are renewed 30 days before expiry,
+// so the demo never shows one with fewer than 30 days left.
+func certLeft(days int) time.Duration { return time.Duration(days) * 24 * time.Hour }
 
 // genericProfile is used for hosts that enroll while the demo runs.
 func genericProfile() profile {

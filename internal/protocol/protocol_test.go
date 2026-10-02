@@ -50,6 +50,9 @@ func roundtripCases() []struct {
 		{TypeShellResize, ShellResize{SessionID: "s1", Cols: 80, Rows: 24}, func() any { return new(ShellResize) }},
 		{TypeShellClose, ShellClose{SessionID: "s1", Reason: "exit"}, func() any { return new(ShellClose) }},
 		{TypeAgentUpdate, AgentUpdate{Version: "0.1.1", SHA256: "abcd", Path: "/grid/agent/linux/arm64"}, func() any { return new(AgentUpdate) }},
+		{TypeCertRenew, CertRenew{Force: true}, func() any { return new(CertRenew) }},
+		{TypeCertCSR, CertCSR{CSRPEM: "-----BEGIN CERTIFICATE REQUEST-----\n-----END CERTIFICATE REQUEST-----\n"}, func() any { return new(CertCSR) }},
+		{TypeCertIssued, CertIssued{CertPEM: "-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----\n", NotAfter: ts}, func() any { return new(CertIssued) }},
 		{TypeResult, Result{OK: false, Error: "nope"}, func() any { return new(Result) }},
 		{TypeError, Error{Code: CodeBadRequest, Message: "bad"}, func() any { return new(Error) }},
 	}

@@ -86,6 +86,12 @@ type Options struct {
 	BinaryPath string
 	// Exit terminates the process after a successful update; default os.Exit.
 	Exit func(code int)
+
+	// Certificate renewal timing (decision #47); zero values select the
+	// defaults (daily check, hourly retry, 30 s answer timeout).
+	RenewCheckInterval time.Duration
+	RenewRetryInterval time.Duration
+	RenewTimeout       time.Duration
 }
 
 // Agent is the Grid Agent runtime. Create it with New and call Run once.
@@ -103,6 +109,9 @@ type Agent struct {
 	ring     *ring
 	interval time.Duration
 
+	certs      *certKeeper        // nil: renewal off (no certificate files, e.g. tests)
+	renewSem   chan struct{}      // held while a certificate renewal runs
+	renewNudge chan struct{}      // asks the renew loop to check again
 	stop       context.CancelFunc // cancels Run; set by Run
 	restarting atomic.Bool        // a verified update was installed
 	updating   atomic.Bool
@@ -132,17 +141,22 @@ func New(opts Options) *Agent {
 	if a.exit == nil {
 		a.exit = os.Exit
 	}
+	a.renewNudge = make(chan struct{}, 1)
+	a.renewSem = make(chan struct{}, 1)
+	if opts.TLS != nil {
+		a.certs = newCertKeeper(a.cfg.TLS.Cert, a.cfg.TLS.Key, a.cfg.TLS.CA, a.log, a.now, a.nudgeRenewal)
+	}
 	a.http = opts.HTTPClient
 	if a.http == nil {
 		a.http = &http.Client{Transport: &http.Transport{
-			TLSClientConfig:     tlsClone(opts.TLS),
+			TLSClientConfig:     a.tlsConfig(opts.TLS),
 			TLSHandshakeTimeout: 15 * time.Second,
 		}}
 	}
 	a.dial = opts.Dial
 	if a.dial == nil {
 		client := &http.Client{Transport: &http.Transport{
-			TLSClientConfig:     tlsClone(opts.TLS),
+			TLSClientConfig:     a.tlsConfig(opts.TLS),
 			TLSHandshakeTimeout: 15 * time.Second,
 		}}
 		a.dial = func(ctx context.Context, url string) (*websocket.Conn, error) {
@@ -159,6 +173,14 @@ func New(opts Options) *Agent {
 	}
 	a.ring = newRing(int(bufferWindow / a.interval))
 	return a
+}
+
+// nudgeRenewal wakes the renew loop of the running session, if any.
+func (a *Agent) nudgeRenewal() {
+	select {
+	case a.renewNudge <- struct{}{}:
+	default:
+	}
 }
 
 func tlsClone(c *tls.Config) *tls.Config {
@@ -250,6 +272,15 @@ func (a *Agent) Run(ctx context.Context) error {
 }
 
 func (a *Agent) connectOnce(ctx context.Context) (stable bool, err error) {
+	if a.certs != nil {
+		a.certs.beginAttempt()
+	}
+	accepted := false
+	defer func() {
+		if a.certs != nil {
+			a.certs.endAttempt(accepted)
+		}
+	}()
 	dctx, cancel := context.WithTimeout(ctx, dialTimeout)
 	conn, err := a.dial(dctx, a.cfg.Hub.URL)
 	cancel()
@@ -257,7 +288,8 @@ func (a *Agent) connectOnce(ctx context.Context) (stable bool, err error) {
 		return false, fmt.Errorf("dial hub: %w", err)
 	}
 	conn.SetReadLimit(readLimit)
-	return a.serve(ctx, conn)
+	stable, accepted, err = a.serve(ctx, conn)
+	return stable, err
 }
 
 func (a *Agent) hello() protocol.Hello {
@@ -279,7 +311,7 @@ func (a *Agent) hello() protocol.Hello {
 var errRejected = errors.New("hub rejected this agent")
 
 // serve runs one connection from hello to disconnect.
-func (a *Agent) serve(runCtx context.Context, conn *websocket.Conn) (stable bool, err error) {
+func (a *Agent) serve(runCtx context.Context, conn *websocket.Conn) (stable, accepted bool, err error) {
 	s := newSession(a, conn)
 	watch := make(chan struct{})
 	go func() {
@@ -300,24 +332,31 @@ func (a *Agent) serve(runCtx context.Context, conn *websocket.Conn) (stable bool
 
 	ack, err := s.handshake()
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	if !ack.Accepted {
 		a.log.Warn("hub did not accept this agent", "reason", ack.Reason)
 		if !ack.UpdateRequired {
-			return false, fmt.Errorf("%w: %s", errRejected, ack.Reason)
+			return false, false, fmt.Errorf("%w: %s", errRejected, ack.Reason)
 		}
 		a.log.Warn("agent update required: this agent is too old for the hub and waits for agent.update",
 			"target_version", ack.TargetVersion, "agent_version", buildinfo.Version)
 		s.limited = true
 	}
 
+	if ack.Accepted && a.certs != nil {
+		a.certs.accepted()
+	}
 	connectedAt := a.now()
 	s.start()
 	err = s.readLoop()
 	stable = ack.Accepted && a.now().Sub(connectedAt) >= stableAfter
+	if s.reconnect.Load() {
+		// We ended the connection to switch to the renewed certificate: no backoff.
+		return true, ack.Accepted, errors.New("reconnecting with the renewed certificate")
+	}
 	if err == nil || errors.Is(err, context.Canceled) {
 		err = errors.New("connection closed")
 	}
-	return stable, err
+	return stable, ack.Accepted, err
 }

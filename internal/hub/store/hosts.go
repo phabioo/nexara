@@ -170,6 +170,21 @@ func (s *Store) SetHostCert(ctx context.Context, id, fingerprint, serial string,
 		fingerprint, serial, nullUnix(notAfter), id))
 }
 
+// ReplaceHostCert swaps the client certificate of a renewal (decision #47) in
+// one statement: fingerprint, serial and expiry change together, and only if
+// the host still carries oldFingerprint and is not revoked. A concurrent
+// renewal, a re-enrollment or a removal therefore makes the swap fail with
+// ErrNotFound instead of overwriting the newer state.
+func (s *Store) ReplaceHostCert(ctx context.Context, id, oldFingerprint, newFingerprint, serial string, notAfter time.Time) error {
+	if newFingerprint == "" {
+		return errors.New("store: new certificate fingerprint is required")
+	}
+	return affected(s.db.ExecContext(ctx,
+		`UPDATE hosts SET cert_fingerprint = ?, cert_serial = ?, cert_not_after = ?
+		 WHERE id = ? AND cert_fingerprint = ? AND revoked = 0`,
+		newFingerprint, serial, nullUnix(notAfter), id, oldFingerprint))
+}
+
 // SetHostDisplayName changes the display name.
 func (s *Store) SetHostDisplayName(ctx context.Context, id, displayName string) error {
 	return affected(s.db.ExecContext(ctx, "UPDATE hosts SET display_name = ? WHERE id = ?", displayName, id))

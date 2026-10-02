@@ -2,6 +2,7 @@ package grid
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net/http"
@@ -22,6 +23,10 @@ type agentConn struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wto    time.Duration
+
+	// peer is the client certificate the connection was authenticated with
+	// (nil when authentication was injected, i.e. in tests).
+	peer *x509.Certificate
 
 	closeOnce sync.Once
 	last      atomic.Int64 // unix nanos of the last sign of life (message or pong)
@@ -208,6 +213,7 @@ func (g *Grid) serveAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	ws.SetReadLimit(protocol.MaxMessageSize)
 	c := newAgentConn(g.ctx, ws, g.to.write)
+	c.peer = g.peerCertificate(r)
 	defer c.close()
 
 	hello, ok := g.handshake(st, c)
@@ -237,6 +243,14 @@ func (g *Grid) handshake(st *hostState, c *agentConn) (hello protocol.Hello, ok 
 	hello, herr := protocol.DecodeData[protocol.Hello](env)
 	if !env.Compatible() || herr != nil || !protocol.Compatible(hello.ProtocolVersion) {
 		g.rejectIncompatible(st, c, env, hello, herr)
+		return hello, false
+	}
+	// A renewed certificate becomes the certificate of record before the agent
+	// is told it was accepted: the agent replaces its old pair on that ack, so
+	// the hub must not lose track of the new one afterwards.
+	if !g.activateRenewed(st, c) {
+		_ = c.send(protocol.TypeHelloAck, env.ID, protocol.HelloAck{Accepted: false, Reason: "activating the renewed certificate failed, try again"})
+		_ = c.ws.Close(websocket.StatusTryAgainLater, "certificate activation failed")
 		return hello, false
 	}
 	if err := c.send(protocol.TypeHelloAck, env.ID, protocol.HelloAck{Accepted: true}); err != nil {
@@ -341,6 +355,7 @@ func (g *Grid) accept(st *hostState, c *agentConn, hello protocol.Hello) {
 	st.conn = c
 	st.online = true
 	st.updateRequired = false
+	st.renewUnsupported = false
 	st.latency = 0
 	st.lastSeen = g.now()
 	st.model, st.kernel = hello.Model, hello.Kernel
@@ -373,6 +388,7 @@ func (g *Grid) onConnect(st *hostState, hello protocol.Hello) {
 		}
 	}
 	g.maybeAutoUpdate(st.id, hello)
+	g.maybeRenewOnConnect(st)
 }
 
 func (g *Grid) readLoop(st *hostState, c *agentConn) {
@@ -404,6 +420,8 @@ func (g *Grid) dispatch(st *hostState, c *agentConn, env protocol.Envelope) {
 		if !c.deliver(env) {
 			g.log.Debug("grid: unmatched answer", "host", st.name, "type", env.Type)
 		}
+	case protocol.TypeCertCSR:
+		g.onCertCSR(st, c, env)
 	case protocol.TypeJobOutput:
 		g.onJobOutput(st, env)
 	case protocol.TypeJobDone:

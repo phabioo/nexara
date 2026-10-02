@@ -66,6 +66,10 @@ const (
 
 	TypeAgentUpdate = "agent.update" // hub->agent, request; answered by TypeResult, then the agent restarts
 
+	TypeCertRenew  = "cert.renew"  // hub->agent, request; answered by TypeResult, then the agent sends cert.csr
+	TypeCertCSR    = "cert.csr"    // agent->hub, request; answered by TypeCertIssued (same ID) or TypeError
+	TypeCertIssued = "cert.issued" // hub->agent, answers cert.csr
+
 	TypeResult = "result" // either direction, generic answer to a request without a dedicated response type
 	TypeError  = "error"  // either direction, protocol level failure answering any request
 )
@@ -76,7 +80,8 @@ var knownTypes = map[string]struct{}{
 	TypePackagesList: {}, TypePackages: {}, TypePackagesSearch: {},
 	TypeJobStart: {}, TypeJobOutput: {}, TypeJobDone: {}, TypeJobCancel: {},
 	TypeShellOpen: {}, TypeShellData: {}, TypeShellResize: {}, TypeShellClose: {},
-	TypeAgentUpdate: {}, TypeResult: {}, TypeError: {},
+	TypeAgentUpdate: {}, TypeCertRenew: {}, TypeCertCSR: {}, TypeCertIssued: {},
+	TypeResult: {}, TypeError: {},
 }
 
 // KnownType reports whether t is a message type of this protocol version.
