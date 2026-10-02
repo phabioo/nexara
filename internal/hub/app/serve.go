@@ -245,6 +245,8 @@ func Serve(ctx context.Context, o ServeOptions) error {
 	bg(func() { codes.Run(runCtx) })
 	bg(func() { certs.Run(runCtx, orDefault(o.CertCheckEvery, DefaultCertCheckInterval)) })
 	bg(func() { housekeeping(runCtx, st, authSvc, now, log) })
+	backups := newBackupService(cfg, o.ConfigPath, st, log, now)
+	bg(func() { runBackupScheduler(runCtx, backups, cfg, log, now) })
 	if o.AdminSocket != "" {
 		limits, _ := any(authSvc).(loginLimits) // ClearLoginLimits; nil until the auth service has it
 		backend := adminBackend{
