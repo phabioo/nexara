@@ -137,6 +137,7 @@ func (h *Hub) addHost(name, display, addr string, caps []string) *host {
 	hst := &host{info: grid.HostInfo{
 		ID: h.newHostID(), Name: name, DisplayName: display, Address: addr,
 		OS: "linux", Arch: "arm64", Capabilities: defaultCaps,
+		CertNotAfter: h.now().UTC().Add(certLeft(365)), // just issued
 	}}
 	if len(caps) > 0 {
 		hst.info.Capabilities = caps

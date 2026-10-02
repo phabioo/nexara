@@ -152,7 +152,7 @@ func Serve(ctx context.Context, o ServeOptions) error {
 
 	g, err := grid.NewGrid(grid.Options{
 		Store: st, Logger: log.With("component", "grid"), Now: now,
-		OfflineAfter: cfg.HostOfflineAfter(), HubVersion: buildinfo.Version,
+		OfflineAfter: cfg.HostOfflineAfter(), HubVersion: buildinfo.Version, CA: ca,
 	})
 	if err != nil {
 		return err
@@ -244,6 +244,7 @@ func Serve(ctx context.Context, o ServeOptions) error {
 
 	bg(func() { codes.Run(runCtx) })
 	bg(func() { certs.Run(runCtx, orDefault(o.CertCheckEvery, DefaultCertCheckInterval)) })
+	bg(func() { runAgentCertRenewals(runCtx, g, orDefault(o.CertCheckEvery, DefaultCertCheckInterval)) })
 	bg(func() { housekeeping(runCtx, st, authSvc, now, log) })
 	backups := newBackupService(cfg, o.ConfigPath, st, log, now)
 	bg(func() { runBackupScheduler(runCtx, backups, cfg, log, now) })

@@ -62,6 +62,9 @@ type HostInfo struct {
 	UpdateRequired bool
 	// RebootRequired mirrors the agent's /var/run/reboot-required flag.
 	RebootRequired bool
+	// CertNotAfter is the expiry of the host's agent certificate (renewed
+	// automatically 30 days before; decision #47); zero if unknown.
+	CertNotAfter time.Time
 }
 
 // HasCapability reports whether the named capability is enabled on the host.

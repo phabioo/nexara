@@ -2,6 +2,7 @@ package grid
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -49,12 +50,22 @@ type Options struct {
 	Identify func(*http.Request) (store.Host, error)
 	// PingInterval is the WebSocket ping period (default 10 s).
 	PingInterval time.Duration
+
+	// CA signs renewed agent certificates (decision #47). Without it the hub
+	// answers certificate requests with "unsupported" and never asks agents to
+	// renew.
+	CA *pki.CA
+	// PeerCertificate returns the client certificate an agent request was
+	// authenticated with. The default reads the verified TLS connection; tests
+	// inject their own.
+	PeerCertificate func(*http.Request) *x509.Certificate
 }
 
 // timeouts of hub->agent requests; fields are replaced by tests.
 type timeouts struct {
 	hello, write, servicesList, packagesList, packagesSearch time.Duration
 	serviceRestart, shellOpen, jobStart, jobCancel, update   time.Duration
+	renew                                                    time.Duration
 }
 
 func defaultTimeouts() timeouts {
@@ -69,6 +80,7 @@ func defaultTimeouts() timeouts {
 		jobStart:       15 * time.Second,
 		jobCancel:      10 * time.Second,
 		update:         10 * time.Second,
+		renew:          10 * time.Second,
 	}
 }
 
@@ -84,12 +96,15 @@ type Grid struct {
 	shellLim shellLimits
 
 	// mu guards everything below and the fields of every hostState.
-	mu     sync.Mutex
-	hosts  map[HostID]*hostState
-	order  []HostID
-	byFP   map[string]HostID
-	jobs   map[string]*hostState // job ID -> host, for queued, running and retained finished jobs
-	jobSeq uint64
+	mu    sync.Mutex
+	hosts map[HostID]*hostState
+	order []HostID
+	byFP  map[string]HostID
+	// pending holds renewed certificates that were issued but have not been
+	// used yet, by fingerprint (renew.go).
+	pending map[string]*pendingCert
+	jobs    map[string]*hostState // job ID -> host, for queued, running and retained finished jobs
+	jobSeq  uint64
 
 	subMu sync.Mutex
 	subs  map[*subscriber]struct{}
@@ -114,6 +129,13 @@ type hostState struct {
 
 	conn           *agentConn
 	lastAutoUpdate time.Time
+
+	// Certificate renewal (renew.go).
+	pendingFP        string    // fingerprint of the issued, not yet used certificate
+	renewBusy        bool      // a hub-initiated cert.renew request is in flight
+	renewRequested   time.Time // last time the hub asked the agent to renew
+	forceUntil       time.Time // an operator asked for a renewal; sign even if not due until then
+	renewUnsupported bool      // the connected agent does not know cert.renew
 
 	metrics  *protocol.Metrics
 	history  []float64
@@ -161,6 +183,7 @@ func NewGrid(opts Options) (*Grid, error) {
 		shellLim: defaultShellLimits(),
 		hosts:    map[HostID]*hostState{},
 		byFP:     map[string]HostID{},
+		pending:  map[string]*pendingCert{},
 		jobs:     map[string]*hostState{},
 		subs:     map[*subscriber]struct{}{},
 	}
@@ -224,6 +247,7 @@ func (g *Grid) Register(_ context.Context, h store.Host) error {
 	}
 	g.mu.Lock()
 	st, isNew := g.addLocked(h)
+	g.dropPendingLocked(st) // it was issued for the certificate that was just replaced
 	old := st.conn
 	if isNew {
 		g.emitLocked(Event{Kind: EventHostAdded, Host: st.id, Payload: st.infoLocked()})
@@ -250,6 +274,7 @@ func (g *Grid) Remove(id HostID) {
 	// write its last-seen time.
 	st.conn = nil
 	st.online = false
+	g.dropPendingLocked(st)
 	delete(g.hosts, id)
 	delete(g.byFP, st.host.CertFingerprint)
 	g.order = slices.DeleteFunc(g.order, func(x HostID) bool { return x == id })
@@ -271,8 +296,6 @@ func (g *Grid) Remove(id HostID) {
 // identifyTLS even before the registry entry is gone, then it leaves the
 // registry (IsRevoked turns true for its certificate) and its live connection
 // is closed. The row stays, revoked and with a freed name, for the audit trail.
-//
-// TODO(v0.2, decision #47): agent certificate renewal over the mTLS channel.
 func (g *Grid) RemoveHost(ctx context.Context, actor Actor, id HostID) error {
 	g.mu.Lock()
 	st, ok := g.hosts[id]
@@ -308,10 +331,16 @@ func auditDetailIP(a Actor) string {
 
 // IsRevoked reports whether a certificate fingerprint must be rejected in the
 // TLS handshake. Unknown fingerprints count as revoked.
+//
+// A renewed certificate is accepted from the moment it is issued until it has
+// been used once (activation) or 24 hours have passed, next to the old one.
 func (g *Grid) IsRevoked(fingerprint string) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	_, ok := g.byFP[fingerprint]
+	if _, ok := g.byFP[fingerprint]; ok {
+		return false
+	}
+	_, ok := g.livePendingLocked(fingerprint)
 	return !ok
 }
 
@@ -321,7 +350,18 @@ func (g *Grid) identifyTLS(r *http.Request) (store.Host, error) {
 	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
 		return store.Host{}, errNotAuthenticated
 	}
-	h, err := g.opts.Store.GetHostByFingerprint(r.Context(), pki.Fingerprint(r.TLS.PeerCertificates[0]))
+	fp := pki.Fingerprint(r.TLS.PeerCertificates[0])
+	h, err := g.opts.Store.GetHostByFingerprint(r.Context(), fp)
+	if errors.Is(err, store.ErrNotFound) {
+		// Not the certificate of record: maybe a renewed one that has not been used yet.
+		g.mu.Lock()
+		p, ok := g.livePendingLocked(fp)
+		g.mu.Unlock()
+		if !ok {
+			return store.Host{}, errNotAuthenticated
+		}
+		h, err = g.opts.Store.GetHost(r.Context(), string(p.host))
+	}
 	if err != nil {
 		return store.Host{}, errNotAuthenticated
 	}
@@ -366,6 +406,7 @@ func (st *hostState) infoLocked() HostInfo {
 		Capabilities:   slices.Clone(st.host.Capabilities),
 		UpdateRequired: st.updateRequired,
 		RebootRequired: st.rebootRequired,
+		CertNotAfter:   st.host.CertNotAfter.UTC(),
 	}
 }
 
