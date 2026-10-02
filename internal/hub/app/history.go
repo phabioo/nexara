@@ -29,6 +29,7 @@ func newHistory(st *store.Store, hub history.Subscriber, cfg config.HubConfig, n
 		Now:                  now,
 		MinuteRetention:      cfg.MinuteRetention(),
 		DefaultRetentionDays: cfg.Storage.History.HourDays,
+		Location:             cfg.Location(),
 	})
 }
 
