@@ -173,7 +173,13 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 				if !ok {
 					continue
 				}
-				if _, err := w.Write(formatSSE(name, s.eventID(name, ev), html)); err != nil {
+				id := s.eventID(name, ev)
+				if id == "" && !hostAgnostic[name] {
+					// A host-bound fragment of a host the hub no longer knows (removed a moment ago): without its
+					// host as id the browser could not tell it from the view on screen and would paint it there.
+					continue
+				}
+				if _, err := w.Write(formatSSE(name, id, html)); err != nil {
 					return
 				}
 				wrote = true
