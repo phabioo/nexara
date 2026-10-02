@@ -14,7 +14,9 @@ stop_unit() {
 
 case "$1" in
 remove | deconfigure)
-	# Agent first: it talks to the hub.
+	# Agent first: it talks to the hub. The update watcher goes before the hub
+	# so no request starts a helper while the package is being removed.
+	stop_unit nexus-update.path
 	stop_unit grid-agent.service
 	stop_unit nexus.service
 	;;

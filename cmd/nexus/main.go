@@ -37,6 +37,7 @@ Commands:
   user reset                          reset the operator account (run locally on the hub)
   user unlock                         clear login lockouts (run locally on the hub)
   uninstall [--purge] [--yes]         remove the hub package (--purge also deletes data, CA and keys)
+  update-apply [--no-rollback]        install a staged update (root helper, started by nexus-update.service)
   version                             print version information
 `
 
@@ -63,6 +64,8 @@ func runContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 		return cmdUser(rest, stdin, stdout, stderr)
 	case "uninstall":
 		return cmdUninstall(ctx, rest, stdin, stdout, stderr)
+	case "update-apply":
+		return cmdUpdateApply(ctx, rest, stdout, stderr)
 	case "version", "--version", "-v":
 		fmt.Fprintln(stdout, buildinfo.String("nexus"))
 		return exitOK

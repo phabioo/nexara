@@ -245,6 +245,11 @@ func Serve(ctx context.Context, o ServeOptions) error {
 	bg(func() { codes.Run(runCtx) })
 	bg(func() { certs.Run(runCtx, orDefault(o.CertCheckEvery, DefaultCertCheckInterval)) })
 	bg(func() { housekeeping(runCtx, st, authSvc, now, log) })
+	updater, err := newUpdateService(dataDir, st, nil, log, now) // nil settings: wire the settings store here
+	if err != nil {
+		return fmt.Errorf("cannot start the update service: %w", err)
+	}
+	bg(func() { updater.Run(runCtx) })
 	if o.AdminSocket != "" {
 		limits, _ := any(authSvc).(loginLimits) // ClearLoginLimits; nil until the auth service has it
 		backend := adminBackend{
