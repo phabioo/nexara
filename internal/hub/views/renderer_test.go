@@ -131,9 +131,9 @@ func TestRenderAppLayout(t *testing.T) {
 			t.Errorf("output lacks %q", want)
 		}
 	}
-	// Phone navigation only carries the items of v0.1 (decision #31): the three views and the More sheet,
-	// which holds the account only.
-	for _, unwanted := range []string{"History", "Containers", "Alerts", "Settings"} {
+	// Navigation only carries the items of shipped versions (decision #31): in v0.2 History and Settings
+	// (in the More sheet on phones), not Containers or Alerts.
+	for _, unwanted := range []string{"Containers", "Alerts"} {
 		if strings.Contains(out, unwanted) {
 			t.Errorf("output contains %q, which belongs to a later version", unwanted)
 		}

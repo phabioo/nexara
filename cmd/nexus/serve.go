@@ -20,6 +20,9 @@ func cmdServe(ctx context.Context, args []string, stderr io.Writer) int {
 	}
 	log := slog.New(slog.NewTextHandler(stderr, nil))
 	err := app.Serve(ctx, app.ServeOptions{ConfigPath: *cfgPath, AdminSocket: *adminSocket, Logger: log})
+	if errors.Is(err, app.ErrRestart) {
+		return exitRestart
+	}
 	if err != nil && !(ctx.Err() != nil && errors.Is(err, context.Canceled)) {
 		// A signal during startup is a stop request, not a failure.
 		log.Error(err.Error())

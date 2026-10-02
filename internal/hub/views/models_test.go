@@ -5,8 +5,13 @@ import "testing"
 func TestNavItemsActive(t *testing.T) {
 	l := Layout{ActiveNav: "packages", Nav: DefaultNav(3)}
 	items := l.NavItems()
-	if len(items) != 3 {
-		t.Fatalf("v0.1 nav has %d items, want 3 (Overview, Packages, Shell)", len(items))
+	if len(items) != 5 {
+		t.Fatalf("v0.2 nav has %d items, want 5 (Overview, Packages, Shell, History, Settings)", len(items))
+	}
+	for _, it := range items {
+		if want := it.Key == "history" || it.Key == "settings"; it.More != want {
+			t.Errorf("%s in the phone's More sheet = %v, want %v", it.Key, it.More, want)
+		}
 	}
 	for _, it := range items {
 		if want := it.Key == "packages"; it.Active != want {

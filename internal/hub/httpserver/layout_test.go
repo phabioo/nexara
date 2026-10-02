@@ -112,8 +112,12 @@ func TestLayoutModel(t *testing.T) {
 		t.Errorf("tabs still expected: online=%d tabs=%d", none.Online, len(none.Hosts))
 	}
 	for _, n := range none.Nav {
-		if n.Href != "/" {
-			t.Errorf("nav %s = %q without a host, want /", n.Key, n.Href)
+		want := "/" // host-bound views fall back to the overview without a host
+		if n.Key == "settings" {
+			want = "/settings"
+		}
+		if n.Href != want {
+			t.Errorf("nav %s = %q without a host, want %s", n.Key, n.Href, want)
 		}
 	}
 	if none.Log != "" || none.Job != nil {

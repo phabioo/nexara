@@ -21,6 +21,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	s.routesPackages(mux)
 	s.routesShell(mux)
 	s.routesAddHost(mux)
+	s.routesHistory(mux)
+	s.routesSettings(mux)
+	s.routesAudit(mux)
 
 	mux.HandleFunc("/", s.notFound)
 }

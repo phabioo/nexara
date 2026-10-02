@@ -173,13 +173,15 @@ func RunDev(ctx context.Context, o DevOptions) error {
 		return fmt.Errorf("cannot load templates: %w", err)
 	}
 	srv, err := httpserver.New(httpserver.Options{
-		Auth:          authSvc,
-		Setup:         httpserver.SetupDeps{Codes: codes, Sessions: sessions, Mode: mode, Commit: cm.Commit, CA: ca},
-		Hub:           hub,
-		Enroller:      hub,
-		Renderer:      renderer,
-		Static:        web.Static,
-		SSHPublicKey:  func() string { return DevSSHPublicKey },
+		Auth:         authSvc,
+		Setup:        httpserver.SetupDeps{Codes: codes, Sessions: sessions, Mode: mode, Commit: cm.Commit, CA: ca},
+		Hub:          hub,
+		Enroller:     hub,
+		Renderer:     renderer,
+		Static:       web.Static,
+		SSHPublicKey: func() string { return DevSSHPublicKey },
+		// Backup and updates are wired by the views that need them in the demo.
+		Services:      httpserver.Services{History: hist, Settings: st.Settings(), Store: st, CA: ca},
 		Logger:        log.With("component", "http"),
 		SecureCookies: secure,
 		Now:           now,

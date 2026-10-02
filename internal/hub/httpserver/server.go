@@ -54,6 +54,8 @@ type Options struct {
 	Setup    SetupDeps
 	Hub      grid.Hub
 	Enroller grid.Enroller
+	// Services back the v0.2 views; see Services.
+	Services Services
 	// Renderer is used by the view handlers (wave 3); nil is allowed while the
 	// views are stubs.
 	Renderer *views.Renderer
@@ -93,6 +95,7 @@ type Server struct {
 	secure   bool
 	now      func() time.Time
 	sshKey   func() string
+	svc      Services
 
 	// sse is the registry view files add their event renderers to.
 	sse *EventRegistry
@@ -135,6 +138,7 @@ func New(o Options) (*Server, error) {
 		renderer: o.Renderer, static: o.Static,
 		agent: o.AgentHandler, enroll: o.EnrollHandler,
 		log: o.Logger, secure: o.SecureCookies, now: o.Now, sshKey: o.SSHPublicKey,
+		svc:          o.Services,
 		sse:          newEventRegistry(),
 		addHost:      newLinkRegistry(),
 		sseHeartbeat: 15 * time.Second,
