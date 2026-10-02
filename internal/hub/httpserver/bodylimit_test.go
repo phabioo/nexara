@@ -49,6 +49,8 @@ func TestBodyLimitsDeadline(t *testing.T) {
 		{"agent websocket", "GET", "/grid/connect", "", false},
 		{"agent helper", "POST", "/grid/agent/x", "payload", false},
 		{"event ping", "GET", "/events/ping", "", false},
+		{"setup restore upload", "POST", "/setup/restore/upload", "multipart", false},
+		{"other setup restore posts keep the limits", "POST", "/setup/restore/confirm", "x=y", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -188,5 +190,39 @@ func TestBodyDeadlineDoesNotAffectNormalPosts(t *testing.T) {
 	r := <-res
 	if r.err != nil || r.body != "hello" {
 		t.Fatalf("response %q, err %v", r.body, r.err)
+	}
+}
+
+// TestBodyLimitsRestoreUpload: the one upload route takes a body far beyond
+// the 1 MiB form cap (the handler enforces its own cap), every other route
+// keeps the cap.
+func TestBodyLimitsRestoreUpload(t *testing.T) {
+	e := newEnv(t)
+	var n int64
+	var readErr error
+	h := e.srv.bodyLimits(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		n, readErr = io.Copy(io.Discard, r.Body)
+	}))
+	big := strings.Repeat("x", maxFormBody+4096)
+	for _, tc := range []struct {
+		path    string
+		wantErr bool
+	}{
+		{"/setup/restore/upload", false},
+		{"/setup/restore/confirm", true},
+		{"/setup/unlock", true},
+		{"/login", true},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			n, readErr = 0, nil
+			h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", tc.path, strings.NewReader(big)))
+			var mbe *http.MaxBytesError
+			if got := errors.As(readErr, &mbe); got != tc.wantErr {
+				t.Fatalf("read error %v after %d bytes, want limit error = %v", readErr, n, tc.wantErr)
+			}
+			if !tc.wantErr && n != int64(len(big)) {
+				t.Errorf("read %d of %d bytes", n, len(big))
+			}
+		})
 	}
 }

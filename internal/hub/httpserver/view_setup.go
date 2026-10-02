@@ -28,11 +28,11 @@ import (
 // error keys of setup.ValidationError are the names without "f-").
 const (
 	setupFieldCode       = "code"
+	setupFieldRestore    = "restore"
 	setupFieldID         = "id"
 	setupFieldPass       = "passphrase"
 	setupFieldConfirm    = "confirm"
 	setupFieldTOTP       = "totp"
-	setupFieldSkip       = "skip"
 	setupFieldName       = "name"
 	setupFieldTimeZone   = "timezone"
 	setupFieldAgentHost  = "agent_host"
@@ -55,8 +55,8 @@ var setupMeta = [...]setupStepMeta{
 		"Your browser warned you once because Nexus signs its own certificates. Install the Nexara CA on each device you use and the warning is gone for good, also after renewals."},
 	setup.StepOperator: {"Operator", "Create operator", "Account",
 		"Create the first operator account. It has full access to every host on the grid."},
-	setup.StepTwoFactor: {"Two-factor", "Two-factor login", "Recommended",
-		"Scan the code with an authenticator app and confirm it with the current 6-digit code."},
+	setup.StepTwoFactor: {"Two-factor", "Two-factor login", "Required",
+		"Scan the code with an authenticator app and confirm it with the current 6-digit code. Every operator signs in with a second factor."},
 	setup.StepHub: {"Hub", "Hub settings", "Configuration",
 		"How the hub is named and where Grid Agents reach it. These values are written to nexus.yaml."},
 	setup.StepSelfLink: {"Self-link", "Manage this Pi", "Grid",
@@ -141,6 +141,10 @@ type setupPage struct {
 	SelfLink bool
 	Caps     []setupCapChoice
 
+	// Restore from a backup (view_setup_restore.go)
+	RestoreAvailable bool
+	Restore          *setupRestoreView
+
 	// Ready
 	Summary  []setupSummaryRow
 	Banner   string
@@ -173,6 +177,7 @@ func (s *Server) routesSetup(mux *http.ServeMux) {
 	mux.HandleFunc("GET /setup/{step}", s.handleSetupGet)
 	mux.HandleFunc("POST /setup/{step}", s.handleSetupPost)
 	s.routesSetupTrust(mux)
+	s.routesSetupRestore(mux)
 }
 
 // --- helpers -------------------------------------------------------------------
@@ -409,6 +414,7 @@ func (s *Server) setupUnlockPage(w http.ResponseWriter, r *http.Request, hasSess
 	p := s.setupBase(w, r, setup.StepUnlock, log)
 	p.LeadShort = setupUnlockLeadShort
 	p.HasSession = hasSession
+	p.RestoreAvailable = s.restorer() != nil
 	if hasSession {
 		p.NextLabel = "Continue"
 	} else {
@@ -489,11 +495,7 @@ func (s *Server) setupStepPage(w http.ResponseWriter, r *http.Request, sess *set
 		return p
 
 	case setup.StepHub:
-		log := "Two-factor login skipped · required from v0.2"
-		if draft.TOTPSecret != "" {
-			log = "Two-factor login enabled"
-		}
-		p := s.setupBase(w, r, st, log)
+		p := s.setupBase(w, r, st, "Two-factor login confirmed")
 		p.HubName, p.TimeZone, p.AgentHost, p.Port = setupShortHostname(), setupDefaultTimeZone(), host, port
 		p.Retention = 365
 		if wiz.Done(setup.StepHub) {
@@ -544,10 +546,7 @@ func setupSummary(res setup.Result, trusted bool) []setupSummaryRow {
 	if trusted {
 		cert = "Nexara CA downloaded"
 	}
-	tfa := "Skipped (required from v0.2)"
-	if res.TOTPSecret != "" {
-		tfa = "Enabled"
-	}
+	tfa := "Enabled"
 	self := "No"
 	if res.SelfLink.Enabled {
 		var names []string
@@ -732,9 +731,6 @@ func (s *Server) setupKeepInput(p *setupPage, r *http.Request, st setup.Step) {
 }
 
 func (s *Server) setupSubmitTwoFactor(r *http.Request, wiz *setup.Wizard) error {
-	if setupTruthy(r.PostFormValue(setupFieldSkip)) {
-		return wiz.SubmitTwoFactor(true, "")
-	}
 	secret := setupTOTPSecret(setupSessionToken(r))
 	code := strings.TrimSpace(r.PostFormValue(setupFieldTOTP))
 	if code == "" {
@@ -743,7 +739,7 @@ func (s *Server) setupSubmitTwoFactor(r *http.Request, wiz *setup.Wizard) error 
 	if !s.auth.ConfirmTOTP(secret, code) {
 		return setup.ValidationError{setupFieldTOTP: "That code did not match. Check the clock of your phone and try again."}
 	}
-	return wiz.SubmitTwoFactor(false, secret)
+	return wiz.SubmitTwoFactor(secret)
 }
 
 // setupSelfLinkInput reads the Self-link form. Monitoring includes the
@@ -764,8 +760,15 @@ func (s *Server) handleSetupUnlock(w http.ResponseWriter, r *http.Request) {
 	ip := ClientIP(r)
 	sess, have := s.setup.Sessions.FromRequest(r)
 	raw := strings.TrimSpace(r.PostFormValue(setupFieldCode))
+	// "Restore from a backup instead" submits this same form: the code is
+	// verified first, then the browser lands on the restore page.
+	restore := s.restorer() != nil && r.PostFormValue(setupFieldRestore) != ""
 	if raw == "" && have {
 		// Back from Trust: the operator is unlocked already.
+		if restore {
+			s.setupRedirect(w, r, setupRestorePath)
+			return
+		}
 		s.setupRedirect(w, r, setupPath(sess.Wizard.Current()))
 		return
 	}
@@ -806,6 +809,10 @@ func (s *Server) handleSetupUnlock(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("setup unlocked", "ip", ip)
 	http.SetCookie(w, s.setup.Sessions.Cookie(token))
+	if restore {
+		s.setupRedirect(w, r, setupRestorePath)
+		return
+	}
 	s.setupRedirect(w, r, setupPath(setup.StepTrust))
 }
 

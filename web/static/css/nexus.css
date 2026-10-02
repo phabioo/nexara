@@ -1136,7 +1136,6 @@ svg { flex: none; }
 .qr { display: block; width: 146px; height: 146px; }
 .setup-form:has(.setup-key) .qr { width: 168px; height: 168px; }
 .setup-list { display: flex; flex-direction: column; gap: 6px; }
-.setup-skip { display: flex; align-items: center; gap: 10px; }
 
 .setup-link { padding: 0; font-family: var(--font-mono); font-size: 12px; text-decoration: underline; color: var(--ink); text-align: left; }
 
@@ -1458,4 +1457,29 @@ svg { flex: none; }
 /* --- end view: audit --- */
 
 /* === view: auth v0.2 (totp enrollment, setup restore) === */
+/* Setup: "Restore from a backup instead" sits after the Unlock button in the DOM (Enter must unlock) and above it on screen. */
+.setup-form:has(.setup-restore-link) .setup-actions { order: 1; }
+.setup-restore-link { align-self: flex-start; }
+.input-file { padding-top: 9px; }
+.setup-actions-form { display: flex; margin: 0; min-width: 0; }
+.setup-actions-form:first-child { flex: 0 0 160px; }
+.setup-actions-main { flex: 1; }
+.setup-actions-form .btn-card { flex: 1; width: 100%; margin-top: 0; }
+
+/* Two-factor enrollment page (auth shell, sign-in look). */
+.totp-enroll { display: flex; gap: 16px; align-items: flex-start; }
+.totp-qr { display: flex; flex-direction: column; gap: 6px; align-items: center; flex: none; }
+.totp-key { flex: 1; min-width: 0; }
+.auth-totp .qr { width: 146px; height: 146px; }
+.auth-totp .auth-card .setup-code-box { padding: 10px 12px; }
+.auth-totp .auth-foot-micro { display: none; } /* the taller card would cover it */
+.totp-signout { align-self: flex-start; }
+@media (max-width: 767.98px) {
+  .setup-actions-form:first-child { flex-basis: 120px; }
+  .totp-signout { min-height: 44px; }
+}
+@media (max-width: 479.98px) {
+  .setup-actions-form, .setup-actions-form:first-child { flex: none; width: 100%; }
+  .totp-enroll { flex-direction: column; align-items: stretch; }
+}
 /* --- end view: auth v0.2 --- */

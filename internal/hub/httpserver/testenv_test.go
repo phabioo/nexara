@@ -332,14 +332,47 @@ func (e *env) setSetupMode(active bool) {
 	e.mode.Invalidate()
 }
 
-// signIn creates a session directly through the auth service.
+// signIn creates a session of an operator with two-factor login (mandatory,
+// decision #51) directly through the session manager: a password sign-in would
+// need a fresh TOTP code per call. Tests of the enrollment use signInPending.
 func (e *env) signIn() (cookie *http.Cookie, csrf string) {
+	e.t.Helper()
+	u := e.ensureTOTP()
+	raw, sess, err := e.svc.Sessions().Create(context.Background(), u, false, "192.0.2.10", "test")
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return &http.Cookie{Name: sessionCookieName, Value: raw}, e.svc.CSRFToken(sess)
+}
+
+// signInPending signs the operator in with the passphrase only: the operator
+// has no TOTP (the state of a v0.1 installation), so the session is
+// enrollment-pending.
+func (e *env) signInPending() (cookie *http.Cookie, csrf string, sess store.Session) {
 	e.t.Helper()
 	res, err := e.svc.Login(context.Background(), testOperator, testPass, "192.0.2.10", "test", false)
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	return &http.Cookie{Name: sessionCookieName, Value: res.SessionID}, e.svc.CSRFToken(res.Session)
+	return &http.Cookie{Name: sessionCookieName, Value: res.SessionID}, e.svc.CSRFToken(res.Session), res.Session
+}
+
+// ensureTOTP gives the test operator two-factor login (once) and returns the user.
+func (e *env) ensureTOTP() store.User {
+	e.t.Helper()
+	u, err := e.st.GetUserByOperatorID(context.Background(), testOperator)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if u.TOTPEnabled {
+		return u
+	}
+	e.addTOTP()
+	u, err = e.st.GetUserByOperatorID(context.Background(), testOperator)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return u
 }
 
 func (e *env) addTOTP() string {

@@ -115,7 +115,12 @@ func RunDev(ctx context.Context, o DevOptions) error {
 
 	const secure = false // plain HTTP on loopback
 	cfg := config.DefaultHub()
-	authSvc, err := auth.NewService(authConfig(cfg, st, key, secure, o.HashParams, now, log))
+	authCfg := authConfig(cfg, st, key, secure, o.HashParams, now, log)
+	// The seeded demo operator has no authenticator. Two-factor login is
+	// mandatory everywhere else (#51); auth.NewService accepts this switch
+	// only together with plain-HTTP cookies, which the production hub never uses.
+	authCfg.DemoPasswordOnly = o.Seed
+	authSvc, err := auth.NewService(authCfg)
 	if err != nil {
 		return err
 	}

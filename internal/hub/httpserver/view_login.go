@@ -63,6 +63,7 @@ func (s *Server) routesLogin(mux *http.ServeMux) {
 	mux.HandleFunc("POST /login", s.handleLoginPost)
 	mux.HandleFunc("POST /login/verify", s.handleLoginVerify)
 	mux.HandleFunc("POST /logout", s.handleLogout)
+	s.routesTOTP(mux)
 }
 
 // renderLogin renders pages/login.html for the state in p. Without a

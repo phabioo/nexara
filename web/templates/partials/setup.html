@@ -34,6 +34,8 @@
   {{end}}
   {{template "setup-errors" .}}
   {{template "setup-actions" .}}
+  {{/* After the Unlock button in the DOM so Enter in the code field still unlocks; CSS puts it above the button. */}}
+  {{if and .RestoreAvailable (not .Locked)}}<button type="submit" name="restore" value="1" class="setup-link setup-restore-link">Restore from a backup instead</button>{{end}}
 </form>{{end}}
 
 {{/* 2 Trust */}}
@@ -90,13 +92,12 @@
     <div class="setup-split-main">
       <div class="field"><span class="t-label">Or enter the key manually</span><div class="setup-code-box is-plain setup-key">{{.TOTPKey}}</div></div>
       <div class="field"><label for="f-totp" class="t-label">6-digit code</label><input id="f-totp" name="totp" class="input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="000000"{{if .Invalid.totp}} aria-invalid="true"{{end}}></div>
-      <div class="setup-skip"><button type="submit" form="f-skip" class="setup-link">Skip for now</button><span class="hint">Required from v0.2.</span></div>
+      <span class="hint">Required for every operator. Lost your authenticator later? <b>sudo nexus user reset</b> on the host starts over.</span>
     </div>
   </div>
   {{template "setup-errors" .}}
   {{template "setup-actions" .}}
-</form>
-<form id="f-skip" method="post" action="/setup/two-factor" hidden><input type="hidden" name="csrf_token" value="{{.CSRF}}"><input type="hidden" name="skip" value="1"></form>{{end}}
+</form>{{end}}
 
 {{/* 5 Hub */}}
 {{define "setup-hub"}}<form class="setup-form" method="post" action="/setup/hub">
