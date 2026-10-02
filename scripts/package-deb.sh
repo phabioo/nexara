@@ -35,7 +35,7 @@ outdir=$(cd "$outdir" && pwd)
 nexus_bin=$(cd "$(dirname "$nexus_bin")" && pwd)/$(basename "$nexus_bin")
 agent_bin=$(cd "$(dirname "$agent_bin")" && pwd)/$(basename "$agent_bin")
 
-for f in deploy/systemd/nexus.service deploy/systemd/grid-agent.service configs/nexus.example.yaml configs/agent.example.yaml; do
+for f in deploy/systemd/nexus.service deploy/systemd/nexus-update.path deploy/systemd/nexus-update.service deploy/systemd/grid-agent.service configs/nexus.example.yaml configs/agent.example.yaml; do
 	[ -f "$root/$f" ] || { echo "package-deb.sh: missing $f" >&2; exit 1; }
 done
 
@@ -50,6 +50,8 @@ chmod 0755 "$pkg" "$pkg/DEBIAN"
 install -m 0755 "$nexus_bin" "$pkg/usr/bin/nexus"
 install -m 0755 "$agent_bin" "$pkg/usr/bin/grid-agent"
 install -m 0644 "$root/deploy/systemd/nexus.service" "$pkg/lib/systemd/system/nexus.service"
+install -m 0644 "$root/deploy/systemd/nexus-update.path" "$pkg/lib/systemd/system/nexus-update.path"
+install -m 0644 "$root/deploy/systemd/nexus-update.service" "$pkg/lib/systemd/system/nexus-update.service"
 install -m 0644 "$root/deploy/systemd/grid-agent.service" "$pkg/lib/systemd/system/grid-agent.service"
 install -m 0644 "$root/configs/nexus.example.yaml" "$pkg/usr/share/nexara/nexus.example.yaml"
 install -m 0644 "$root/configs/agent.example.yaml" "$pkg/usr/share/nexara/agent.example.yaml"

@@ -211,6 +211,10 @@ activate() {
 	fi
 }
 activate nexus.service "$2"
+# The update helper is started by this path unit (decision #50); the service
+# itself has no [Install] section. A systemctl start would just wait for a
+# request, so only the path unit is enabled and started.
+activate nexus-update.path "$2"
 if [ -n "$AGENT_OK" ]; then
 	activate grid-agent.service "$2"
 fi

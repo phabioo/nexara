@@ -9,7 +9,7 @@ remove | purge)
 	rm -f /etc/systemd/system/grid-agent.service.d/10-package-binary.conf
 	rmdir /etc/systemd/system/grid-agent.service.d 2>/dev/null || true
 	if command -v deb-systemd-helper >/dev/null 2>&1; then
-		deb-systemd-helper mask nexus.service grid-agent.service >/dev/null 2>&1 || true
+		deb-systemd-helper mask nexus.service grid-agent.service nexus-update.path >/dev/null 2>&1 || true
 	fi
 	if [ -d /run/systemd/system ]; then
 		systemctl daemon-reload || true
@@ -24,10 +24,10 @@ esac
 
 if [ "$1" = purge ]; then
 	if command -v deb-systemd-helper >/dev/null 2>&1; then
-		deb-systemd-helper purge nexus.service grid-agent.service >/dev/null 2>&1 || true
-		deb-systemd-helper unmask nexus.service grid-agent.service >/dev/null 2>&1 || true
+		deb-systemd-helper purge nexus.service grid-agent.service nexus-update.path >/dev/null 2>&1 || true
+		deb-systemd-helper unmask nexus.service grid-agent.service nexus-update.path >/dev/null 2>&1 || true
 	fi
-	rm -rf /etc/nexus /var/lib/nexus /etc/grid-agent /var/lib/grid-agent
+	rm -rf /etc/nexus /var/lib/nexus /var/lib/nexus-update /etc/grid-agent /var/lib/grid-agent
 	if getent passwd nexus >/dev/null 2>&1; then
 		deluser --quiet --system nexus >/dev/null 2>&1 || userdel nexus >/dev/null 2>&1 || true
 	fi

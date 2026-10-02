@@ -1,0 +1,13 @@
+# Starts the update helper when the hub asks for an install (decision #50).
+# The hub (user nexus) writes /var/lib/nexus/updates/request.json atomically;
+# the helper moves it away as its first step, so the condition clears itself.
+[Unit]
+Description=Nexara Nexus update request
+Documentation=https://github.com/phabioo/nexara
+
+[Path]
+PathExists=/var/lib/nexus/updates/request.json
+Unit=nexus-update.service
+
+[Install]
+WantedBy=multi-user.target
