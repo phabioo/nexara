@@ -245,6 +245,8 @@ func Serve(ctx context.Context, o ServeOptions) error {
 	bg(func() { codes.Run(runCtx) })
 	bg(func() { certs.Run(runCtx, orDefault(o.CertCheckEvery, DefaultCertCheckInterval)) })
 	bg(func() { housekeeping(runCtx, st, authSvc, now, log) })
+	hist := newHistory(st, g, cfg, now, log)
+	bg(func() { hist.Run(runCtx) }) // flushes the open minute before the store closes
 	if o.AdminSocket != "" {
 		limits, _ := any(authSvc).(loginLimits) // ClearLoginLimits; nil until the auth service has it
 		backend := adminBackend{
