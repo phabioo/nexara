@@ -49,7 +49,7 @@ Umfang: 359 Go-Dateien, davon 164 Testdateien.
 - `install.sh` braucht OpenSSL ≥ 3 (Bookworm oder neuer).
 - Setup-Session-Cookie: das `__Host-`-Präfix setzt ein Shim in `httpserver/cookies.go`; sauberer wäre eine Namensoption in `setup.SessionOptions`.
 - Bei der Kopplung per Code gibt es kein „Ersetzen“ (nur beim SSH-Link); ein abgelehnter Code ist verbraucht.
-- Diagnose: Agent-Logs bräuchten eine neue Agent-Fähigkeit – offen, braucht eine Entscheidung (#56).
+- Diagnose: Agent-Logs kommen mit der Log-Ansicht in v0.4 (neue Agent-Fähigkeit, #56).
 - Settings: Karte „History retention“ aus dem Mockup fehlt (Aufbewahrung über `history.retention_days` geht bisher nur per Einstellung); Audit-Karte ohne Gesamtzahl.
 - Audit-Log: bei sehr großen Logs könnte ein Index `audit_log(host, ts)` helfen (Migration).
 - `grid-agent --help` nennt nur `--token`, nicht `--token-file`.

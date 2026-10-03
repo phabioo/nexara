@@ -249,7 +249,7 @@ Version 0.1 liefert das nutzbare Minimum für die Pis. Jede weitere Version star
 | v0.1 Fundament | Installer, Hub + Linux-Agent (mit Auto-Update), SSH-/Code-Kopplung, Setup-Assistent, Login, Live-Übersicht, Pakete (apt) mit Live-Aufträgen, Nexara Shell, Audit-Log wird geschrieben | Beide Pis laufen 2 Wochen stabil |
 | v0.2 Absicherung | TOTP-Pflicht, Audit-Log-Ansicht, Self-Update, Settings-Ansicht, Backup & Restore, Verlauf 24 h–30 d | Kein Zugriff ohne zweiten Faktor |
 | v0.3 Betrieb | Power + Wake-on-LAN, Warnungen, Alert-Ansicht, E-Mail | Alarm kommt binnen 1 Minute |
-| v0.4 Container | Docker-Ansicht, Container-Logs, Log-Ansicht | Docker-Host voll bedienbar |
+| v0.4 Container | Docker-Ansicht, Container-Logs, Log-Ansicht inkl. Agent-Logs in Diagnostics (neue Agent-Fähigkeit, #56) | Docker-Host voll bedienbar |
 | v1.0 Plattformen | Windows-Agent, macOS-Agent, winget/brew, Installer | Windows-PC läuft wie ein Pi |
 
 Die Agent-Schnittstelle wird schon in v0.1 betriebssystemneutral angelegt, damit v1.0 nur neue Umsetzungen braucht und keinen Umbau.
