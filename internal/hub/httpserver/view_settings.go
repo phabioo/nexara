@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/phabioo/nexara/internal/hub/auth"
@@ -148,62 +147,6 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 // auditPassphrase is the audit action of a passphrase change.
 const auditPassphrase = "user.passphrase"
 
-// passphraseAttempts limits wrong "current passphrase" entries: somebody at an unlocked browser must not be
-// able to test passphrases at argon2 speed. The sign-in limiter of the auth package does not see this form.
-var passphraseAttempts = &attemptLimiter{max: 5, window: 15 * time.Minute}
-
-// attemptLimiter counts failures per operator in a sliding window.
-type attemptLimiter struct {
-	max    int
-	window time.Duration
-	mu     sync.Mutex
-	fails  map[int64][]time.Time
-}
-
-// blocked reports whether id has used up its attempts, and for how long.
-func (l *attemptLimiter) blocked(id int64, now time.Time) (time.Duration, bool) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.pruneLocked(id, now)
-	f := l.fails[id]
-	if len(f) < l.max {
-		return 0, false
-	}
-	return f[0].Add(l.window).Sub(now), true
-}
-
-func (l *attemptLimiter) fail(id int64, now time.Time) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.fails == nil {
-		l.fails = map[int64][]time.Time{}
-	}
-	l.pruneLocked(id, now)
-	l.fails[id] = append(l.fails[id], now)
-}
-
-func (l *attemptLimiter) reset(id int64) {
-	l.mu.Lock()
-	delete(l.fails, id)
-	l.mu.Unlock()
-}
-
-func (l *attemptLimiter) pruneLocked(id int64, now time.Time) {
-	f := l.fails[id]
-	i := 0
-	for i < len(f) && !f[i].Add(l.window).After(now) {
-		i++
-	}
-	if i > 0 {
-		f = f[i:]
-		if len(f) == 0 {
-			delete(l.fails, id)
-			return
-		}
-		l.fails[id] = f
-	}
-}
-
 func (s *Server) handlePassphraseDialog(w http.ResponseWriter, r *http.Request) {
 	s.writeFragments(w, r, http.StatusOK, fragment{"settings-passphrase", views.PassphraseDialog{PostURL: "/settings/passphrase"}})
 }
@@ -223,12 +166,14 @@ func (s *Server) handlePassphrase(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
-	now := s.now()
-	if wait, blocked := passphraseAttempts.blocked(user.ID, now); blocked {
-		s.passphraseError(w, r, http.StatusTooManyRequests,
-			"Too many wrong entries. Try again in "+waitText(wait)+".")
+	// One change per operator at a time: the check below is an argon2
+	// evaluation of attacker-chosen input (security review A-02).
+	done, err := s.auth.BeginOperatorAction(user.ID)
+	if err != nil {
+		s.passphraseError(w, r, http.StatusTooManyRequests, "Another change is in progress. Try again in a moment.")
 		return
 	}
+	defer done()
 	if err := r.ParseForm(); err != nil {
 		s.passphraseError(w, r, http.StatusBadRequest, "The form could not be read.")
 		return
@@ -238,16 +183,26 @@ func (s *Server) handlePassphrase(w http.ResponseWriter, r *http.Request) {
 		s.passphraseError(w, r, http.StatusUnprocessableEntity, "Enter your current and your new passphrase.")
 		return
 	}
-	match, err := auth.VerifyPassword(current, user.PassHash)
-	if err != nil {
-		s.log.Error("settings: verify passphrase", "err", err)
-		s.passphraseError(w, r, http.StatusInternalServerError, "The passphrase could not be checked.")
+	// The check goes through the auth service: argon2 semaphore, attempts
+	// counted per operator before they are evaluated, throttled attempts audited.
+	err = s.auth.CheckPassphrase(r.Context(), user, current, ClientIP(r), auditPassphrase)
+	switch {
+	case err == nil:
+	case errors.Is(err, auth.ErrRateLimited):
+		s.passphraseError(w, r, http.StatusTooManyRequests,
+			"Too many wrong entries. Try again in "+waitText(auth.RetryAfter(err))+".")
 		return
-	}
-	if !match {
-		passphraseAttempts.fail(user.ID, now)
+	case errors.Is(err, auth.ErrBusy):
+		w.Header().Set("Retry-After", "2")
+		s.passphraseError(w, r, http.StatusServiceUnavailable, "The hub is busy. Try again in a moment.")
+		return
+	case errors.Is(err, auth.ErrWrongPassphrase):
 		s.auditSettings(r, auditPassphrase, "", "wrong current passphrase", store.AuditDenied)
 		s.passphraseError(w, r, http.StatusUnprocessableEntity, "The current passphrase is not correct.")
+		return
+	default:
+		s.log.Error("settings: verify passphrase", "err", err)
+		s.passphraseError(w, r, http.StatusInternalServerError, "The passphrase could not be checked.")
 		return
 	}
 	switch {
@@ -275,7 +230,6 @@ func (s *Server) handlePassphrase(w http.ResponseWriter, r *http.Request) {
 		s.passphraseError(w, r, http.StatusInternalServerError, "The passphrase could not be changed.")
 		return
 	}
-	passphraseAttempts.reset(user.ID)
 	ended, err := s.auth.Sessions().DeleteAllForUser(ctx, user.ID)
 	if err != nil {
 		// The new passphrase is stored; old sessions that survive a failure here would be a hole, so say so loudly.

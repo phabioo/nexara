@@ -211,7 +211,7 @@ func (s *Server) handleLoginVerify(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, auth.ErrInvalidCode):
 		// The challenge survives a wrong code (the service discards it after five).
 		s.loginError(w, r, err, loginPage{SecondFactor: true, Operator: who})
-	case errors.Is(err, auth.ErrRateLimited):
+	case errors.Is(err, auth.ErrRateLimited), errors.Is(err, auth.ErrBusy):
 		s.loginError(w, r, err, loginPage{SecondFactor: true, Operator: who})
 	default:
 		// Invalid or expired challenge, or an internal error: start over.
@@ -284,6 +284,10 @@ func (s *Server) loginError(w http.ResponseWriter, r *http.Request, err error, p
 		w.Header().Set("Retry-After", strconv.Itoa(secs))
 	case errors.Is(err, auth.ErrInvalidCredentials), errors.Is(err, auth.ErrInvalidCode), errors.Is(err, auth.ErrInvalidChallenge):
 		p.Status = http.StatusUnauthorized
+	case errors.Is(err, auth.ErrBusy):
+		// Too many passphrase checks are waiting: nothing was evaluated or counted.
+		p.Status = http.StatusServiceUnavailable
+		w.Header().Set("Retry-After", "2")
 	default:
 		s.log.Error("sign-in failed", "err", err)
 		p.Status = http.StatusInternalServerError

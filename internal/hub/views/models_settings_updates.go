@@ -48,6 +48,12 @@ type SettingsLast struct {
 	Message string
 	When    string
 	Log     string
+	// NoRollback is set when the helper refused the update for lack of a saved
+	// copy of the running version; the card then explains why and shows Command.
+	NoRollback bool
+	Why        string
+	Steps      []string
+	Command    string
 }
 
 // SettingsUpdates is the Updates card.
@@ -208,6 +214,9 @@ func NewSettingsUpdates(now time.Time, st update.Status, hosts []grid.HostInfo) 
 			if r.Phase != "" {
 				l.Message = strings.TrimSpace(r.Message + " (step: " + r.Phase + ")")
 			}
+			if strings.Contains(r.Message, update.MsgNoRollback) {
+				noRollbackHint(l)
+			}
 		}
 		l.Log = tailText(r.LogTail, 2000)
 		u.Last = l
@@ -226,6 +235,22 @@ func NewSettingsUpdates(now time.Time, st update.Status, hosts []grid.HostInfo) 
 		u.Tag, u.TagTone = "Last update failed", "bad"
 	}
 	return u
+}
+
+// noRollbackHint turns the helper's refusal for missing rollback material into
+// an explanation and the one command that updates anyway (decision #50; owner
+// decision: no relaxation, only a clear way out).
+func noRollbackHint(l *SettingsLast) {
+	l.Title, l.Message = "Update refused: no rollback copy", "Nothing was installed."
+	l.NoRollback = true
+	l.Why = "An update is only installed when this hub can go back to the version it runs now if the new one does not start. " +
+		"That copy is saved after every update and by the installer; a package you installed by hand with apt or dpkg leaves none."
+	l.Steps = []string{
+		"1. On the hub, stop the update watcher: sudo systemctl stop nexus-update.path",
+		"2. Request the update here again.",
+		"3. Run this on the hub. It installs without a way back, so a failed update then needs a manual fix:",
+	}
+	l.Command = update.NoRollbackCommand
 }
 
 func isNumericVersion(v string) bool {
@@ -256,6 +281,8 @@ type SettingsInstallConfirm struct {
 	PostURL  string
 	Version0 string // plain version for the form
 	Older    bool
+	Error    string // step-up failure
+	NoCode   bool
 }
 
 // NewSettingsInstallConfirm builds the confirm dialog of a staged version.

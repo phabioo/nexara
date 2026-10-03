@@ -74,7 +74,6 @@
 <form class="pkg-confirm" hx-post="{{.PostURL}}" hx-target="#modal-root" hx-swap="innerHTML">
   <span class="tag tag-dark">{{.HostLabel}}</span>
   <p class="card-text">{{.Text}}</p>
-  {{with .HubNote}}<p class="card-text"><strong>{{.}}</strong></p>{{end}}
   {{template "checker"}}
   <div class="modal-actions">
     {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}

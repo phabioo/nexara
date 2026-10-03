@@ -37,10 +37,13 @@ const (
 	headerSize  = len(envelopeMagic) + 1 + 1 + 1 + 4 + 4 + 1 + saltSize + prefixSize
 	hkdfInfoLoc = "nexus/v1 local-backup-aes-gcm"
 
-	// Upper bounds for the KDF parameters read from a (possibly hostile) file.
-	maxKDFMemoryKiB = 512 * 1024
-	maxKDFTime      = 16
-	maxKDFThreads   = 16
+	// Upper bounds for the KDF parameters read from a (possibly hostile)
+	// file: twice the memory, twice the passes and the lanes of DefaultKDF
+	// leave room to raise the defaults, yet a crafted header cannot make a
+	// Pi hash for minutes or allocate half a gigabyte (security review A-05).
+	maxKDFMemoryKiB = 256 * 1024
+	maxKDFTime      = 6
+	maxKDFThreads   = 4
 )
 
 // Errors of the envelope. They are deliberately few and readable: the UI

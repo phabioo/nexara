@@ -62,6 +62,11 @@ type Options struct {
 	// AuditRestore writes the backup.restore entry into the database file that
 	// was just restored (the old one is gone). Nil skips it.
 	AuditRestore func(ctx context.Context, dbPath string, e store.AuditEntry) error
+	// BeforeSwap runs once a restore has checked and staged everything, right
+	// before the files are swapped. The running hub closes its database here,
+	// so that no connection of the old process keeps writing into a file that
+	// is about to be moved aside. An error cancels the restore. Nil skips it.
+	BeforeSwap func() error
 
 	HubName    string
 	HubVersion string
@@ -107,6 +112,33 @@ func WithActor(ctx context.Context, actor string) context.Context {
 	return context.WithValue(ctx, actorKey{}, actor)
 }
 
+type remoteKey struct{}
+
+// WithRemoteAddr records the client address of the request that triggered an
+// operation; it is added to the audit entries the operation writes.
+func WithRemoteAddr(ctx context.Context, addr string) context.Context {
+	return context.WithValue(ctx, remoteKey{}, addr)
+}
+
+func remoteOf(ctx context.Context) string {
+	a, _ := ctx.Value(remoteKey{}).(string)
+	return a
+}
+
+type carriedKey struct{}
+
+// WithCarriedAudit hands a restore audit entries that belong in the restored
+// database: the setup wizard's refused and failed attempts are written to the
+// empty database that the restore replaces, so the restore copies them over.
+func WithCarriedAudit(ctx context.Context, entries []store.AuditEntry) context.Context {
+	return context.WithValue(ctx, carriedKey{}, entries)
+}
+
+func carriedOf(ctx context.Context) []store.AuditEntry {
+	e, _ := ctx.Value(carriedKey{}).([]store.AuditEntry)
+	return e
+}
+
 func actorOf(ctx context.Context) string {
 	if a, _ := ctx.Value(actorKey{}).(string); a != "" {
 		return a
@@ -122,6 +154,9 @@ func (s *Service) audit(ctx context.Context, action, detail string, err error) {
 	if err != nil {
 		res = store.AuditError
 		detail += "; error: " + err.Error()
+	}
+	if ip := remoteOf(ctx); ip != "" {
+		detail += "; ip=" + ip
 	}
 	s.o.Audit(ctx, store.AuditEntry{User: actorOf(ctx), Action: action, Detail: detail, Result: res})
 }

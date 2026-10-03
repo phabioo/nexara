@@ -206,12 +206,36 @@ func isHubHost(h grid.HostInfo) bool {
 	return addr == "localhost"
 }
 
+// hubOwn reports whether h is the device the hub runs on: Services.HubHost if set, else isHubHost. Settings
+// (the "Hub + Agent" label, the remove button) and every remove route use this one check.
+func (s *Server) hubOwn(h grid.HostInfo) bool {
+	if s.svc.HubHost != nil {
+		return s.svc.HubHost(h)
+	}
+	return isHubHost(h)
+}
+
+// refuseHubRemoval answers a request to remove the hub's own host with a clear message and reports whether it
+// did. The hub's own agent is how the hub manages itself (decision #4), so no route removes it (security
+// review C-08); the UI only hides the button, this is the check that counts.
+func (s *Server) refuseHubRemoval(w http.ResponseWriter, r *http.Request, h grid.HostInfo) bool {
+	if !s.hubOwn(h) {
+		return false
+	}
+	s.toastError(w, r, http.StatusConflict, "Not removed",
+		hostLabel(h)+" is the device the hub runs on. Its agent is how Nexara Nexus manages the hub itself and cannot be removed.")
+	return true
+}
+
 func (s *Server) handleRemoveConfirm(w http.ResponseWriter, r *http.Request) {
 	h, ok := s.requireHost(w, r)
 	if !ok {
 		return
 	}
-	body, err := s.partialString("overview-remove", views.NewOverviewRemove(hostLabel(h), hostURL(h.Name), isHubHost(h)))
+	if s.refuseHubRemoval(w, r, h) {
+		return
+	}
+	body, err := s.partialString("overview-remove", views.NewOverviewRemove(hostLabel(h), hostURL(h.Name)))
 	if err != nil {
 		s.serverError(w, r, err)
 		return
@@ -225,6 +249,9 @@ func (s *Server) handleRemoveConfirm(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRemoveHost(w http.ResponseWriter, r *http.Request) {
 	h, ok := s.requireHost(w, r)
 	if !ok {
+		return
+	}
+	if s.refuseHubRemoval(w, r, h) {
 		return
 	}
 	next := nextHostURL(s.hub.Hosts(), h.ID)

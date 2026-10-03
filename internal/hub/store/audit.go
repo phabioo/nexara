@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Audit results.
@@ -13,6 +16,31 @@ const (
 	AuditError  = "error"
 	AuditDenied = "denied"
 )
+
+// MaxAuditDetail is the longest Detail AppendAudit stores, in characters.
+// Text from agents ends up in Detail; it must not grow the log without bound.
+const MaxAuditDetail = 500
+
+// cleanAuditDetail replaces control characters and invalid UTF-8 with '?' and
+// cuts the text to MaxAuditDetail characters.
+func cleanAuditDetail(s string) string {
+	if len(s) <= MaxAuditDetail && utf8.ValidString(s) && strings.IndexFunc(s, unicode.IsControl) < 0 {
+		return s
+	}
+	var b strings.Builder
+	n := 0
+	for _, r := range s {
+		if n == MaxAuditDetail {
+			break
+		}
+		if unicode.IsControl(r) || r == utf8.RuneError {
+			r = '?'
+		}
+		b.WriteRune(r)
+		n++
+	}
+	return b.String()
+}
 
 // AuditEntry is a row of the audit_log table. Never put secrets in Detail.
 type AuditEntry struct {
@@ -31,7 +59,8 @@ const (
 	maxAuditLimit     = 10000
 )
 
-// AppendAudit writes one audit entry. Time defaults to now. Returns the row ID.
+// AppendAudit writes one audit entry. Time defaults to now. Detail is cleaned
+// of control characters and cut to MaxAuditDetail characters. Returns the row ID.
 func (s *Store) AppendAudit(ctx context.Context, e AuditEntry) (int64, error) {
 	if e.Action == "" || e.Result == "" {
 		return 0, errors.New("store: audit entry needs action and result")
@@ -39,6 +68,7 @@ func (s *Store) AppendAudit(ctx context.Context, e AuditEntry) (int64, error) {
 	if e.Time.IsZero() {
 		e.Time = s.now()
 	}
+	e.Detail = cleanAuditDetail(e.Detail)
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO audit_log (ts, "user", host, action, detail, result) VALUES (?, ?, ?, ?, ?, ?)`,
 		unix(e.Time), e.User, e.Host, e.Action, e.Detail, e.Result)

@@ -23,6 +23,10 @@ var (
 	ErrTooNew = errors.New("backup: this backup was made by a newer Nexus; update Nexus first, then restore")
 	// ErrPassphraseRequired means the file is a passphrase backup and none was given.
 	ErrPassphraseRequired = errors.New("backup: this backup needs its passphrase")
+	// ErrStoreClosed is added to a restore error when the swap failed after the
+	// hub had closed its database: the files are back as they were, but this
+	// process can no longer use them and must be restarted.
+	ErrStoreClosed = errors.New("the hub closed its database for the restore; restart Nexus (sudo systemctl restart nexus)")
 )
 
 const (
@@ -102,7 +106,7 @@ func (s *Service) keyFor(f io.ReadSeeker, passphrase string) (Key, error) {
 func (s *Service) RestoreFile(ctx context.Context, path, passphrase string) (*RestoreResult, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, s.restoreFailed(ctx, err)
 	}
 	defer f.Close()
 	return s.RestoreFrom(ctx, f, passphrase)
@@ -113,7 +117,7 @@ func (s *Service) RestoreFile(ctx context.Context, path, passphrase string) (*Re
 func (s *Service) RestoreFrom(ctx context.Context, f io.ReadSeeker, passphrase string) (*RestoreResult, error) {
 	key, err := s.keyFor(f, passphrase)
 	if err != nil {
-		return nil, err
+		return nil, s.restoreFailed(ctx, err)
 	}
 	return s.restore(ctx, f, key)
 }
@@ -122,7 +126,7 @@ func (s *Service) RestoreFrom(ctx context.Context, f io.ReadSeeker, passphrase s
 // returns it).
 func (s *Service) RestoreLocal(ctx context.Context, name string) (*RestoreResult, error) {
 	if _, _, ok := parseFileName(name); !ok {
-		return nil, fmt.Errorf("backup: %q is not a local backup name", name)
+		return nil, s.restoreFailed(ctx, fmt.Errorf("backup: %q is not a local backup name", sanitize(name)))
 	}
 	return s.RestoreFile(ctx, filepath.Join(s.o.Layout.BackupDir, name), "")
 }
@@ -146,9 +150,21 @@ func (s *Service) Restore(ctx context.Context, r io.Reader, passphrase string) (
 	return s.restore(ctx, r, PassphraseKey(passphrase, s.o.KDF))
 }
 
+// restoreFailed audits a failed restore and returns err. A restore that
+// changed nothing is still an attempt somebody should be able to see.
+func (s *Service) restoreFailed(ctx context.Context, err error) error {
+	s.audit(context.WithoutCancel(ctx), ActionRestore, "restore failed", err)
+	return err
+}
+
 func (s *Service) restore(ctx context.Context, r io.Reader, key Key) (res *RestoreResult, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer func() {
+		if err != nil {
+			s.restoreFailed(ctx, err)
+		}
+	}()
 	lay := s.o.Layout
 	if err := s.ensureBackupDir(); err != nil {
 		return nil, err
@@ -182,8 +198,19 @@ func (s *Service) restore(ctx context.Context, r io.Reader, key Key) (res *Resto
 		s.discard(plan)
 		return nil, err
 	}
+	closed := false
+	if s.o.BeforeSwap != nil {
+		if err := s.o.BeforeSwap(); err != nil {
+			s.discard(plan)
+			return nil, fmt.Errorf("backup: cannot close the database before the restore: %w", err)
+		}
+		closed = true
+	}
 	replaced, err := s.swap(plan)
 	if err != nil {
+		if closed {
+			err = fmt.Errorf("%w; %w", err, ErrStoreClosed)
+		}
 		return nil, err
 	}
 	res = &RestoreResult{Manifest: m, Replaced: replaced, ConfigAdjusted: adjusted, RestartRequired: true}
@@ -416,15 +443,26 @@ func (s *Service) swap(plan []*step) (replaced []string, err error) {
 	return nil, err
 }
 
-// finish writes the audit entry into the restored database.
+// finish writes the audit entries into the restored database: first what the
+// caller carried over (the setup wizard's earlier attempts), then the
+// restore itself.
 func (s *Service) finish(ctx context.Context, m Manifest) {
 	if s.o.AuditRestore == nil {
 		return
 	}
-	e := store.AuditEntry{User: actorOf(ctx), Action: ActionRestore, Result: store.AuditOK,
-		Detail: fmt.Sprintf("restored backup of %s (hub %s, created %s, reason %s)",
-			m.HubName, m.HubVersion, m.CreatedAt.UTC().Format("2006-01-02 15:04:05 UTC"), m.Reason)}
-	if err := s.o.AuditRestore(ctx, s.o.Layout.Database, e); err != nil {
-		s.o.Logger.Warn("writing the restore audit entry failed", "err", err)
+	write := func(e store.AuditEntry) {
+		if err := s.o.AuditRestore(ctx, s.o.Layout.Database, e); err != nil {
+			s.o.Logger.Warn("writing a restore audit entry failed", "action", e.Action, "err", err)
+		}
 	}
+	for _, e := range carriedOf(ctx) {
+		e.ID = 0
+		write(e)
+	}
+	detail := fmt.Sprintf("restored backup of %s (hub %s, created %s, reason %s)",
+		m.HubName, m.HubVersion, m.CreatedAt.UTC().Format("2006-01-02 15:04:05 UTC"), m.Reason)
+	if ip := remoteOf(ctx); ip != "" {
+		detail += "; ip=" + ip
+	}
+	write(store.AuditEntry{User: actorOf(ctx), Action: ActionRestore, Result: store.AuditOK, Detail: detail})
 }

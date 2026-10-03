@@ -9,6 +9,7 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"math/big"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -145,6 +146,25 @@ func NewCodes(o CodeOptions) *Codes {
 		c.lockFor = LockDuration
 	}
 	return c
+}
+
+// ipKey is the address a per-client counter is kept under: IPv4 as it is, an
+// IPv6 address as its /64 (one network owns billions of addresses in it, so
+// per-address counters would give every guess a fresh budget and let a
+// handful of hosts fill the table; security review A-04). Text that is no
+// IP address is used as it is.
+func ipKey(ip string) string {
+	a, err := netip.ParseAddr(strings.TrimSpace(ip))
+	if err != nil {
+		return ip
+	}
+	a = a.WithZone("").Unmap()
+	if a.Is6() {
+		if p, err := a.Prefix(64); err == nil {
+			return p.String()
+		}
+	}
+	return a.String()
 }
 
 // NormalizeCode upper-cases the input and strips spaces and dashes.
@@ -303,7 +323,7 @@ func (c *Codes) Locked() (bool, time.Time) { return c.LockedFor("") }
 func (c *Codes) LockedFor(ip string) (bool, time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.lockedLocked(ip, c.now())
+	return c.lockedLocked(ipKey(ip), c.now())
 }
 
 func (c *Codes) lockedLocked(ip string, now time.Time) (bool, time.Time) {
@@ -325,7 +345,7 @@ func (c *Codes) AttemptsLeft() int { return c.AttemptsLeftFor("") }
 func (c *Codes) AttemptsLeftFor(ip string) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	st := c.perIP[ip]
+	st := c.perIP[ipKey(ip)]
 	if st == nil || (!st.lockedUntil.IsZero() && !c.now().Before(st.lockedUntil)) {
 		return c.max
 	}
@@ -339,13 +359,16 @@ func (c *Codes) Verify(input string) error { return c.VerifyFrom("", input) }
 // on success and a *CodeError otherwise. After MaxAttempts failures from one
 // ip that ip is locked for LockDuration; after GlobalMaxAttempts failures
 // within one LockDuration window from all clients, everybody is. Locks never
-// invalidate or rotate the code.
+// invalidate or rotate the code. A correct code is consumed: it works once,
+// the next Rotate (`sudo nexus setup code`) issues a new one. IPv6 clients
+// count per /64.
 func (c *Codes) VerifyFrom(ip, input string) error {
 	c.Tick() // pick up an expired code first
 
+	key := ipKey(ip)
 	c.mu.Lock()
 	now := c.now()
-	if locked, until := c.lockedLocked(ip, now); locked {
+	if locked, until := c.lockedLocked(key, now); locked {
 		c.mu.Unlock()
 		return &CodeError{Locked: true, Until: until}
 	}
@@ -354,13 +377,19 @@ func (c *Codes) VerifyFrom(ip, input string) error {
 	valid := c.code != "" && now.Before(c.expires) &&
 		len(got) == len(want) && subtle.ConstantTimeCompare(got, want) == 1
 	if valid {
-		delete(c.perIP, ip)
+		// One-time: the code is consumed by the unlock (security review
+		// A-06). Whoever needs the wizard again runs `sudo nexus setup code`.
+		// No rotation follows (Tick ignores an empty code), so the printed
+		// code does not live on after it was used.
+		c.code = ""
+		c.expires = time.Time{}
+		c.resetFailuresLocked()
 		c.mu.Unlock()
 		c.emit(EventUnlocked, ip, now)
 		return nil
 	}
 
-	st := c.ipStateLocked(ip, now)
+	st := c.ipStateLocked(key, now)
 	st.failures++
 	st.last = now
 	if c.globalStart.IsZero() || !now.Before(c.globalStart.Add(c.lockFor)) {

@@ -65,8 +65,8 @@ func (g *Grid) OpenShell(ctx context.Context, actor Actor, id HostID, cols, rows
 		g: g, c: c, id: store.NewID(), host: st.name, user: actor.Operator,
 		opened: g.now(), notify: make(chan struct{}, 1),
 	}
-	if !c.addShell(s) {
-		return nil, ErrHostOffline
+	if err := g.registerShell(st, c, s); err != nil {
+		return nil, err
 	}
 	env, err := c.request(ctx, protocol.TypeShellOpen, protocol.ShellOpen{SessionID: s.id, Cols: cols, Rows: rows}, g.to.shellOpen)
 	if err == nil {
@@ -79,6 +79,24 @@ func (g *Grid) OpenShell(ctx context.Context, actor Actor, id HostID, cols, rows
 	}
 	g.audit(store.AuditEntry{User: actor.Operator, Host: st.name, Action: "shell.open", Detail: "session " + s.id, Result: store.AuditOK})
 	return s, nil
+}
+
+// registerShell adds the session to the connection under g.mu with the
+// capability checked again: SetCapability switches the shell off under the same
+// lock and then ends the registered sessions, so a session either sees the
+// switch here or is ended by it (security review C-05).
+func (g *Grid) registerShell(st *hostState, c *agentConn, s *shellSession) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	switch {
+	case st.conn != c || !st.online:
+		return ErrHostOffline
+	case !st.capEnabled(protocol.CapShell):
+		return ErrCapabilityDisabled
+	case !c.addShell(s):
+		return ErrHostOffline
+	}
+	return nil
 }
 
 func (s *shellSession) signal() {

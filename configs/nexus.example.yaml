@@ -25,8 +25,8 @@ storage:
     hour_days: 365
 
 security:
-  session_idle_hours: 12
-  totp_required: false   # true from v0.2
+  session_idle_hours: 12   # ignored: fixed at 12 h (decision #52)
+  totp_required: false     # ignored: two-factor login is mandatory (decision #51)
   login_rate_limit:
     attempts: 5
     window_minutes: 15

@@ -130,27 +130,28 @@ func TestBackupDownloadDialogs(t *testing.T) {
 	}
 
 	// Accepted: the "ready" dialog posts the passphrase again, as a plain form with the CSRF token.
-	rec := s.hxPost("/settings/backup/download", url.Values{"passphrase": {bkPass}, "confirm": {bkPass}})
+	rec := s.hxPost("/settings/backup/download", s.stepUp(url.Values{"passphrase": {bkPass}, "confirm": {bkPass}}))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}
 	contains(t, rec.Body.String(), "Backup ready", `method="post" action="/settings/backup/download"`, `name="csrf_token" value="`+s.csrf+`"`,
-		`name="passphrase" value="`+bkPass+`"`)
+		`name="passphrase" value="`+bkPass+`"`, `name="download_grant" value="`)
+	lacks(t, rec.Body.String(), testPass, fieldStepUpPass, fieldStepUpCode)
 	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
 		t.Errorf("Cache-Control = %q: the dialog holds the passphrase", cc)
 	}
 	if len(s.auditFor("backup.download")) != 0 {
 		t.Error("the check step wrote a download audit entry")
 	}
-	if rec := s.hxPost("/settings/backup/download", url.Values{"passphrase": {bkPass}, "confirm": {bkPass}}); rec.Header().Get("Set-Cookie") != "" {
+	if rec := s.hxPost("/settings/backup/download", s.stepUp(url.Values{"passphrase": {bkPass}, "confirm": {bkPass}})); rec.Header().Get("Set-Cookie") != "" {
 		t.Error("the dialog sets a cookie")
 	}
 }
 
 func TestBackupDownloadFile(t *testing.T) {
 	s := newSettingsEnv(t)
-	// Step 2: a plain form post, token in the form field.
-	rec := s.post("/settings/backup/download", withCookies(s.cookie), withForm(url.Values{"passphrase": {bkPass}, "csrf_token": {s.csrf}}))
+	// Step 2: a plain form post, CSRF token and grant in the form.
+	rec := s.post("/settings/backup/download", withCookies(s.cookie), withForm(url.Values{"passphrase": {bkPass}, "csrf_token": {s.csrf}, fieldDownloadGrant: {s.downloadGrant(t)}}))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}
@@ -186,7 +187,9 @@ func TestBackupDownloadFile(t *testing.T) {
 
 func TestBackupDownloadFileErrors(t *testing.T) {
 	s := newSettingsEnv(t)
-	form := func(pass string) reqOpt { return withForm(url.Values{"passphrase": {pass}, "csrf_token": {s.csrf}}) }
+	form := func(pass string) reqOpt {
+		return withForm(url.Values{"passphrase": {pass}, "csrf_token": {s.csrf}, fieldDownloadGrant: {s.downloadGrant(t)}})
+	}
 	rec := s.post("/settings/backup/download", withCookies(s.cookie), form("short"))
 	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "at least 12 characters") {
 		t.Errorf("weak passphrase: %d %q", rec.Code, rec.Body.String())
@@ -194,8 +197,8 @@ func TestBackupDownloadFileErrors(t *testing.T) {
 	if cd := rec.Header().Get("Content-Disposition"); cd != "" {
 		t.Errorf("an error carries Content-Disposition %q", cd)
 	}
-	// No token: forbidden, nothing created.
-	rec = s.post("/settings/backup/download", withCookies(s.cookie), withForm(url.Values{"passphrase": {bkPass}}))
+	// No CSRF token: forbidden, nothing created.
+	rec = s.post("/settings/backup/download", withCookies(s.cookie), withForm(url.Values{"passphrase": {bkPass}, fieldDownloadGrant: {s.downloadGrant(t)}}))
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("no csrf: %d", rec.Code)
 	}
@@ -241,7 +244,7 @@ func TestBackupRestore(t *testing.T) {
 	if s.restarts != 0 {
 		t.Fatal("restarted before the restore")
 	}
-	rec := s.hxPost("/settings/backup/restore", url.Values{"name": {info.Name}})
+	rec := s.hxPost("/settings/backup/restore", s.stepUp(url.Values{"name": {info.Name}}))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("restore: %d %s", rec.Code, rec.Body.String())
 	}
@@ -265,12 +268,12 @@ func TestBackupRestoreErrors(t *testing.T) {
 	if rec := s.post("/settings/backup/restore", s.opts(false, true, withForm(url.Values{"name": {info.Name}}))...); rec.Code != 403 {
 		t.Errorf("no csrf: %d", rec.Code)
 	}
-	rec := s.hxPost("/settings/backup/restore", url.Values{"name": {"nexus-20250101T000000Z-manual.nxbk"}})
+	rec := s.hxPost("/settings/backup/restore", s.stepUp(url.Values{"name": {"nexus-20250101T000000Z-manual.nxbk"}}))
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("gone: %d", rec.Code)
 	}
 	contains(t, rec.Body.String(), "That backup no longer exists.", `hx-swap-oob="true"`, `id="set-backup"`)
-	rec = s.hxPost("/settings/backup/restore", url.Values{"name": {"../../etc/passwd"}})
+	rec = s.hxPost("/settings/backup/restore", s.stepUp(url.Values{"name": {"../../etc/passwd"}}))
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("not a backup name: %d", rec.Code)
 	}
@@ -279,7 +282,7 @@ func TestBackupRestoreErrors(t *testing.T) {
 	if err := os.WriteFile(info.Path, []byte("NXBKUP garbage"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	rec = s.hxPost("/settings/backup/restore", url.Values{"name": {info.Name}})
+	rec = s.hxPost("/settings/backup/restore", s.stepUp(url.Values{"name": {info.Name}}))
 	if rec.Code < 400 {
 		t.Errorf("a damaged backup was restored: %d", rec.Code)
 	}
@@ -291,7 +294,7 @@ func TestBackupRestoreErrors(t *testing.T) {
 	_ = post
 	// Without a restart service (the demo) there is no restore at all.
 	s.srv.svc.Restart = nil
-	if rec := s.hxPost("/settings/backup/restore", url.Values{"name": {info.Name}}); rec.Code != 404 {
+	if rec := s.hxPost("/settings/backup/restore", s.stepUp(url.Values{"name": {info.Name}})); rec.Code != 404 {
 		t.Errorf("restore without restart: %d", rec.Code)
 	}
 	if rec := s.hxGet("/settings/backup/restore?name=" + info.Name); rec.Code != 404 {

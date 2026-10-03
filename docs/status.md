@@ -1,8 +1,8 @@
 # Umsetzungsstand v0.1
 
-Stand: 03.10.2026 · nach Welle 8 · CI grün (Linux amd64 + arm64, `go test -race`)
+Stand: 03.10.2026 · nach Welle 9 · CI grün (Linux amd64 + arm64, `go test -race`)
 
-Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbeitenden Sonnet-Agents, jedes Ergebnis vom Orchestrator geprüft, gemergt und per GitHub Actions getestet. **v0.2 in Arbeit:** Wellen 7 (Unterbau) und 8 (Ansichten) fertig, Welle 9 (Sicherheits-Review, `v0.2.0-rc1`) als Nächstes. Das 2-Wochen-Gate für v0.1 wurde auf Wunsch übersprungen; rc2 läuft weiter auf frpi5.
+Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbeitenden Sonnet-Agents, jedes Ergebnis vom Orchestrator geprüft, gemergt und per GitHub Actions getestet. **v0.2 fertig bis auf den Release:** Wellen 7 (Unterbau), 8 (Ansichten) und 9 (Sicherheits-Review + Fixes) fertig; als Nächstes `v0.2.0-rc1`. Das 2-Wochen-Gate für v0.1 wurde auf Wunsch übersprungen; rc2 läuft weiter auf frpi5.
 
 ## Fertig
 
@@ -34,6 +34,7 @@ Die Umsetzung folgt dem Plan „v0.1 mit Subagents“: Wellen mit parallel arbei
 | 6 | Pi-Feedback | `nexus.js`, `layout*.go`, `sse.go`, Templates, `nexus.css`, `demo/large.go` | Navigation ohne Neuladen (htmx boost + OOB-Regionen, eine SSE-Verbindung, Ereignisse tauschen Fragmente, #48); Ansichten passen ab 1024 px in die Fensterhöhe, Listen scrollen in der Karte; Paketliste seitenweise (60) mit Updates zuerst; Services: fehlgeschlagene zuerst, inaktive gedimmt; Laufbänder lückenlos bei jeder Breite; `nexus dev --demo --demo-large` |
 | 7 | v0.2-Unterbau | `history`, `backup`, `update`, `grid/renew.go`, `store` | Host-Tabs bleiben in der Ansicht (#54); Verlauf (`metrics_1m/1h`, Aggregation, Aufbewahrung, Abfragen 24 h/7 d/30 d), Tabelle `settings`, Audit-Aufräumen; Agent-Zertifikate erneuern sich über mTLS (#47); verschlüsselte Backups (nächtlich, vor Updates, Download, Restore, #55); Self-Update mit Root-Helfer `nexus-update.path/.service`, Signaturprüfung, Rollback (#50); `install.sh` legt das Paket als Rollback-Material ab |
 | 8 | v0.2-Ansichten | `view_settings*.go`, `view_history.go`, `view_audit.go`, `view_totp.go`, `view_setup_restore.go`, `grid/capabilities.go`, `app/logring.go` | Settings mit 8 Karten (Operators inkl. Passphrase ändern, Security fest, Updates mit Prüfung/Upload/Installation, Backup mit Zeitplan/Download/Restore, Hosts & Capabilities mit Schaltern #56, Zertifikate mit Erneuern, Diagnose = Hub-Log, Audit-Karte); History mit SVG-Kurven 24 h/7 d/30 d in der Hub-Zeitzone; Audit-Vollansicht mit Filtern, Seiten und CSV-Export; TOTP-Pflicht mit Einrichtungsseite (#51, Demo-Ausnahme #57); Restore aus Backup im Setup mit Neustart (#55) |
+| 9 | Sicherheit v0.2 | siehe `docs/security-review-v0.2.md` | Review in drei Bereichen, alle Befunde behoben: `postinst` fasst keine Hub-Dateien mehr an (B-01), atomare Login-/2FA-/Passphrase-Limits, IPv6 per /64, Setup-Code nur einmal gültig, 12 h fest; Body-Zeitlimit überall; Backup-Härtung (kein PAX/sparse, Größen- und KDF-Grenzen), Restore-Audit in der wiederhergestellten DB, Versionsvergleich wie dpkg; Agent-Missbrauch begrenzt (CSR-Audit, Mount-Zahl, Audit-Detail), Packages-aus bricht Aufträge ab (#59), Hub-Host nicht entfernbar (#60); Step-up mit Passphrase + TOTP für Backup-Download, Restore, Update (#58); Hinweis bei fehlender Rollback-Kopie (#61) |
 
 Zusätzlich vom Orchestrator: `internal/hub/agentbin` (eingebettete Agent-Binaries), CI-Workflow `.github/workflows/ci.yml`, Entscheidungen #27–#42 in `decisions.md`.
 
@@ -41,7 +42,7 @@ Umfang: 359 Go-Dateien, davon 164 Testdateien.
 
 ## Nächste Schritte
 
-1. **Welle 9:** Sicherheits-Review v0.2 (u. a. Passphrase-Prüfung in Settings außerhalb des Hash-Semaphors, Backup-Passphrase im Download-Dialog, Upload-Pfade, Capability-Schalter), Fixes, Release `v0.2.0-rc1` (Tag pusht der Owner).
+1. **Release `v0.2.0-rc1`:** nach dem Merge den Tag vom Pi pushen (`git tag v0.2.0-rc1 && git push origin v0.2.0-rc1`), Release-Freigabe im Environment `release`; danach auf frpi5 über Settings → Updates (Upload) oder `install.sh` testen.
 
 ## Offene Punkte
 
@@ -49,10 +50,11 @@ Umfang: 359 Go-Dateien, davon 164 Testdateien.
 - `install.sh` braucht OpenSSL ≥ 3 (Bookworm oder neuer).
 - Setup-Session-Cookie: das `__Host-`-Präfix setzt ein Shim in `httpserver/cookies.go`; sauberer wäre eine Namensoption in `setup.SessionOptions`.
 - Bei der Kopplung per Code gibt es kein „Ersetzen“ (nur beim SSH-Link); ein abgelehnter Code ist verbraucht.
-- Diagnose: Agent-Logs bräuchten eine neue Agent-Fähigkeit – offen, braucht eine Entscheidung (#56).
+- Diagnose: Agent-Logs kommen mit der Log-Ansicht in v0.4 (neue Agent-Fähigkeit, #56).
 - Settings: Karte „History retention“ aus dem Mockup fehlt (Aufbewahrung über `history.retention_days` geht bisher nur per Einstellung); Audit-Karte ohne Gesamtzahl.
 - Audit-Log: bei sehr großen Logs könnte ein Index `audit_log(host, ts)` helfen (Migration).
 - `grid-agent --help` nennt nur `--token`, nicht `--token-file`.
+- TOTP-Pflicht (#51): Operatoren aus v0.1 ohne TOTP richten es bei der nächsten Anmeldung ein; wer die Passphrase kennt, könnte dabei zuerst einrichten und den Besitzer aussperren (Security-Review A-07). Ein Admin-Socket-Befehl „TOTP zurücksetzen“ ist für v0.3 geplant.
 - `govulncheck` lief noch nie (Datenbank aus der Session nicht erreichbar) – erster CI-Lauf zeigt es.
 
 ## UI ausprobieren

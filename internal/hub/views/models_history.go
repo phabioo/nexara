@@ -26,7 +26,7 @@ const (
 const historyLookback = 2
 
 // maxHistoryDisks bounds the disk charts of one host (a Pi with dozens of bind mounts stays readable).
-const maxHistoryDisks = 12
+const maxHistoryDisks = history.MaxDiskSeries
 
 // HistoryPage is the data of pages/history.html.
 type HistoryPage struct {

@@ -454,7 +454,11 @@ func TestRenewalCSRValidation(t *testing.T) {
 		t.Errorf("%d error audit entries, want %d", denied, len(tests))
 	}
 
-	// Oversized and empty requests are bad requests.
+	// Oversized and empty requests are bad requests (on a new connection: the
+	// refusals above used up most of the allowance of the first).
+	a.close()
+	e.suppressAutoRenew(id)
+	a = e.connect(old, nil)
 	a.send(protocol.TypeCertCSR, "big", protocol.CertCSR{CSRPEM: strings.Repeat("A", maxCSRSize+1)})
 	if env := a.expect(protocol.TypeError); decode[protocol.Error](t, env).Code != protocol.CodeBadRequest {
 		t.Errorf("oversized: %s", env.Data)

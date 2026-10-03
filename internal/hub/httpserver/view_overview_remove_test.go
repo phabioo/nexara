@@ -174,8 +174,8 @@ func TestRemoveConfirmDialog(t *testing.T) {
 			want: []string{"Remove Beta Pi? Its agent loses access immediately.", `hx-post="/hosts/beta/remove"`},
 		},
 		{
-			name: "hub's own host is flagged by name", path: "/hosts/alpha/remove", hubOf: "alpha", status: 200,
-			want: []string{"This is the hub&#39;s own agent."},
+			name: "hub's own host is refused by name", path: "/hosts/alpha/remove", hubOf: "alpha", status: 409,
+			want: []string{"device the hub runs on"}, lack: []string{`hx-post="/hosts/alpha/remove"`},
 		},
 		{name: "unknown host", path: "/hosts/nope/remove", hubOf: "frpi5", status: 404},
 	}
@@ -193,6 +193,31 @@ func TestRemoveConfirmDialog(t *testing.T) {
 			ovHave(t, rec.Body.String(), tc.want...)
 			ovLack(t, rec.Body.String(), tc.lack...)
 		})
+	}
+}
+
+// C-08: the overview route refuses the hub's own host as well, with or without htmx, and removes nothing.
+func TestRemoveHostPostRefusesTheHubsOwnHost(t *testing.T) {
+	for _, htmx := range []bool{false, true} {
+		old := hubHostname
+		hubHostname = func() string { return "alpha" }
+		e, oh := newOverviewEnv(t)
+		cookie, csrf := e.signIn()
+		opts := []reqOpt{withCookies(cookie), withHeader("X-CSRF-Token", csrf)}
+		if htmx {
+			opts = append(opts, withHeader("HX-Request", "true"))
+		}
+		rec := e.post("/hosts/alpha/remove", opts...)
+		hubHostname = old
+		if rec.Code != http.StatusConflict {
+			t.Errorf("htmx=%v: status %d, want 409", htmx, rec.Code)
+		}
+		if htmx {
+			ovHave(t, rec.Body.String(), "Not removed", "device the hub runs on")
+		}
+		if got := oh.removals(); len(got) != 0 {
+			t.Errorf("htmx=%v: removals %v", htmx, got)
+		}
 	}
 }
 
