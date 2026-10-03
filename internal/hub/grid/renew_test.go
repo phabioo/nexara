@@ -623,9 +623,8 @@ func TestRenewalHubInitiatedOnConnectAndDaily(t *testing.T) {
 	}
 	e.clk.Advance(renewRetryAfter + time.Minute)
 	e.g.CheckRenewals(context.Background())
-	if dueRenews.Load() != 2 {
-		t.Errorf("renew requests after the retry interval = %d, want 2", dueRenews.Load())
-	}
+	// The agent reads the request asynchronously.
+	eventually(t, func() bool { return dueRenews.Load() == 2 })
 	// Once a certificate waits for its first use there is nothing left to ask.
 	key, csr := freshCSR(t, string(dueID))
 	e.issued(a.csr("c1", csr), key, dueID)

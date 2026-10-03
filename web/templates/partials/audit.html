@@ -1,0 +1,24 @@
+{{/* Audit log fragments. Data: views.AuditModel. */}}
+
+{{/* Everything the filter bar swaps: the meta row, the entries and the "Show more" sentinel. */}}
+{{define "audit-results"}}<div class="audit-meta"><span class="tag tag-light">Newest first</span><a class="btn-tool" href="{{.ExportURL}}" download>Export CSV</a>{{if .Filtered}}<a class="btn-tool" href="{{.ResetURL}}" {{template "nx-boost"}}>Clear filters</a>{{end}}</div>
+{{with .Empty}}<p class="audit-empty" role="status">{{.}}</p>{{end}}
+<div class="audit-list">{{template "audit-rows" .}}{{template "audit-more-sentinel" .}}</div>{{end}}
+
+{{define "audit-rows"}}{{range .Rows}}{{with .Day}}<div class="audit-day">{{.}}</div>{{end}}
+<details class="audit-row is-{{.Result}}"><summary class="audit-sum"><span class="audit-time">{{.Time}}</span><span class="audit-host">{{.Host}}</span><span class="audit-text">{{.Text}}</span>{{if .Tag}}<span class="tag {{.TagClass}}">{{.Tag}}</span>{{end}}</summary>
+  <dl class="audit-raw">
+    <div><dt>Time</dt><dd>{{.FullTime}}</dd></div>
+    <div><dt>Action</dt><dd>{{.Action}}</dd></div>
+    <div><dt>Operator</dt><dd>{{.User}}</dd></div>
+    <div><dt>Host</dt><dd>{{.Host}}</dd></div>
+    <div><dt>Result</dt><dd>{{.Result}}</dd></div>
+    <div><dt>Detail</dt><dd>{{if .Detail}}{{.Detail}}{{else}}—{{end}}</dd></div>
+  </dl>
+</details>{{end}}{{end}}
+
+{{define "audit-more-sentinel"}}{{with .More}}<div class="audit-more"><button type="button" class="btn-card btn-card-grey" hx-get="{{.URL}}" hx-trigger="intersect once, click" hx-target="closest .audit-more" hx-swap="outerHTML" hx-disabled-elt="this"><span>Show more</span></button></div>{{end}}{{end}}
+
+{{/* Answer of GET /settings/audit?cursor=… to HTMX: the next rows and, if there are more, the next sentinel;
+     it replaces the sentinel that asked. */}}
+{{define "audit-more"}}{{template "audit-rows" .}}{{template "audit-more-sentinel" .}}{{end}}

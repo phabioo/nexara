@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -80,11 +81,11 @@ func newCommitEnv(t *testing.T, withConfig bool) *commitEnv {
 
 func goodResult() setup.Result {
 	return setup.Result{
-		OperatorID:  testOperator,
-		Passphrase:  testPass,
-		TOTPSkipped: true,
-		Hub:         setup.HubInput{Name: "Home Hub", TimeZone: "Europe/Berlin", AgentHost: "frpi5.local", HTTPSPort: 8443, RetentionDays: 90},
-		SelfLink:    setup.SelfLinkInput{Enabled: true, Capabilities: []string{"monitoring", "packages"}},
+		OperatorID: testOperator,
+		Passphrase: testPass,
+		TOTPSecret: "JBSWY3DPEHPK3PXP",
+		Hub:        setup.HubInput{Name: "Home Hub", TimeZone: "Europe/Berlin", AgentHost: "frpi5.local", HTTPSPort: 8443, RetentionDays: 90},
+		SelfLink:   setup.SelfLinkInput{Enabled: true, Capabilities: []string{"monitoring", "packages"}},
 	}
 }
 
@@ -115,16 +116,16 @@ func TestCommitSuccess(t *testing.T) {
 		t.Errorf("outcome = %+v", out)
 	}
 
-	// Operator: argon2id hash, no TOTP, can sign in.
+	// Operator: argon2id hash, TOTP on (mandatory), sign-in asks for the second factor.
 	u, err := e.st.GetUserByOperatorID(ctx, testOperator)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(u.PassHash, "$argon2id$") || u.TOTPEnabled || u.TOTPSecretEnc != nil {
+	if !strings.HasPrefix(u.PassHash, "$argon2id$") || !u.TOTPEnabled || len(u.TOTPSecretEnc) == 0 {
 		t.Errorf("user = %+v", u)
 	}
-	if _, err := e.auth.Login(ctx, testOperator, testPass, "192.0.2.7", "test", false); err != nil {
-		t.Errorf("new operator cannot sign in: %v", err)
+	if _, err := e.auth.Login(ctx, testOperator, testPass, "192.0.2.7", "test", false); !errors.Is(err, auth.ErrSecondFactorRequired) {
+		t.Errorf("sign-in err = %v, want the second factor to be required", err)
 	}
 
 	// Setup mode closed everywhere.
@@ -191,7 +192,7 @@ func TestCommitSealsTOTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := goodResult()
-	res.TOTPSkipped, res.TOTPSecret = false, enr.Secret
+	res.TOTPSecret = enr.Secret
 	if _, err := e.c.Commit(ctx, res, "192.0.2.7"); err != nil {
 		t.Fatal(err)
 	}
@@ -512,5 +513,29 @@ func TestCommitAgentHostMustFitTheCA(t *testing.T) {
 		case !tt.ok && e.users() != 0:
 			t.Errorf("%s: operator created although the agent host was refused", tt.host)
 		}
+	}
+}
+
+func TestCommitRequiresTOTP(t *testing.T) {
+	for _, secret := range []string{"", "  "} {
+		t.Run(fmt.Sprintf("secret %q", secret), func(t *testing.T) {
+			e := newCommitEnv(t, true)
+			res := goodResult()
+			res.TOTPSecret = secret
+			_, err := e.c.Commit(context.Background(), res, "192.0.2.7")
+			var ve setup.ValidationError
+			if !errors.As(err, &ve) || ve["totp"] == "" {
+				t.Fatalf("err = %v, want a totp validation error", err)
+			}
+			if e.users() != 0 {
+				t.Error("no operator may exist without two-factor login")
+			}
+			if !e.mode.Active(context.Background()) {
+				t.Error("setup mode must stay open")
+			}
+			if len(e.linked) != 0 || len(e.applied) != 0 {
+				t.Error("nothing may be applied")
+			}
+		})
 	}
 }

@@ -184,12 +184,16 @@ func (b *setupBrowser) walkTo(step setup.Step) {
 	stages := []stage{
 		{"/setup/trust", nil},
 		{"/setup/operator", url.Values{"id": {"Fabio"}, "passphrase": {setupTestPass}, "confirm": {setupTestPass}}},
-		{"/setup/two-factor", url.Values{"skip": {"1"}}},
+		{"/setup/two-factor", nil}, // the code is computed when the step is reached
 		{"/setup/hub", url.Values{"name": {"frpi5"}, "timezone": {"Europe/Berlin"}, "agent_host": {"frpi5.local"}, "https_port": {"8443"}, "retention": {"365"}}},
 		{"/setup/self-link", url.Values{"self_link": {"1"}, "capabilities": {"monitoring", "shell"}}},
 	}
 	for i := 0; i < int(step)-1; i++ {
-		rec := b.post(stages[i].path, stages[i].form)
+		form := stages[i].form
+		if stages[i].path == "/setup/two-factor" {
+			form = url.Values{"totp": {codeFor(setupTOTPSecret(b.token()))}}
+		}
+		rec := b.post(stages[i].path, form)
 		if rec.Code != 303 {
 			b.t.Fatalf("%s: %d\n%s", stages[i].path, rec.Code, rec.Body.String())
 		}
@@ -521,7 +525,8 @@ func TestSetupTwoFactorStep(t *testing.T) {
 		b.walkTo(setup.StepTwoFactor)
 		rec := b.get("/setup/two-factor")
 		secret := totpStep(t, b)
-		wantBody(t, rec, "Two-factor login", `<svg class="qr"`, setupGroup(secret, 4), `inputmode="numeric"`, "Skip for now", "Required from v0.2.")
+		wantBody(t, rec, "Two-factor login", `<svg class="qr"`, setupGroup(secret, 4), `inputmode="numeric"`, "Required")
+		wantNoBody(t, rec, "Skip for now", "skip")
 		wantNoBody(t, rec, secret) // the ungrouped secret is only inside the QR path as modules, never as text
 		// Reloading shows the same secret.
 		if rec2 := b.get("/setup/two-factor"); !strings.Contains(rec2.Body.String(), setupGroup(secret, 4)) {
@@ -556,22 +561,30 @@ func TestSetupTwoFactorStep(t *testing.T) {
 
 		wantRedirect(t, b.post("/setup/two-factor", url.Values{"totp": {good}}), "/setup/hub")
 		// The hub step's status line reflects the choice.
-		wantBody(t, b.get("/setup/hub"), "Two-factor login enabled")
+		wantBody(t, b.get("/setup/hub"), "Two-factor login confirmed")
 		se := e.committedAfter(t, b)
-		if se.TOTPSecret != secret || se.TOTPSkipped {
+		if se.TOTPSecret != secret {
 			t.Errorf("result = %+v", se)
 		}
 	})
 
-	t.Run("skip", func(t *testing.T) {
+	t.Run("there is no way to skip", func(t *testing.T) {
 		e := newSetupEnv(t)
 		b := e.browser(t)
 		b.walkTo(setup.StepTwoFactor)
-		wantRedirect(t, b.post("/setup/two-factor", url.Values{"skip": {"1"}, "totp": {"123456"}}), "/setup/hub")
-		wantBody(t, b.get("/setup/hub"), "Two-factor login skipped")
-		res := e.committedAfter(t, b)
-		if !res.TOTPSkipped || res.TOTPSecret != "" {
-			t.Errorf("result = %+v", res)
+		// A forged skip field is ignored: without a valid code the step stays open.
+		rec := b.post("/setup/two-factor", url.Values{"skip": {"1"}, "totp": {""}})
+		if rec.Code != 422 {
+			t.Fatalf("status %d, want 422\n%s", rec.Code, rec.Body.String())
+		}
+		rec = b.post("/setup/two-factor", url.Values{"skip": {"1"}})
+		if rec.Code != 422 {
+			t.Fatalf("status %d, want 422", rec.Code)
+		}
+		wantRedirect(t, b.get("/setup/hub"), "/setup/two-factor")
+		wantRedirect(t, b.get("/setup/ready"), "/setup/two-factor")
+		if len(e.committed) != 0 {
+			t.Fatal("nothing may be committed without two-factor login")
 		}
 	})
 }
@@ -732,7 +745,7 @@ func TestSetupReadyAndCommit(t *testing.T) {
 		if rec.Code != 200 {
 			t.Fatalf("status %d", rec.Code)
 		}
-		wantBody(t, rec, "Ready to finish", "STEP 7/7", "Finish setup", "Source", "New installation", "fabio", "Skipped (required from v0.2)",
+		wantBody(t, rec, "Ready to finish", "STEP 7/7", "Finish setup", "Source", "New installation", "fabio", "Two-factor", "Enabled",
 			"frpi5 · frpi5.local:8443", "Minutes 7 days · hours 1 year", "Yes · Monitoring, Shell", "Not installed yet", `action="/setup/ready"`)
 		wantNoBody(t, rec, setupTestPass, "Enter Nexus")
 	})
@@ -770,7 +783,7 @@ func TestSetupReadyAndCommit(t *testing.T) {
 				t.Fatalf("commits = %d", len(e.committed))
 			}
 			r := e.committed[0]
-			if r.OperatorID != "fabio" || r.Passphrase != setupTestPass || r.Hub.Name != "frpi5" || r.Hub.RetentionDays != 365 || !r.TOTPSkipped {
+			if r.OperatorID != "fabio" || r.Passphrase != setupTestPass || r.Hub.Name != "frpi5" || r.Hub.RetentionDays != 365 || r.TOTPSecret == "" {
 				t.Errorf("result = %+v", r)
 			}
 			// The setup cookie is gone exactly when the commit succeeded.

@@ -115,9 +115,9 @@ func TestLoginWithoutTOTP(t *testing.T) {
 		if _, _, err := e.svc.Sessions().Validate(context.Background(), sc.Value); err != nil {
 			t.Errorf("session not valid: %v", err)
 		}
-		// The new cookie opens the app.
-		if rec := e.get("/", withCookies(sc)); rec.Code != http.StatusOK {
-			t.Errorf("GET / with new session = %d", rec.Code)
+		// The operator has no two-factor login: the session opens the enrollment page only (decision #51).
+		if rec := e.get("/", withCookies(sc)); rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != totpEnrollPath {
+			t.Errorf("GET / with new session = %d %q, want a redirect to %s", rec.Code, rec.Header().Get("Location"), totpEnrollPath)
 		}
 	})
 

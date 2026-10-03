@@ -53,6 +53,9 @@ type NavItem struct {
 	Icon   string // icon name from the sprite
 	Badge  int
 	Active bool
+	// More moves the entry from the phone's bottom navigation into the "More"
+	// sheet (mobile/more.dc.html); the desktop sidebar shows every entry.
+	More bool
 }
 
 // JobChip is the lime "JOB" button in the status bar that reopens the job dialog.
@@ -84,6 +87,8 @@ func DefaultNav(packageUpdates int) []NavItem {
 		{Key: "overview", Label: "Overview", Href: "/", Icon: "overview"},
 		{Key: "packages", Label: "Packages", Href: "/packages", Icon: "package", Badge: packageUpdates},
 		{Key: "shell", Label: "Shell", Href: "/shell", Icon: "terminal"},
+		{Key: "history", Label: "History", Href: "/history", Icon: "history", More: true},
+		{Key: "settings", Label: "Settings", Href: "/settings", Icon: "settings", More: true},
 	}
 }
 

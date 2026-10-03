@@ -1,0 +1,20 @@
+{{/* Settings. Data: views.SettingsPage. Two columns of cards from 1024 px, one column below (CSS only).
+     A card whose service is missing (nil pointer) is left out. Every card is a section with an id: the
+     actions answer with the card (or the row) again and htmx swaps it in place. */}}
+{{define "content"}}<div class="view settings">
+  <h1 class="visually-hidden view-title">Settings</h1>
+  <div class="settings-cols">
+    <div class="settings-col">
+      {{template "settings-operators" .Operators}}
+      {{template "settings-security"}}
+      {{with .Updates}}{{template "settings-updates" .}}{{end}}
+      {{with .Backup}}{{template "settings-backup" .}}{{end}}
+    </div>
+    <div class="settings-col">
+      {{template "settings-hosts" .HostCard}}
+      {{template "settings-certs" .CertCard}}
+      {{template "settings-diag" .DiagCard}}
+      {{with .Audit}}{{template "settings-audit" .}}{{end}}
+    </div>
+  </div>
+</div>{{end}}

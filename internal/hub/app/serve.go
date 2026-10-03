@@ -5,6 +5,8 @@ package app
 
 import (
 	"context"
+	"crypto/x509"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -15,11 +17,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/phabioo/nexara/internal/buildinfo"
 	"github.com/phabioo/nexara/internal/config"
 	"github.com/phabioo/nexara/internal/hub/auth"
+	"github.com/phabioo/nexara/internal/hub/backup"
 	"github.com/phabioo/nexara/internal/hub/enroll"
 	"github.com/phabioo/nexara/internal/hub/grid"
 	"github.com/phabioo/nexara/internal/hub/httpserver"
@@ -76,6 +80,9 @@ func Serve(ctx context.Context, o ServeOptions) error {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
+	// Settings › Diagnostics shows the recent hub log from memory.
+	logRing := NewLogRing(LogRingSize)
+	log = slog.New(logRing.Tee(log.Handler()))
 	now := o.Now
 	if now == nil {
 		now = time.Now
@@ -141,7 +148,7 @@ func Serve(ctx context.Context, o ServeOptions) error {
 	if err != nil {
 		return err
 	}
-	codes, mode, sessions := newSetupParts(st, log, now, true)
+	codes, mode, sessions := newSetupParts(st, log, now, true, backup.LayoutFor(o.ConfigPath, cfg).BackupDir)
 	codes.SetAudit(setupAudit(st, log))
 	setupMode := mode.Active(ctx)
 	if setupMode {
@@ -204,9 +211,29 @@ func Serve(ctx context.Context, o ServeOptions) error {
 		agentMux.ServeHTTP(w, r)
 	})
 
+	backups := newBackupService(cfg, o.ConfigPath, st, log, now)
+	updater, err := newUpdateService(dataDir, st, st.Settings(), log, now)
+	if err != nil {
+		return fmt.Errorf("cannot start the update service: %w", err)
+	}
+	hist := newHistory(st, g, cfg, now, log)
+
+	// A restore from Settings or the setup wizard replaces the database under
+	// the running hub: it then stops and exits non-zero so systemd starts it
+	// again on the restored data (decision #55).
+	serveCtx, cancelServe := context.WithCancel(ctx)
+	defer cancelServe()
+	var restartRequested atomic.Bool
+	restart := func() { restartRequested.Store(true); cancelServe() }
+
 	srv, err := httpserver.New(httpserver.Options{
-		Auth:          authSvc,
-		Setup:         httpserver.SetupDeps{Codes: codes, Sessions: sessions, Mode: mode, Commit: cm.Commit, CA: ca},
+		Auth:  authSvc,
+		Setup: httpserver.SetupDeps{Codes: codes, Sessions: sessions, Mode: mode, Commit: cm.Commit, CA: ca},
+		Services: httpserver.Services{
+			History: hist, Backup: backups, Updates: updater, Certs: g, Caps: g, Logs: logRing,
+			Settings: st.Settings(), Store: st, CA: ca, Restart: restart,
+			ServerCert: func() (*x509.Certificate, error) { return loadServerCert(cfg.TLS.Dir) },
+		},
 		Hub:           g,
 		Enroller:      enrollers,
 		Renderer:      renderer,
@@ -246,14 +273,8 @@ func Serve(ctx context.Context, o ServeOptions) error {
 	bg(func() { certs.Run(runCtx, orDefault(o.CertCheckEvery, DefaultCertCheckInterval)) })
 	bg(func() { runAgentCertRenewals(runCtx, g, orDefault(o.CertCheckEvery, DefaultCertCheckInterval)) })
 	bg(func() { housekeeping(runCtx, st, authSvc, now, log) })
-	backups := newBackupService(cfg, o.ConfigPath, st, log, now)
 	bg(func() { runBackupScheduler(runCtx, backups, cfg, log, now) })
-	updater, err := newUpdateService(dataDir, st, st.Settings(), log, now)
-	if err != nil {
-		return fmt.Errorf("cannot start the update service: %w", err)
-	}
 	bg(func() { updater.Run(runCtx) })
-	hist := newHistory(st, g, cfg, now, log)
 	bg(func() { hist.Run(runCtx) }) // flushes the open minute before the store closes
 	if o.AdminSocket != "" {
 		limits, _ := any(authSvc).(loginLimits) // ClearLoginLimits; nil until the auth service has it
@@ -278,7 +299,7 @@ func Serve(ctx context.Context, o ServeOptions) error {
 		o.Ready(Ready{Addr: ln.Addr(), CAFingerprint: fp, SetupMode: setupMode})
 	}
 
-	serveErr := srv.Serve(ctx, ln, tlsCfg)
+	serveErr := srv.Serve(serveCtx, ln, tlsCfg)
 
 	// --- shutdown ---
 	g.Close()
@@ -288,9 +309,18 @@ func Serve(ctx context.Context, o ServeOptions) error {
 	if serveErr != nil {
 		return serveErr
 	}
+	if restartRequested.Load() {
+		log.Info("nexus stopped for a restart")
+		return ErrRestart
+	}
 	log.Info("nexus stopped")
 	return nil
 }
+
+// ErrRestart is returned by Serve when the hub stopped to be restarted on new
+// data (after a restore). The command exits non-zero so systemd's
+// Restart=on-failure brings it back.
+var ErrRestart = errors.New("app: restart requested")
 
 // hubRuntime holds the parts of the running hub that the setup commit has to
 // update when the operator chooses the agent address.
@@ -339,8 +369,9 @@ func authConfig(cfg config.HubConfig, st *store.Store, key []byte, secure bool, 
 // newSetupParts creates the setup-mode objects. The setup code is announced
 // through the logger (journal); this is the one deliberate place where a
 // secret is logged (see setup.CodeOptions.Announce). secure is the single
-// source for the setup cookie's Secure flag.
-func newSetupParts(users setup.UserCounter, log *slog.Logger, now func() time.Time, secure bool, extraAnnounce ...func(code string, expires time.Time)) (*setup.Codes, *setup.Mode, *setup.Sessions) {
+// source for the setup cookie's Secure flag. uploadDir keeps backup files
+// uploaded for a restore (empty: os.TempDir()).
+func newSetupParts(users setup.UserCounter, log *slog.Logger, now func() time.Time, secure bool, uploadDir string, extraAnnounce ...func(code string, expires time.Time)) (*setup.Codes, *setup.Mode, *setup.Sessions) {
 	codes := setup.NewCodes(setup.CodeOptions{
 		Now: now,
 		Announce: func(code string, expires time.Time) {
@@ -353,6 +384,7 @@ func newSetupParts(users setup.UserCounter, log *slog.Logger, now func() time.Ti
 	sessions := setup.NewSessions(setup.SessionOptions{
 		Now:            now,
 		InsecureCookie: !secure,
+		UploadDir:      uploadDir,
 		Wizard:         setup.WizardOptions{CheckPassphrase: checkWizardPassphrase},
 	})
 	return codes, setup.NewMode(users), sessions

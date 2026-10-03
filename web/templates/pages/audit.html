@@ -1,0 +1,26 @@
+{{/* Audit log view (Settings section). Page data: Layout + A (views.AuditModel). */}}
+{{define "content"}}{{with .A}}
+<section class="view audit-view">
+  <div class="view-head">
+    <div class="view-heading"><span class="view-heading-title t-display">Audit log</span><span class="t-dim">Every action on this hub, newest first</span></div>
+    <a class="btn-tool audit-back" href="/settings" {{template "nx-boost"}}><span class="audit-back-icon" aria-hidden="true">{{icon "arrow-right" 12}}</span><span>Back to settings</span></a>
+  </div>
+  <form id="audit-filter" class="audit-bar" method="get" action="/settings/audit" role="search" hx-get="/settings/audit" hx-target="#audit-results" hx-swap="innerHTML" hx-push-url="true" hx-trigger="change, submit, input changed delay:300ms from:#audit-q" hx-sync="this:replace">
+    <div class="audit-bar-tabs">
+      <div class="audit-tabs-group"><span aria-hidden="true">RANGE</span><div class="tabs" role="radiogroup" aria-label="Time range">{{range .Ranges}}<label class="tab audit-tab"><input class="visually-hidden" type="radio" name="range" value="{{.Value}}"{{if .Selected}} checked{{end}}><span class="tab-label">{{.Label}}</span></label>{{end}}</div></div>
+      <div class="audit-tabs-group"><span aria-hidden="true">RESULT</span><div class="tabs" role="radiogroup" aria-label="Result">{{range .Results}}<label class="tab audit-tab"><input class="visually-hidden" type="radio" name="result" value="{{.Value}}"{{if .Selected}} checked{{end}}><span class="tab-label">{{.Label}}</span></label>{{end}}</div></div>
+    </div>
+    <div class="audit-bar-fields">
+      <label class="field"><span class="visually-hidden">Host</span><select class="input audit-select" name="host">{{range .Hosts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+      <label class="field"><span class="visually-hidden">Operator</span><select class="input audit-select" name="user">{{range .Users}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+      <label class="field"><span class="visually-hidden">Action</span><select class="input audit-select" name="group">{{range .Groups}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+      <div class="search"><label for="audit-q">SEARCH</label><input id="audit-q" name="q" class="input-search" type="search" placeholder="Search details" value="{{.Q.Q}}" maxlength="64" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+      <noscript><button type="submit" class="btn-tool is-hot">Apply</button></noscript>
+    </div>
+  </form>
+  <div class="card audit-card">
+    <div class="card-head"><span>Audit log</span></div>
+    <div id="audit-results" class="card-body audit-results scroll-thin" tabindex="0" role="region" aria-label="Audit entries">{{template "audit-results" .}}</div>
+  </div>
+</section>
+{{end}}{{end}}

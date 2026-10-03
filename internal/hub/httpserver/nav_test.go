@@ -118,10 +118,11 @@ func TestShellLinksAreBoosted(t *testing.T) {
 	}
 	body := e.get("/hosts/alpha", withCookies(cookie)).Body.String()
 
-	// Host tabs (3), the sidebar nav (3), the bottom nav (3) and "Open shell" on the overview.
+	// Host tabs (3), the sidebar nav (5), the bottom nav (3), the More sheet (History, Settings) and
+	// "Open shell" on the overview.
 	links := boostAttrs.FindAllString(body, -1)
-	if len(links) != 3+3+3+1 {
-		t.Fatalf("%d boosted links, want 10:\n%s", len(links), strings.Join(links, "\n"))
+	if len(links) != 3+5+3+2+1 {
+		t.Fatalf("%d boosted links, want 14:\n%s", len(links), strings.Join(links, "\n"))
 	}
 	for _, l := range links {
 		mustContain(t, l, `hx-target="#main"`, `hx-select="#main"`, `hx-swap="outerHTML"`, `hx-sync="body:replace"`,

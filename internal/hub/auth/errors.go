@@ -35,6 +35,8 @@ var (
 	ErrSessionExpired = errors.New("auth: session expired")
 	// ErrWeakPassphrase means the passphrase violates the length policy.
 	ErrWeakPassphrase = errors.New("auth: passphrase does not meet the policy")
+	// ErrAlreadyEnrolled means the operator already has two-factor login; enrollment must not replace it.
+	ErrAlreadyEnrolled = errors.New("auth: two-factor login is already set up")
 )
 
 // RateLimitedError is the concrete error behind ErrRateLimited.

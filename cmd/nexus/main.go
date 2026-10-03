@@ -18,7 +18,8 @@ import (
 const (
 	exitOK          = 0
 	exitFailure     = 1
-	exitUsageOrStub = 2 // bad usage
+	exitUsageOrStub = 2  // bad usage
+	exitRestart     = 75 // EX_TEMPFAIL: stopped on purpose so systemd restarts the hub (after a restore)
 )
 
 func main() {

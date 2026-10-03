@@ -419,8 +419,11 @@ func TestAddHostFormKeepsFieldsButNeverThePassword(t *testing.T) {
 
 func TestAddHostLinkProgress(t *testing.T) {
 	a := newAddHostEnv(t)
-	release := make(chan struct{})
+	begin, release := make(chan struct{}), make(chan struct{})
 	a.enr.linkFn = func(_ context.Context, req grid.SSHLinkRequest, progress func(grid.LinkStep)) (grid.HostInfo, error) {
+		// Hold the link until the first response is rendered: it must show
+		// the initial state (target in the connect step), not a later one.
+		<-begin
 		progress(grid.LinkStep{Step: grid.StepConnect, State: grid.LinkRunning})
 		progress(grid.LinkStep{Step: grid.StepConnect, State: grid.LinkDone, Detail: "Connected as pi · Host key SHA256:abcDEF123"})
 		<-release
@@ -441,6 +444,7 @@ func TestAddHostLinkProgress(t *testing.T) {
 		t.Fatal("password in the progress view")
 	}
 	poll := pollURL(t, body)
+	close(begin)
 
 	// the host key fingerprint shows up (decision #41)
 	body = a.eventually(poll, "SHA256:abcDEF123")

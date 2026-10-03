@@ -17,7 +17,7 @@ func finishWizard(t *testing.T, sess *setup.Session) {
 	steps := []error{
 		w.SubmitTrust(),
 		w.SubmitOperator(setup.OperatorInput{ID: "Frank", Passphrase: "correct horse battery staple", Confirm: "correct horse battery staple"}),
-		w.SubmitTwoFactor(true, ""),
+		w.SubmitTwoFactor("JBSWY3DPEHPK3PXP"),
 		w.SubmitHub(setup.HubInput{Name: "frpi5", TimeZone: "Europe/Berlin", AgentHost: "frpi5.local", HTTPSPort: 8443, RetentionDays: 365}),
 		w.SubmitSelfLink(setup.SelfLinkInput{Enabled: true, Capabilities: []string{"monitoring", "shell"}}),
 	}

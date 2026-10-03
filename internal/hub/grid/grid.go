@@ -100,6 +100,8 @@ type Grid struct {
 	hosts map[HostID]*hostState
 	order []HostID
 	byFP  map[string]HostID
+	// capMu serializes SetCapability (capabilities.go).
+	capMu sync.Mutex
 	// pending holds renewed certificates that were issued but have not been
 	// used yet, by fingerprint (renew.go).
 	pending map[string]*pendingCert
@@ -129,6 +131,9 @@ type hostState struct {
 
 	conn           *agentConn
 	lastAutoUpdate time.Time
+
+	// capsOff are the capabilities the operator switched off in the hub (capabilities.go).
+	capsOff []string
 
 	// Certificate renewal (renew.go).
 	pendingFP        string    // fingerprint of the issued, not yet used certificate
@@ -202,6 +207,7 @@ func NewGrid(opts Options) (*Grid, error) {
 		}
 		_, _ = g.addLocked(h)
 	}
+	g.loadCapsOff(ctx)
 	return g, nil
 }
 
@@ -317,6 +323,7 @@ func (g *Grid) RemoveHost(ctx context.Context, actor Actor, id HostID) error {
 		return fmt.Errorf("grid: remove host: %w", err)
 	}
 	g.Remove(id)
+	_ = g.opts.Store.DeleteSetting(ctx, capsOffKey(id)) // best effort: a stale switch is harmless
 	g.audit(store.AuditEntry{User: actor.Operator, Host: name, Action: "host.remove", Detail: auditDetailIP(actor), Result: store.AuditOK})
 	g.log.Info("host removed", "host", name)
 	return nil
@@ -391,22 +398,23 @@ func hasCap(caps []string, name string) bool { return slices.Contains(caps, name
 // infoLocked builds the HostInfo; g.mu must be held.
 func (st *hostState) infoLocked() HostInfo {
 	return HostInfo{
-		ID:             st.id,
-		Name:           st.host.Name,
-		DisplayName:    st.host.DisplayName,
-		Address:        st.host.Address,
-		OS:             st.host.OS,
-		Arch:           st.host.Arch,
-		AgentVersion:   st.host.AgentVersion,
-		Model:          st.model,
-		Kernel:         st.kernel,
-		Online:         st.online,
-		LastSeen:       st.lastSeen.UTC(),
-		Latency:        st.latency,
-		Capabilities:   slices.Clone(st.host.Capabilities),
-		UpdateRequired: st.updateRequired,
-		RebootRequired: st.rebootRequired,
-		CertNotAfter:   st.host.CertNotAfter.UTC(),
+		ID:                   st.id,
+		Name:                 st.host.Name,
+		DisplayName:          st.host.DisplayName,
+		Address:              st.host.Address,
+		OS:                   st.host.OS,
+		Arch:                 st.host.Arch,
+		AgentVersion:         st.host.AgentVersion,
+		Model:                st.model,
+		Kernel:               st.kernel,
+		Online:               st.online,
+		LastSeen:             st.lastSeen.UTC(),
+		Latency:              st.latency,
+		Capabilities:         st.enabledCaps(),
+		DisabledCapabilities: st.disabledCaps(),
+		UpdateRequired:       st.updateRequired,
+		RebootRequired:       st.rebootRequired,
+		CertNotAfter:         st.host.CertNotAfter.UTC(),
 	}
 }
 
@@ -515,7 +523,7 @@ func (g *Grid) connFor(id HostID, capability string) (*hostState, *agentConn, er
 	if st.conn == nil || !st.online {
 		return nil, nil, ErrHostOffline
 	}
-	if capability != "" && !hasCap(st.host.Capabilities, capability) {
+	if capability != "" && !st.capEnabled(capability) {
 		return nil, nil, ErrCapabilityDisabled
 	}
 	return st, st.conn, nil

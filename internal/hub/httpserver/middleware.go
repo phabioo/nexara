@@ -49,6 +49,14 @@ func SessionFrom(r *http.Request) (store.Session, bool) {
 	return s, ok
 }
 
+// withUserSession returns the request context with the user and session of a
+// sign-in that happened during this very request (the cookie only arrives
+// with the next one).
+func withUserSession(r *http.Request, res auth.LoginResult) context.Context {
+	ctx := context.WithValue(r.Context(), ctxUser, res.User)
+	return context.WithValue(ctx, ctxSession, res.Session)
+}
+
 // ActorFrom builds the audit actor (operator and IP) for grid calls.
 func ActorFrom(r *http.Request) grid.Actor {
 	a := grid.Actor{IP: ClientIP(r)}
@@ -208,10 +216,41 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
+		if s.auth.EnrollmentPending(user) && !enrollmentAllowed(r) {
+			s.enrollmentRequired(w, r)
+			return
+		}
 		ctx := context.WithValue(r.Context(), ctxUser, user)
 		ctx = context.WithValue(ctx, ctxSession, sess)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// enrollmentAllowed lists what a session of an operator without two-factor
+// login may reach (decision #51): the enrollment page and its POST, and
+// logout. Static assets, the login pages and /grid/* never get here (public
+// paths). Everything else, views, SSE, the shell WebSocket and every POST, is
+// refused by enrollmentRequired.
+func enrollmentAllowed(r *http.Request) bool {
+	switch r.URL.Path {
+	case totpEnrollPath:
+		return r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodPost
+	case "/logout":
+		return r.Method == http.MethodPost
+	}
+	return false
+}
+
+// enrollmentRequired answers a request of an enrollment-pending session that
+// is not allowed: a page navigation (also htmx boost) is sent to the
+// enrollment page; streams and everything that changes state get 403, since
+// a redirect would be followed silently by script clients.
+func (s *Server) enrollmentRequired(w http.ResponseWriter, r *http.Request) {
+	if isSafeMethod(r.Method) && !isStreamPath(r.URL.Path) {
+		redirectTo(w, r, totpEnrollPath)
+		return
+	}
+	http.Error(w, "Two-factor login must be set up first", http.StatusForbidden)
 }
 
 func (s *Server) unauthenticated(w http.ResponseWriter, r *http.Request, clearCookie bool) {
@@ -236,9 +275,15 @@ func (s *Server) csrf(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, maxFormBody)
+		if isRestoreUpload(p) {
+			// A multipart upload far beyond maxFormBody: the handler checks the
+			// double-submit token in the first part before it reads anything else.
+			next.ServeHTTP(w, r)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, bodyCap(p))
 		submitted := r.Header.Get(auth.CSRFHeader)
-		if submitted == "" {
+		if submitted == "" && p != uploadPathUpdate { // a big upload is never parsed for a token: the header or nothing
 			// Only the body is consulted; a token in the URL would end up in logs.
 			submitted = r.PostFormValue(auth.CSRFFormField)
 		}

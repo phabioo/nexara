@@ -73,6 +73,9 @@ func RunDev(ctx context.Context, o DevOptions) error {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
+	// Settings › Diagnostics shows the recent log of the dev hub.
+	logRing := NewLogRing(LogRingSize)
+	log = slog.New(logRing.Tee(log.Handler()))
 	console := o.Console
 	if console == nil {
 		console = io.Discard
@@ -115,12 +118,17 @@ func RunDev(ctx context.Context, o DevOptions) error {
 
 	const secure = false // plain HTTP on loopback
 	cfg := config.DefaultHub()
-	authSvc, err := auth.NewService(authConfig(cfg, st, key, secure, o.HashParams, now, log))
+	authCfg := authConfig(cfg, st, key, secure, o.HashParams, now, log)
+	// The seeded demo operator has no authenticator. Two-factor login is
+	// mandatory everywhere else (#51); auth.NewService accepts this switch
+	// only together with plain-HTTP cookies, which the production hub never uses.
+	authCfg.DemoPasswordOnly = o.Seed
+	authSvc, err := auth.NewService(authCfg)
 	if err != nil {
 		return err
 	}
 
-	codes, mode, sessions := newSetupParts(st, log, now, secure, func(code string, expires time.Time) {
+	codes, mode, sessions := newSetupParts(st, log, now, secure, "", func(code string, expires time.Time) {
 		fmt.Fprintf(console, "Setup code: %s (valid until %s)\n", setup.FormatCode(code), expires.Local().Format("15:04"))
 	})
 
@@ -133,6 +141,9 @@ func RunDev(ctx context.Context, o DevOptions) error {
 			return fmt.Errorf("cannot create the demo operator: %w", err)
 		}
 		mode.Invalidate()
+		if err := demo.SeedAudit(ctx, st, time.Now()); err != nil {
+			return fmt.Errorf("cannot seed the demo audit log: %w", err)
+		}
 	}
 	setupMode := mode.Active(ctx)
 	var setupCode string
@@ -172,14 +183,25 @@ func RunDev(ctx context.Context, o DevOptions) error {
 	if err != nil {
 		return fmt.Errorf("cannot load templates: %w", err)
 	}
+	capHub := newDevCapHub(hub, st, log, now)
+	seedDevLog(logRing, now())
+	services, err := devSettingsServices(devSettingsArgs{
+		Dir: dir, TLSDir: tlsDir, Store: st, CA: ca, History: hist, Hub: capHub, Logs: logRing,
+		Now: now, Log: log, SeedBackup: !o.SkipHistoryBackfill,
+	})
+	if err != nil {
+		return err
+	}
 	srv, err := httpserver.New(httpserver.Options{
-		Auth:          authSvc,
-		Setup:         httpserver.SetupDeps{Codes: codes, Sessions: sessions, Mode: mode, Commit: cm.Commit, CA: ca},
-		Hub:           hub,
-		Enroller:      hub,
-		Renderer:      renderer,
-		Static:        web.Static,
-		SSHPublicKey:  func() string { return DevSSHPublicKey },
+		Auth:         authSvc,
+		Setup:        httpserver.SetupDeps{Codes: codes, Sessions: sessions, Mode: mode, Commit: cm.Commit, CA: ca},
+		Hub:          capHub,
+		Enroller:     hub,
+		Renderer:     renderer,
+		Static:       web.Static,
+		SSHPublicKey: func() string { return DevSSHPublicKey },
+		// Backup, updates, certificates and capabilities of the demo: dev_settings.go.
+		Services:      services,
 		Logger:        log.With("component", "http"),
 		SecureCookies: secure,
 		Now:           now,

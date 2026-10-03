@@ -72,6 +72,12 @@ func (c *committer) Commit(ctx context.Context, res setup.Result, clientIP strin
 		return httpserver.SetupOutcome{}, httpserver.ErrSetupDone
 	}
 
+	// Two-factor login is mandatory (decision #51). The wizard cannot get here
+	// without a confirmed secret; this keeps a caller that bypasses it honest.
+	if strings.TrimSpace(res.TOTPSecret) == "" {
+		return httpserver.SetupOutcome{}, setup.ValidationError{"totp": "Set up two-factor login before finishing."}
+	}
+
 	hash, err := c.auth.HashPassphrase(ctx, res.Passphrase)
 	if err != nil {
 		if errors.Is(err, auth.ErrWeakPassphrase) {
@@ -113,20 +119,18 @@ func (c *committer) Commit(ctx context.Context, res setup.Result, clientIP strin
 	if err != nil {
 		return httpserver.SetupOutcome{}, fmt.Errorf("app: create operator: %w", err)
 	}
-	if res.TOTPSecret != "" {
-		// The sealed blob is bound to the user ID, which exists only now. If
-		// storing it fails the operator is removed again (no users existed
-		// before this commit), so nobody ends up without the 2FA they chose.
-		sealed, err := c.auth.SealTOTPSecret(user.ID, res.TOTPSecret)
-		if err == nil {
-			err = c.st.SetTOTP(ctx, user.ID, sealed, true)
+	// The sealed blob is bound to the user ID, which exists only now. If
+	// storing it fails the operator is removed again (no users existed before
+	// this commit), so nobody ends up without the 2FA the hub requires.
+	sealed, err := c.auth.SealTOTPSecret(user.ID, res.TOTPSecret)
+	if err == nil {
+		err = c.st.SetTOTP(ctx, user.ID, sealed, true)
+	}
+	if err != nil {
+		if _, derr := c.st.DeleteAllUsers(ctx); derr != nil {
+			c.log.Error("setup commit: roll back operator", "err", derr)
 		}
-		if err != nil {
-			if _, derr := c.st.DeleteAllUsers(ctx); derr != nil {
-				c.log.Error("setup commit: roll back operator", "err", derr)
-			}
-			return httpserver.SetupOutcome{}, fmt.Errorf("app: store TOTP secret: %w", err)
-		}
+		return httpserver.SetupOutcome{}, fmt.Errorf("app: store TOTP secret: %w", err)
 	}
 
 	// --- point of no return: the operator exists ---
@@ -165,15 +169,11 @@ func (c *committer) Commit(ctx context.Context, res setup.Result, clientIP strin
 		}
 	}
 
-	twoFactor := "skipped"
-	if res.TOTPSecret != "" {
-		twoFactor = "on"
-	}
 	cfgState := "unchanged"
 	if written {
 		cfgState = "written"
 	}
-	detail := fmt.Sprintf("2fa: %s; self-link: %s; nexus.yaml: %s; ip: %s", twoFactor, selfLink, cfgState, clientIP)
+	detail := fmt.Sprintf("2fa: on; self-link: %s; nexus.yaml: %s; ip: %s", selfLink, cfgState, clientIP)
 	result := store.AuditOK
 	if len(out.Warnings) > 0 {
 		result = store.AuditError
@@ -183,7 +183,7 @@ func (c *committer) Commit(ctx context.Context, res setup.Result, clientIP strin
 	}); err != nil {
 		c.log.Error("setup commit: audit write failed", "err", err)
 	}
-	c.log.Info("setup complete", "operator", user.OperatorID, "two_factor", twoFactor, "self_link", selfLink)
+	c.log.Info("setup complete", "operator", user.OperatorID, "two_factor", true, "self_link", selfLink)
 	return out, nil
 }
 

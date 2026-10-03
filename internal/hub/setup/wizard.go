@@ -105,11 +105,12 @@ type SelfLinkInput struct {
 type Result struct {
 	OperatorID string
 	Passphrase string
-	// TOTPSecret is the pending TOTP secret; empty when the step was skipped.
-	TOTPSecret  string
-	TOTPSkipped bool
-	Hub         HubInput
-	SelfLink    SelfLinkInput
+	// TOTPSecret is the TOTP secret (base32) the operator confirmed with a
+	// code. It is never empty in a complete wizard: two-factor login is
+	// mandatory (decision #51).
+	TOTPSecret string
+	Hub        HubInput
+	SelfLink   SelfLinkInput
 }
 
 // WizardOptions configures a Wizard.
@@ -243,24 +244,20 @@ func (w *Wizard) SubmitOperator(in OperatorInput) error {
 	return nil
 }
 
-// SubmitTwoFactor completes the two-factor step. With skip=true (allowed in
-// v0.1) no secret is stored; otherwise secret is the pending TOTP secret the
-// caller already confirmed with a code.
-func (w *Wizard) SubmitTwoFactor(skip bool, secret string) error {
+// SubmitTwoFactor completes the two-factor step. Two-factor login is
+// mandatory (decision #51), so there is no way to skip it: secret is the
+// pending TOTP secret the caller already confirmed with a code.
+func (w *Wizard) SubmitTwoFactor(secret string) error {
 	secret = strings.TrimSpace(secret)
-	if !skip && secret == "" {
-		return ValidationError{"totp": "Set up the authenticator app or skip this step."}
+	if secret == "" {
+		return ValidationError{"totp": "Set up the authenticator app and confirm it with a code."}
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err := w.reachable(StepTwoFactor); err != nil {
 		return err
 	}
-	w.res.TOTPSkipped = skip
-	w.res.TOTPSecret = ""
-	if !skip {
-		w.res.TOTPSecret = secret
-	}
+	w.res.TOTPSecret = secret
 	w.complete(StepTwoFactor)
 	return nil
 }

@@ -22,6 +22,8 @@ const SecretKeyLen = 32
 const (
 	hkdfInfoCSRF = "nexus/v1 csrf-token-hmac"
 	hkdfInfoSeal = "nexus/v1 sealed-secrets-aes-gcm"
+	// hkdfInfoEnroll keys the pending TOTP secret of an enrollment page.
+	hkdfInfoEnroll = "nexus/v1 totp-enrollment-pending"
 )
 
 // deriveKey expands the master key from secret.key into a 32-byte subkey for

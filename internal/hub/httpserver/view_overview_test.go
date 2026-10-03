@@ -137,7 +137,7 @@ func TestOverviewPages(t *testing.T) {
 				"Listening on 22, 445 and 5353/udp.", "2/3 running", "Restart failed units (1)", `hx-post="/hosts/alpha/services/restart"`,
 				"Open shell", `href="/hosts/alpha/shell"`, "Connected to alpha", "plexmediaserver", "12.4%", "3.1%",
 				`sse-swap="ov-cpu"`, `sse-swap="ov-mem"`, `sse-swap="ov-svc"`, `sse-swap="ov-load"`, "overview.js", "<polyline points="},
-			lack: []string{"Wake", "WoL", "Shut down", "Reboot required", "History", "Alerts", "Containers"},
+			lack: []string{"Wake", "WoL", "Shut down", "Reboot required", "Alerts", "Containers"},
 		},
 		{
 			name: "explicit online host", path: "/hosts/alpha", status: 200,

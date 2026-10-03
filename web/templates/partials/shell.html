@@ -105,18 +105,19 @@
 {{define "brand"}}<div class="statusbar-brand">{{icon "mark" 16}}<span class="wordmark">NEXARA</span><span class="wordmark-product t-display">Nexus</span></div>{{end}}
 
 {{define "bottomnav"}}<nav class="bnav" id="nx-bnav" aria-label="Views">
-  {{range .NavItems}}<a class="bnav-item{{if .Active}} on{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}} {{template "nx-boost"}}>{{if .Icon}}<span class="bnav-icon">{{icon .Icon 18}}{{if .Badge}}<span class="bnav-badge">{{.Badge}}</span>{{end}}</span>{{end}}<span>{{.Label}}</span></a>
-  {{end}}
+  {{range .NavItems}}{{if not .More}}<a class="bnav-item{{if .Active}} on{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}} {{template "nx-boost"}}>{{if .Icon}}<span class="bnav-icon">{{icon .Icon 18}}{{if .Badge}}<span class="bnav-badge">{{.Badge}}</span>{{end}}</span>{{end}}<span>{{.Label}}</span></a>
+  {{end}}{{end}}
   {{if .Operator}}<button type="button" class="bnav-item" data-sheet-open="more-sheet" aria-haspopup="dialog" aria-expanded="false" aria-controls="more-sheet"><span class="bnav-icon">{{icon "dots" 18}}</span><span>More</span></button>{{end}}
 </nav>{{end}}
 
-{{/* "More" sheet of the phone layout (mobile/more.dc.html): operator and Sign out. The entries of later
-     versions (History, Containers, Settings) are not shown yet (decision #31). Opened by nexus.js. */}}
+{{/* "More" sheet of the phone layout (mobile/more.dc.html): the nav entries marked More (History, Settings),
+     operator and Sign out. Containers is not shown before its version (decision #31). Opened by nexus.js. */}}
 {{define "more-sheet"}}{{if .Operator}}<div class="sheet" id="more-sheet" role="dialog" aria-modal="true" aria-labelledby="more-title" hidden>
   <div class="sheet-backdrop" data-sheet-close></div>
   <div class="sheet-panel">
     <div class="card-head is-hot"><span id="more-title">More</span><button type="button" class="modal-close" data-sheet-close aria-label="Close">{{icon "close" 14}}</button></div>
     <div class="card-body">
+      {{range .NavItems}}{{if .More}}<a class="sheet-link{{if .Active}} on{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}} data-sheet-close {{template "nx-boost"}}><span class="sheet-link-icon">{{icon .Icon 16}}</span><span>{{.Label}}</span><span class="sheet-link-chev">{{icon "chevron-right" 10}}</span></a>{{end}}{{end}}
       {{template "checker"}}
       <div class="sheet-row"><span>Operator</span><b>{{.Operator}}</b></div>
       <form class="sheet-signout" method="post" action="/logout">

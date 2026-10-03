@@ -119,6 +119,8 @@ func hostViewURL(active, name string) string {
 		return hostURL(name) + "/packages"
 	case "shell":
 		return hostURL(name) + "/shell"
+	case "history":
+		return hostURL(name) + "/history"
 	}
 	return hostURL(name)
 }
@@ -134,7 +136,7 @@ func hostNav(updates int, host *grid.HostInfo) []views.NavItem {
 			if host != nil {
 				nav[i].Href = hostURL(host.Name)
 			}
-		case "packages", "shell":
+		case "packages", "shell", "history":
 			nav[i].Href = "/"
 			if host != nil {
 				nav[i].Href = hostViewURL(nav[i].Key, host.Name)
