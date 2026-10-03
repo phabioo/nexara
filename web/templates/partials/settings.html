@@ -83,8 +83,8 @@
 {{/* Step-up fields (decision #58): the operator confirms an action with the passphrase and a current TOTP code.
    Data: ID (id prefix), NoCode (no authenticator: the demo asks for the passphrase only), Error. */}}
 {{define "settings-stepup"}}<div class="set-stepup">
-  <p class="card-text">Confirm with your passphrase and a code from your authenticator.</p>
-  <div class="field"><label for="{{.ID}}-su-pass" class="t-label">Passphrase</label><input id="{{.ID}}-su-pass" name="stepup_passphrase" class="input" type="password" autocomplete="current-password" required></div>
+  <p class="card-text">Confirm with your sign-in passphrase and a code from your authenticator.</p>
+  <div class="field"><label for="{{.ID}}-su-pass" class="t-label">Your sign-in passphrase</label><input id="{{.ID}}-su-pass" name="stepup_passphrase" class="input" type="password" autocomplete="current-password" required></div>
   {{if not .NoCode}}<div class="field"><label for="{{.ID}}-su-code" class="t-label">6-digit code</label><input id="{{.ID}}-su-code" name="stepup_code" class="input" type="text" inputmode="numeric" pattern="[0-9 ]*" autocomplete="one-time-code" placeholder="000000" maxlength="7" required></div>{{end}}
   {{with .Error}}{{template "form-error" .}}{{end}}
 </div>{{end}}

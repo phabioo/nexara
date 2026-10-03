@@ -118,7 +118,7 @@ func TestStepUpFailures(t *testing.T) {
 				}
 				// The dialog stays, with the message in its error row and both fields empty again.
 				contains(t, body, tc.want, `role="alert"`, act.dialog, `name="stepup_passphrase"`, `name="stepup_code"`,
-					"Confirm with your passphrase and a code from your authenticator.", ">Passphrase</label>", ">6-digit code</label>")
+					"Confirm with your sign-in passphrase and a code from your authenticator.", ">Your sign-in passphrase</label>", ">6-digit code</label>")
 				secretFree(t, body, testPass, "not the passphrase")
 				if act.done(t, s) {
 					t.Errorf("%s: the action ran", tc.name)
@@ -235,7 +235,7 @@ func TestStepUpDialogsAskForBoth(t *testing.T) {
 		if rec.Code != 200 {
 			t.Fatalf("%s: %d", path, rec.Code)
 		}
-		contains(t, rec.Body.String(), "Confirm with your passphrase and a code from your authenticator.",
+		contains(t, rec.Body.String(), "Confirm with your sign-in passphrase and a code from your authenticator.",
 			`name="stepup_passphrase"`, `type="password"`, `autocomplete="current-password"`,
 			`name="stepup_code"`, `inputmode="numeric"`, `autocomplete="one-time-code"`)
 	}
