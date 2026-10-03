@@ -57,3 +57,23 @@ Also noted (no finding): the hub's own root agent reads `/var/lib/nexus/self-enr
 | Setup code one-time, 60 min, 5 tries → lock | not consumed on unlock (A-06) |
 | Never store SSH passwords, never log secrets | met |
 | Hub never gets root (#50) | broken by `postinst` (B-01) |
+
+## Status (wave 9)
+
+All findings were fixed in wave 9 except where noted; each fix has a regression test.
+
+| ID | Status |
+| --- | --- |
+| B-01 | fixed: `postinst` creates `nexus.yaml` only when nothing is there and never touches an existing one |
+| A-01, A-02, A-04 | fixed: atomic reserve-and-refund limits (sign-in, second factor, passphrase check), one operator action at a time, IPv6 keyed by /64, bounded hash queue, separate budget for unknown users |
+| A-03 | fixed: every request with a body gets the deadline and cap; only the restore upload skips the size cap |
+| A-05 | fixed: no PAX/sparse members, 1 GiB archive cap, lower KDF ceiling on restore |
+| A-06 | fixed: the setup code works once |
+| A-07 | accepted (inherent to #51); noted in `docs/status.md`, admin "reset TOTP" planned for v0.3 |
+| A-08 | fixed: idle timeout pinned at 12 h, `session_idle_hours` and `totp_required` ignored |
+| A-09 | fixed: restore audit entries end up in the restored database; first throttled passphrase attempt of a block audited |
+| B-02, B-03, B-04, B-05, B-07 | fixed |
+| B-06 | in progress: step-up with passphrase + TOTP for backup download, restore and update install (#58) |
+| B-08 | fixed: the Updates card explains a missing rollback copy and shows the command (#61) |
+| C-01 … C-10 | fixed (C-03 per #59, C-08 per #60) |
+
