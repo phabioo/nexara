@@ -235,7 +235,7 @@ func (s *Server) handleRemoveConfirm(w http.ResponseWriter, r *http.Request) {
 	if s.refuseHubRemoval(w, r, h) {
 		return
 	}
-	body, err := s.partialString("overview-remove", views.NewOverviewRemove(hostLabel(h), hostURL(h.Name), false))
+	body, err := s.partialString("overview-remove", views.NewOverviewRemove(hostLabel(h), hostURL(h.Name)))
 	if err != nil {
 		s.serverError(w, r, err)
 		return

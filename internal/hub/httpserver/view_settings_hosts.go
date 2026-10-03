@@ -108,7 +108,7 @@ func (s *Server) handleSettingsRemoveConfirm(w http.ResponseWriter, r *http.Requ
 	if s.refuseHubRemoval(w, r, h) {
 		return
 	}
-	d := views.NewOverviewRemove(hostLabel(h), settingsHostURL(h.Name), false)
+	d := views.NewOverviewRemove(hostLabel(h), settingsHostURL(h.Name))
 	s.writeFragments(w, r, http.StatusOK, fragment{"overview-remove", d})
 }
 
