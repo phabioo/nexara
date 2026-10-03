@@ -54,6 +54,16 @@ func copyMember(tw *tar.Writer, stage string, f FileEntry, m Manifest) error {
 	return nil
 }
 
+// MaxArchiveBytes caps the sum of the member sizes a backup may declare (and
+// the decrypted stream). Twice the setup wizard's upload limit: the archive is
+// the database, keys and certificates, tens of megabytes in practice.
+const MaxArchiveBytes int64 = 1 << 30
+
+// archiveLimit is MaxArchiveBytes; tests lower it.
+var archiveLimit = MaxArchiveBytes
+
+var errTooLarge = errors.New("backup: the backup is larger than this Nexus restores")
+
 // readMode says how much readArchive does with the members.
 type readMode int
 
@@ -68,12 +78,16 @@ const (
 // manifest, regular, and of the listed size. In the verifying modes it reads
 // r to its end, which is what authenticates the last chunk of the envelope.
 func readArchive(r io.Reader, mode readMode, dest string) (Manifest, error) {
+	// The decrypted stream is as long as the members plus tar framing; a
+	// longer one is not an archive this Nexus wrote (the sum of the member
+	// sizes is checked below, once the manifest is known).
+	r = io.LimitReader(r, archiveLimit+2*maxManifestSize)
 	tr := tar.NewReader(r)
 	hdr, err := tr.Next()
 	if err != nil {
 		return Manifest{}, archiveErr(err)
 	}
-	if hdr.Name != nameManifest || hdr.Typeflag != tar.TypeReg || hdr.Size > maxManifestSize {
+	if hdr.Name != nameManifest || hdr.Typeflag != tar.TypeReg || hdr.Size > maxManifestSize || len(hdr.PAXRecords) > 0 {
 		return Manifest{}, errors.New("backup: this archive does not start with a manifest")
 	}
 	mb, err := io.ReadAll(io.LimitReader(tr, hdr.Size))
@@ -93,6 +107,16 @@ func readArchive(r io.Reader, mode readMode, dest string) (Manifest, error) {
 	if mode == readManifestOnly {
 		return m, nil
 	}
+	var total int64
+	for _, f := range m.Files {
+		if f.Size > archiveLimit {
+			return m, errTooLarge
+		}
+		total += f.Size
+	}
+	if total > archiveLimit {
+		return m, errTooLarge
+	}
 
 	want := make(map[string]FileEntry, len(m.Files))
 	for _, f := range m.Files {
@@ -107,7 +131,9 @@ func readArchive(r io.Reader, mode readMode, dest string) (Manifest, error) {
 			return m, archiveErr(err)
 		}
 		f, ok := want[hdr.Name]
-		if !ok || hdr.Typeflag != tar.TypeReg {
+		// PAX records can carry sparse maps: a few KB on the wire that expand
+		// to gigabytes on disk. This Nexus writes plain ustar headers only.
+		if !ok || hdr.Typeflag != tar.TypeReg || len(hdr.PAXRecords) > 0 {
 			return m, fmt.Errorf("backup: unexpected archive member %q", sanitize(hdr.Name))
 		}
 		if hdr.Size != f.Size {

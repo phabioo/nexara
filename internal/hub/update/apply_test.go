@@ -685,7 +685,7 @@ func TestApplyRollbackMaterial(t *testing.T) {
 		e.seedInstalled("0.0.9")
 		e.stage("0.2.0")
 		res, _ := e.apply()
-		if res.Status != StatusError || !strings.Contains(res.Message, "no rollback material") {
+		if res.Status != StatusError || !strings.Contains(res.Message, MsgNoRollback) || !strings.Contains(res.Message, NoRollbackCommand) {
 			t.Fatalf("result = %+v", res)
 		}
 	})

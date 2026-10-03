@@ -109,9 +109,17 @@ install -d -m 0750 -o "$NEXUS_USER" -g "$NEXUS_USER" /var/lib/nexus
 install -d -m 0700 -o root -g root /etc/grid-agent
 install -d -m 0700 -o root -g root /var/lib/grid-agent
 
-if [ ! -e "$NEXUS_CONF" ]; then
-	umask 027
-	cat >"$NEXUS_CONF" <<CONF
+# /etc/nexus belongs to the hub user, who can plant a symlink at nexus.yaml. As
+# root this script therefore never chowns, chmods or writes an existing
+# nexus.yaml (security review B-01): the file is created only when nothing is
+# there (not even a dangling link), from a root-owned temp file, and
+# install(1) replaces its destination instead of following it.
+if [ ! -e "$NEXUS_CONF" ] && [ ! -L "$NEXUS_CONF" ]; then
+	hub_tmp=$(mktemp -d)
+	trap 'rm -rf "$hub_tmp"' EXIT
+	(
+		umask 077
+		cat >"$hub_tmp/nexus.yaml" <<CONF
 # Nexara Nexus hub configuration. The setup wizard writes hub.*; edit with care.
 # Example with all options: /usr/share/nexara/nexus.example.yaml
 hub:
@@ -128,7 +136,6 @@ storage:
     hour_days: 365
 security:
   session_idle_hours: 12
-  totp_required: false
   login_rate_limit:
     attempts: 5
     window_minutes: 15
@@ -137,9 +144,11 @@ alerts:
   disk_used_percent: 90
   host_offline_seconds: 60
 CONF
+	)
+	install -m 0640 -o "$NEXUS_USER" -g "$NEXUS_USER" "$hub_tmp/nexus.yaml" "$NEXUS_CONF"
+	rm -rf "$hub_tmp"
+	trap - EXIT
 fi
-chown "$NEXUS_USER:$NEXUS_USER" "$NEXUS_CONF"
-chmod 0640 "$NEXUS_CONF"
 
 # The hub's own agent (self-link). Without a valid shell user the agent stays
 # off: its configuration would not validate and the unit would restart-loop.

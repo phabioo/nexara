@@ -102,6 +102,8 @@ func newRestoreEnv(t *testing.T, mutate ...func(*backup.Options)) *restoreEnv {
 	e.lay = hubFiles(t.TempDir())
 	opts := backup.Options{
 		Layout: e.lay, KDF: restoreKDF,
+		// As in the hub: failures are audited into the (setup mode) database.
+		Audit: func(ctx context.Context, en store.AuditEntry) { _, _ = e.st.AppendAudit(ctx, en) },
 		AuditRestore: func(_ context.Context, _ string, en store.AuditEntry) error {
 			e.mu.Lock()
 			defer e.mu.Unlock()
@@ -795,4 +797,69 @@ func TestSetupByteSize(t *testing.T) {
 			t.Errorf("setupByteSize(%d) = %q, want %q", in, got, want)
 		}
 	}
+}
+
+// Security review A-09/B-03: the wizard's earlier entries and the restore entry
+// (with the client address) are handed to the restored database; a failed
+// restore is audited once, by the backup service, with the address.
+func TestSetupRestoreAuditReachesTheRestoredDatabase(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		e := newRestoreEnv(t)
+		for _, en := range []store.AuditEntry{
+			{Time: time.Date(2026, 10, 3, 9, 0, 0, 0, time.UTC), User: "setup", Action: "setup.wrong_code", Result: store.AuditDenied, Detail: "ip=203.0.113.9"},
+			{Time: time.Date(2026, 10, 3, 9, 1, 0, 0, time.UTC), User: "setup", Action: "setup.unlock", Result: store.AuditOK, Detail: "ip=203.0.113.9"},
+			{Time: time.Date(2026, 10, 3, 9, 2, 0, 0, time.UTC), User: "alice", Action: "login", Result: store.AuditOK},
+		} {
+			if _, err := e.st.AppendAudit(context.Background(), en); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// A key the hub had before: it is kept as *.before-restore, and the page says so (B-07).
+		if err := os.MkdirAll(filepath.Dir(e.lay.SecretKey), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(e.lay.SecretKey, bytes.Repeat([]byte("k"), 32), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		b := e.browser(t)
+		b.ra = "203.0.113.9:4711"
+		b.unlockForRestore()
+		wantRedirect(t, b.uploadAs(e.file, restorePass), setupRestorePath)
+		rec := b.post(setupRestoreConfirm, nil)
+		if rec.Code != 200 {
+			t.Fatalf("confirm: %d\n%s", rec.Code, rec.Body.String())
+		}
+		wantBody(t, rec, "kept next to the new ones as *.before-restore")
+		if _, err := os.Stat(e.lay.SecretKey + backup.BeforeRestoreSuffix); err != nil {
+			t.Errorf("the old key was not kept: %v", err)
+		}
+		e.mu.Lock()
+		got := append([]store.AuditEntry(nil), e.audits...)
+		e.mu.Unlock()
+		if len(got) != 3 {
+			t.Fatalf("entries for the restored database: %+v", got)
+		}
+		if got[0].Action != "setup.wrong_code" || got[1].Action != "setup.unlock" {
+			t.Errorf("carried entries (oldest first): %+v", got[:2])
+		}
+		last := got[2]
+		if last.Action != backup.ActionRestore || last.Result != store.AuditOK || !strings.Contains(last.Detail, "ip=203.0.113.9") {
+			t.Errorf("restore entry: %+v", last)
+		}
+	})
+
+	t.Run("failure is audited once with the address", func(t *testing.T) {
+		e := newRestoreEnv(t, func(o *backup.Options) { o.LatestSchema = func() int { return 0 } })
+		b := e.browser(t)
+		b.ra = "203.0.113.9:4711"
+		b.unlockForRestore()
+		wantRedirect(t, b.uploadAs(e.file, restorePass), setupRestorePath)
+		if rec := b.post(setupRestoreConfirm, nil); rec.Code != 422 {
+			t.Fatalf("confirm: %d", rec.Code)
+		}
+		audits := e.restoreAudits()
+		if len(audits) != 1 || audits[0].Result != store.AuditError || !strings.Contains(audits[0].Detail, "ip=203.0.113.9") {
+			t.Errorf("audit entries of the failed restore: %+v", audits)
+		}
+	})
 }

@@ -100,3 +100,83 @@ func TestOpenBackupServiceAndRestoreAudit(t *testing.T) {
 		t.Error("missing config accepted")
 	}
 }
+
+// Security review B-03: backups made on the command line, including the update
+// helper's pre-update backup, and failed restores reach the audit log.
+func TestOpenBackupServiceAuditsIntoTheDatabase(t *testing.T) {
+	cfg, cfgPath, st := backupFixture(t)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	svc, _, err := OpenBackupService(cfgPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := backup.WithActor(context.Background(), "cli")
+	if _, err := svc.CreateLocal(ctx, backup.ReasonPreUpdate); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RestoreLocal(ctx, "nexus-20260101T000000Z-manual.nxbk"); err == nil {
+		t.Fatal("restore of a missing backup succeeded")
+	}
+	st, err = store.Open(cfg.Storage.Database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	entries, err := st.ListAudit(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("audit = %+v", entries)
+	}
+	// Newest first.
+	if f := entries[0]; f.Action != backup.ActionRestore || f.Result != store.AuditError || f.User != "cli" {
+		t.Errorf("failed restore entry = %+v", f)
+	}
+	if c := entries[1]; c.Action != backup.ActionCreate || c.Result != store.AuditOK || c.User != "cli" {
+		t.Errorf("create entry = %+v", c)
+	}
+}
+
+func TestOpenBackupServiceDoesNotCreateADatabaseForAnAudit(t *testing.T) {
+	cfg, cfgPath, st := backupFixture(t)
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	svc, _, err := OpenBackupService(cfgPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{cfg.Storage.Database, cfg.Storage.Database + "-wal", cfg.Storage.Database + "-shm"} {
+		_ = os.Remove(f)
+	}
+	if _, err := svc.RestoreLocal(context.Background(), "nexus-20260101T000000Z-manual.nxbk"); err == nil {
+		t.Fatal("restore of a missing backup succeeded")
+	}
+	if _, err := os.Stat(cfg.Storage.Database); err == nil {
+		t.Error("the audit of a failed restore created a database")
+	}
+}
+
+// Security review B-07: the running hub closes its database before a restore
+// swaps the files.
+func TestHubBackupServiceClosesTheStoreBeforeARestore(t *testing.T) {
+	cfg, cfgPath, st := backupFixture(t)
+	svc := newBackupService(cfg, cfgPath, st, slog.New(slog.DiscardHandler), time.Now)
+	ctx := context.Background()
+	info, err := svc.CreateLocal(ctx, backup.ReasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ListAudit(ctx, 1); err != nil {
+		t.Fatalf("the store is closed before the restore: %v", err)
+	}
+	if _, err := svc.RestoreLocal(ctx, info.Name); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ListAudit(ctx, 1); err == nil {
+		t.Error("the old process can still use the replaced database")
+	}
+}

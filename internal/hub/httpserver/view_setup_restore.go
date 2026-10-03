@@ -503,13 +503,18 @@ func (s *Server) handleSetupRestoreConfirm(w http.ResponseWriter, r *http.Reques
 	defer f.Close()
 
 	// The restore must not be interrupted half way by the browser going away.
-	ctx := backup.WithActor(context.WithoutCancel(r.Context()), "setup")
+	// The wizard's own entries (unlock, refused uploads) sit in the database
+	// that the restore replaces: hand them over, so they end up in the
+	// restored one together with the restore entry and the client address
+	// (security review A-09). A failed restore is audited by the backup
+	// service itself, with the same address.
+	ctx := backup.WithRemoteAddr(backup.WithActor(context.WithoutCancel(r.Context()), "setup"), ip)
+	ctx = backup.WithCarriedAudit(ctx, s.setupAuditEntries(ctx))
 	res, err := s.restorer().Restore(ctx, f, up.Passphrase)
 	up.Passphrase = ""
 	if err != nil {
 		msg, status := restoreErrorMessage(err)
 		s.log.Error("setup restore failed", "ip", ip, "err", err)
-		s.restoreAudit(r.Context(), store.AuditError, "ip="+ip+" reason=restore_failed")
 		s.renderSetup(w, r, status, s.setupRestoreUploadPage(w, r, msg+" Nothing was changed."))
 		return
 	}
@@ -522,9 +527,13 @@ func (s *Server) handleSetupRestoreConfirm(w http.ResponseWriter, r *http.Reques
 	s.setup.Codes.Invalidate()
 	http.SetCookie(w, s.setup.Sessions.ClearCookie())
 
-	p := s.setupRestoreBase(w, r, "restore-done", "Restored", "Done",
-		"The backup is in place. Nexus restarts now with the restored data; this page continues to the sign-in page when the hub is back. Grid Agents reconnect on their own.",
-		"Backup restored · Nexus restarts")
+	lead := "The backup is in place. Nexus restarts now with the restored data; this page continues to the sign-in page when the hub is back. Grid Agents reconnect on their own."
+	if len(res.Replaced) > 0 {
+		// The old keys stay readable on disk until somebody deletes them (security review B-07).
+		lead += " The files this hub had before, including its old keys and certificates, are kept next to the new ones as *" +
+			backup.BeforeRestoreSuffix + ". Delete them once you are sure."
+	}
+	p := s.setupRestoreBase(w, r, "restore-done", "Restored", "Done", lead, "Backup restored · Nexus restarts")
 	p.Back = ""
 	p.Banner = "Restored"
 	p.Restore.AutoRestart = s.svc.Restart != nil
@@ -541,6 +550,29 @@ func (s *Server) handleSetupRestoreConfirm(w http.ResponseWriter, r *http.Reques
 			restart()
 		}()
 	}
+}
+
+// maxCarriedAudit bounds how many setup entries a restore copies over.
+const maxCarriedAudit = 500
+
+// setupAuditEntries returns the audit entries written during setup, oldest
+// first. A hub in setup mode has no operator, so they are all "setup" entries.
+func (s *Server) setupAuditEntries(ctx context.Context) []store.AuditEntry {
+	if s.svc.Store == nil {
+		return nil
+	}
+	list, err := s.svc.Store.ListAudit(ctx, maxCarriedAudit)
+	if err != nil {
+		s.log.Warn("setup restore: reading the setup audit entries failed", "err", err)
+		return nil
+	}
+	var out []store.AuditEntry
+	for i := len(list) - 1; i >= 0; i-- { // ListAudit is newest first
+		if list[i].User == "setup" {
+			out = append(out, list[i])
+		}
+	}
+	return out
 }
 
 // restoreAudit records a refused or failed restore in the (still empty) hub's

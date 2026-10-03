@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/phabioo/nexara/internal/buildinfo"
@@ -26,10 +27,14 @@ func newBackupService(cfg config.HubConfig, configPath string, st *store.Store, 
 		// The running hub's own database is replaced by a restore, so the
 		// entry goes into the restored file.
 		AuditRestore: WriteRestoreAudit,
-		HubName:      cfg.Hub.Name,
-		HubVersion:   buildinfo.Version,
-		Now:          now,
-		Logger:       log.With("component", "backup"),
+		// No connection of this process may keep writing into the database
+		// file that the swap moves aside; the hub exits after the restore
+		// anyway (decision #55, security review B-07).
+		BeforeSwap: st.Close,
+		HubName:    cfg.Hub.Name,
+		HubVersion: buildinfo.Version,
+		Now:        now,
+		Logger:     log.With("component", "backup"),
 	})
 }
 
@@ -58,12 +63,29 @@ func OpenBackupService(configPath string, log *slog.Logger) (*backup.Service, ba
 		Snapshot: func(ctx context.Context, dest string) error {
 			return store.SnapshotFile(ctx, lay.Database, dest)
 		},
+		// The CLI runs next to a running hub or a stopped one; either way the
+		// entries belong in the database file (security review B-03).
+		Audit: func(ctx context.Context, e store.AuditEntry) {
+			if err := auditIntoFile(ctx, lay.Database, e); err != nil && log != nil {
+				log.Error("audit write failed", "action", e.Action, "err", err)
+			}
+		},
 		AuditRestore: WriteRestoreAudit,
 		HubName:      cfg.Hub.Name,
 		HubVersion:   buildinfo.Version,
 		Logger:       log,
 	})
 	return svc, lay, nil
+}
+
+// auditIntoFile appends e to the database file of a hub, which may be running.
+// A missing file is skipped: opening it would create an empty database next to
+// a hub that has none (the restore onto a new device).
+func auditIntoFile(ctx context.Context, dbPath string, e store.AuditEntry) error {
+	if _, err := os.Stat(dbPath); err != nil {
+		return nil
+	}
+	return WriteRestoreAudit(ctx, dbPath, e)
 }
 
 // WriteRestoreAudit appends the backup.restore entry to the database file that
