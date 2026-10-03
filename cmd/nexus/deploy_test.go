@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -53,7 +54,7 @@ func TestPostinstConfigsLoad(t *testing.T) {
 	post := deployFile(t, "debian", "postinst")
 	dir := t.TempDir()
 
-	hubYAML := heredoc(t, post, `cat >"$NEXUS_CONF" <<CONF`, "CONF")
+	hubYAML := heredoc(t, post, `cat >"$hub_tmp/nexus.yaml" <<CONF`, "CONF")
 	hubYAML = strings.NewReplacer("$(host_name)", "frpi5", "$(time_zone)", "Europe/Berlin").Replace(hubYAML)
 	hubPath := filepath.Join(dir, "nexus.yaml")
 	if err := os.WriteFile(hubPath, []byte(hubYAML), 0o600); err != nil {
@@ -231,5 +232,176 @@ func TestInstallShKeepsRollbackMaterial(t *testing.T) {
 	// The copy follows a successful apt install, never precedes it.
 	if strings.Index(script, "KEEP=") < strings.Index(script, "apt-get install -y \"$TMP/$DEB\"") {
 		t.Error("rollback material is kept before the package is installed")
+	}
+}
+
+// Security review B-01: the hub user owns /etc/nexus and can plant a symlink at
+// nexus.yaml, so postinst (root) must never chown, chmod or write an existing
+// nexus.yaml. These tests check the script text and then run the real script,
+// with its absolute paths moved into a temp tree and the system tools stubbed.
+func TestPostinstNeverTouchesAnExistingHubConfig(t *testing.T) {
+	post := deployFile(t, "debian", "postinst")
+	for _, bad := range []string{`chown "$NEXUS_USER:$NEXUS_USER" "$NEXUS_CONF"`, `chmod 0640 "$NEXUS_CONF"`, `>"$NEXUS_CONF"`, "totp_required"} {
+		if strings.Contains(post, bad) {
+			t.Errorf("postinst contains %q", bad)
+		}
+	}
+	for _, want := range []string{
+		`if [ ! -e "$NEXUS_CONF" ] && [ ! -L "$NEXUS_CONF" ]; then`,
+		`install -m 0640 -o "$NEXUS_USER" -g "$NEXUS_USER" "$hub_tmp/nexus.yaml" "$NEXUS_CONF"`,
+		"hub_tmp=$(mktemp -d)",
+	} {
+		if !strings.Contains(post, want) {
+			t.Errorf("postinst lacks %q", want)
+		}
+	}
+}
+
+// runPostinst runs `postinst configure` with /etc, /var/lib and /run moved below
+// root. Tools that need real root or a running system are stubbed; install(1)
+// is the real one without -o/-g (the tests do not run as root).
+func runPostinst(t *testing.T, root string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a POSIX shell")
+	}
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range []string{"sh", "cat", "cut", "tr", "head", "sed", "readlink", "mktemp", "rm", "rmdir", "mkdir", "chmod", "cp", "mv", "dirname", "basename"} {
+		p, err := exec.LookPath(tool)
+		if err != nil {
+			t.Skipf("no %s", tool)
+		}
+		if err := os.Symlink(p, filepath.Join(bin, tool)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	realInstall, err := exec.LookPath("install")
+	if err != nil {
+		t.Skip("no install")
+	}
+	stubs := map[string]string{
+		"install": "#!/bin/sh\n" + `args=; skip=
+for a in "$@"; do
+	if [ -n "$skip" ]; then skip=; continue; fi
+	case "$a" in -o | -g) skip=1; continue ;; esac
+	args="$args '$a'"
+done
+eval "exec ` + realInstall + ` $args"
+`,
+		"getent":   "#!/bin/sh\ncase \"$1\" in passwd) echo \"$2:x:1000:1000::/home/$2:/bin/sh\" ;; group) echo 'sudo:x:27:pi' ;; esac\n",
+		"hostname": "#!/bin/sh\necho frpi5\n",
+		"adduser":  "#!/bin/sh\nexit 0\n",
+		// The tests do not run as root; chown is a no-op, and every call is
+		// visible through the paths it was given.
+		"chown": "#!/bin/sh\nexit 0\n",
+	}
+	for name, body := range stubs {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	script := deployFile(t, "debian", "postinst")
+	script = strings.NewReplacer("/etc/", root+"/etc/", "/var/lib/", root+"/var/lib/", "/run/systemd/system", root+"/run/systemd/system",
+		"/usr/share/zoneinfo", root+"/zoneinfo").Replace(script)
+	for _, d := range []string{"etc/nexus", "etc/grid-agent", "etc/systemd/system", "var/lib/nexus", "var/lib/grid-agent"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := filepath.Join(root, "postinst")
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(filepath.Join(bin, "sh"), path, "configure")
+	cmd.Env = []string{"PATH=" + bin, "TMPDIR=" + root, "HOME=" + root}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("postinst: %v\n%s", err, out)
+	}
+}
+
+func TestPostinstCreatesTheHubConfigOnlyWhenAbsent(t *testing.T) {
+	const victimText = "root-only secret\n"
+	cases := []struct {
+		name   string
+		plant  func(t *testing.T, conf, victim string)
+		create bool // a new regular nexus.yaml is expected
+		keep   func(t *testing.T, conf string)
+	}{
+		{name: "fresh install", create: true, plant: func(*testing.T, string, string) {}},
+		{name: "symlink to an existing file", plant: func(t *testing.T, conf, victim string) {
+			if err := os.Symlink(victim, conf); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "dangling symlink", plant: func(t *testing.T, conf, victim string) {
+			if err := os.Symlink(victim+".new", conf); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "existing regular file keeps content and mode", plant: func(t *testing.T, conf, _ string) {
+			if err := os.WriteFile(conf, []byte("hub:\n  name: mine\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, keep: func(t *testing.T, conf string) {
+			b, _ := os.ReadFile(conf)
+			fi, _ := os.Stat(conf)
+			if string(b) != "hub:\n  name: mine\n" || fi.Mode().Perm() != 0o600 {
+				t.Errorf("existing nexus.yaml changed: %q %v", b, fi.Mode())
+			}
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			// runPostinst creates the directories; plant first needs them.
+			conf := filepath.Join(root, "etc", "nexus", "nexus.yaml")
+			victim := filepath.Join(root, "var", "lib", "victim")
+			if err := os.MkdirAll(filepath.Dir(conf), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Dir(victim), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(victim, []byte(victimText), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			c.plant(t, conf, victim)
+			runPostinst(t, root)
+
+			// Whatever was planted, the victim keeps content and mode and no file is created through a link.
+			if b, _ := os.ReadFile(victim); string(b) != victimText {
+				t.Errorf("victim file changed: %q", b)
+			}
+			if fi, _ := os.Stat(victim); fi.Mode().Perm() != 0o600 {
+				t.Errorf("victim mode = %v, want 0600", fi.Mode().Perm())
+			}
+			if _, err := os.Lstat(victim + ".new"); err == nil {
+				t.Error("a file was created through the dangling link")
+			}
+			fi, err := os.Lstat(conf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.create {
+				if !fi.Mode().IsRegular() || fi.Mode().Perm() != 0o640 {
+					t.Errorf("nexus.yaml = %v, want a regular 0640 file", fi.Mode())
+				}
+				if _, err := config.LoadHub(conf); err != nil {
+					t.Errorf("generated nexus.yaml does not load: %v", err)
+				}
+			}
+			if c.keep != nil {
+				c.keep(t, conf)
+			}
+			if !c.create && c.keep == nil && fi.Mode()&os.ModeSymlink == 0 {
+				t.Errorf("the planted link was replaced: %v", fi.Mode())
+			}
+			if left, _ := filepath.Glob(filepath.Join(root, "tmp.*")); len(left) != 0 {
+				t.Errorf("temp files left behind: %v", left)
+			}
+		})
 	}
 }

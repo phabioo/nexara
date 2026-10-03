@@ -102,7 +102,7 @@ func (a *applier) prepareRollback() (*loadedBundle, string) {
 	}
 	if staged, err := a.root.OpenRoot(cur.String()); err == nil {
 		defer staged.Close()
-		if fi, err := a.root.Lstat(cur.String()); err == nil && fi.IsDir() && checkTrustedDir(staged, a.CheckOwner) == nil {
+		if fi, err := a.root.Lstat(cur.String()); err == nil && fi.IsDir() && sameDir(staged, fi) == nil && checkTrustedDir(staged, a.CheckOwner) == nil {
 			if b, lerr := a.loadBundle(staged, a.CheckOwner, debName, dst); lerr == nil {
 				return b, ""
 			}

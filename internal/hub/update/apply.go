@@ -194,6 +194,14 @@ func Apply(ctx context.Context, o ApplyOptions) (Result, error) {
 	return res, nil
 }
 
+// MsgNoRollback starts the message of an update refused for lack of rollback
+// material; the Settings card recognizes it. NoRollbackCommand is the one
+// command that updates anyway, without a safety net.
+const (
+	MsgNoRollback     = "no rollback material for the running version"
+	NoRollbackCommand = "sudo nexus update-apply --no-rollback"
+)
+
 type applier struct {
 	ApplyOptions
 	root  *os.Root
@@ -227,11 +235,29 @@ func openTrustedRoot(path string, owner func(fs.FileInfo) error) (*os.Root, erro
 	if err != nil {
 		return nil, err
 	}
+	// The path may have been swapped between Lstat and OpenRoot (OpenRoot
+	// follows a final symlink): the opened directory must be the one seen.
+	if err := sameDir(root, fi); err != nil {
+		root.Close()
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	if err := checkTrustedDir(root, owner); err != nil {
 		root.Close()
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return root, nil
+}
+
+// sameDir fails unless root is the directory that fi (from Lstat) describes.
+func sameDir(root *os.Root, fi fs.FileInfo) error {
+	st, err := root.Stat(".")
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(st, fi) {
+		return errors.New("the directory was replaced while it was being opened")
+	}
+	return nil
 }
 
 // checkTrustedDir validates the opened directory itself (not its path).
@@ -284,19 +310,30 @@ func openRootFile(root *os.Root, name string, max int64, owner func(fs.FileInfo)
 	if err := check(fi); err != nil {
 		return nil, err
 	}
-	f, err := root.Open(name)
+	// os.Root follows symlinks that stay inside the root, whatever the flags
+	// say, so the opened descriptor is compared with what Lstat showed.
+	f, err := root.OpenFile(name, os.O_RDONLY|openFlags, 0)
 	if err != nil {
 		return nil, err
 	}
-	fi, err = f.Stat()
-	if err == nil {
-		err = check(fi)
-	}
-	if err != nil {
+	if err := verifyOpened(f, fi, name, check); err != nil {
 		f.Close()
 		return nil, err
 	}
 	return f, nil
+}
+
+// verifyOpened checks the opened descriptor: it must be the file that Lstat
+// described (not a link or FIFO swapped in since) and still pass the checks.
+func verifyOpened(f *os.File, lstat fs.FileInfo, name string, check func(fs.FileInfo) error) error {
+	st, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(st, lstat) {
+		return fmt.Errorf("%s was replaced while it was being opened", name)
+	}
+	return check(st)
 }
 
 func (a *applier) writeRoot(name string, v any, mode fs.FileMode) error {
@@ -372,6 +409,8 @@ func (a *applier) processClaimed(ctx context.Context) (res Result) {
 	defer staged.Close()
 	if fi, err := a.root.Lstat(req.Version); err != nil || !fi.IsDir() {
 		return fail(PhaseVerify, fmt.Errorf("%w: %s is not a directory", ErrNotStaged, req.Version))
+	} else if err := sameDir(staged, fi); err != nil {
+		return fail(PhaseVerify, fmt.Errorf("%w: %s: %v", ErrNotStaged, req.Version, err))
 	}
 	if err := checkTrustedDir(staged, a.CheckOwner); err != nil {
 		return fail(PhaseVerify, fmt.Errorf("%w: staged directory: %v", ErrBadBundle, err))
@@ -393,8 +432,8 @@ func (a *applier) processClaimed(ctx context.Context) (res Result) {
 		var why string
 		rb, why = a.prepareRollback()
 		if rb == nil {
-			return fail(PhaseVerify, fmt.Errorf("no rollback material for the running version (%s); "+
-				"to update without a safety net, stop nexus-update.path, request the update again and run `sudo nexus update-apply --no-rollback`", why))
+			return fail(PhaseVerify, fmt.Errorf(MsgNoRollback+" (%s); "+
+				"to update without a safety net, stop nexus-update.path, request the update again and run `"+NoRollbackCommand+"`", why))
 		}
 		a.logf("rollback material for %s is ready", a.CurrentVersion)
 	}
