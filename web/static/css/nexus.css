@@ -1482,6 +1482,7 @@ svg { flex: none; }
 .set-upload-form.htmx-request .set-upload-idle { display: none; }
 .set-upload-form.htmx-request .set-upload-busy { display: inline; }
 .set-form { display: flex; flex-direction: column; gap: 12px; }
+.set-stepup { display: flex; flex-direction: column; gap: 12px; }
 
 /* updates: found release, staged bundles, install progress, last result */
 .set-callout, .set-install, .set-result { display: flex; gap: 10px; padding: 8px 10px; background: var(--chip-light); color: var(--ink); }

@@ -27,7 +27,7 @@ const uploadPathUpdate = "/settings/updates/upload"
 //	POST /settings/updates/stage     download the newest release found by the check
 //	POST /settings/updates/upload    multipart: .deb + SHA256SUMS + SHA256SUMS.sig, or one .tar of the three
 //	GET  /settings/updates/install   confirm dialog (?version=)
-//	POST /settings/updates/install   ask the root helper to install a staged version
+//	POST /settings/updates/install   step-up (passphrase + TOTP code), then ask the root helper to install a staged version
 //	POST /settings/updates/cancel    withdraw a request the helper has not started
 //	GET  /settings/updates/status    the card again (polled while an update runs)
 func (s *Server) routesSettingsUpdates(mux *http.ServeMux) {
@@ -332,7 +332,24 @@ func (s *Server) handleUpdatesInstallDialog(w http.ResponseWriter, r *http.Reque
 		s.toastError(w, r, http.StatusNotFound, "Not found", "That version is no longer staged.")
 		return
 	}
+	c.NoCode = stepUpNoCode(r)
 	s.writeFragments(w, r, http.StatusOK, fragment{"settings-install-confirm", c})
+}
+
+// installStepUpError answers a failed step-up with the confirm dialog again, the message in it.
+func (s *Server) installStepUpError(w http.ResponseWriter, r *http.Request, version string, status int, msg string) {
+	st, err := s.svc.Updates.Status(r.Context())
+	if err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	c, ok := views.NewSettingsInstallConfirm(s.now(), st, version)
+	if !ok {
+		s.toastError(w, r, http.StatusNotFound, "Not found", "That version is no longer staged.")
+		return
+	}
+	c.Error, c.NoCode = msg, stepUpNoCode(r)
+	s.writeFragments(w, r, status, fragment{"settings-install-confirm", c})
 }
 
 func (s *Server) handleUpdatesInstall(w http.ResponseWriter, r *http.Request) {
@@ -340,6 +357,11 @@ func (s *Server) handleUpdatesInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	version := r.PostFormValue("version")
+	// Installing replaces the hub: confirm the operator again, in this very request.
+	if status, msg := s.stepUp(w, r); status != 0 {
+		s.installStepUpError(w, r, version, status, msg)
+		return
+	}
 	if err := s.svc.Updates.RequestInstall(r.Context(), operatorName(r), version); err != nil {
 		s.failUpdates(w, r, err, true, http.StatusInternalServerError, "The update could not be started.")
 		return

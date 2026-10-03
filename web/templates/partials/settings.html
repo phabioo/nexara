@@ -80,6 +80,15 @@
   </div>
 </section>{{end}}
 
+{{/* Step-up fields (decision #58): the operator confirms an action with the passphrase and a current TOTP code.
+   Data: ID (id prefix), NoCode (no authenticator: the demo asks for the passphrase only), Error. */}}
+{{define "settings-stepup"}}<div class="set-stepup">
+  <p class="card-text">Confirm with your passphrase and a code from your authenticator.</p>
+  <div class="field"><label for="{{.ID}}-su-pass" class="t-label">Passphrase</label><input id="{{.ID}}-su-pass" name="stepup_passphrase" class="input" type="password" autocomplete="current-password" required></div>
+  {{if not .NoCode}}<div class="field"><label for="{{.ID}}-su-code" class="t-label">6-digit code</label><input id="{{.ID}}-su-code" name="stepup_code" class="input" type="text" inputmode="numeric" pattern="[0-9 ]*" autocomplete="one-time-code" placeholder="000000" maxlength="7" required></div>{{end}}
+  {{with .Error}}{{template "form-error" .}}{{end}}
+</div>{{end}}
+
 {{define "settings-install-confirm"}}{{template "modal-open" (dict "ID" "install-title" "Title" "Install update" "Variant" "bad" "Size" "sm")}}
 <form class="set-form" hx-post="{{.PostURL}}" hx-target="#modal-root" hx-swap="innerHTML">
   <span class="tag tag-dark">{{.Version}}</span>
@@ -88,6 +97,7 @@
   <p class="card-text">The hub restarts during the update and is unreachable for about a minute. A backup is taken first. If the new version does not start, the previous one is restored.</p>
   {{template "checker"}}
   <input type="hidden" name="version" value="{{.Version0}}">
+  {{template "settings-stepup" (dict "ID" "install" "NoCode" .NoCode "Error" .Error)}}
   <div class="modal-actions">
     {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}
     {{template "btn-card" (dict "Label" "Install now" "Type" "submit" "Icon" "arrow-right")}}
@@ -129,7 +139,7 @@
   <p class="card-text">The file is encrypted with this passphrase. Without it the backup cannot be restored, and nobody can recover it for you.</p>
   <div class="field"><label for="bk-pass" class="t-label">Passphrase for the download</label><input id="bk-pass" name="passphrase" class="input" type="password" autocomplete="new-password" placeholder="min. 12 characters" minlength="12" required></div>
   <div class="field"><label for="bk-pass2" class="t-label">Repeat the passphrase</label><input id="bk-pass2" name="confirm" class="input" type="password" autocomplete="new-password" required></div>
-  {{with .Error}}{{template "form-error" .}}{{end}}
+  {{template "settings-stepup" (dict "ID" "bk" "NoCode" .NoCode "Error" .Error)}}
   <div class="modal-actions">
     {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}
     {{template "btn-card" (dict "Label" "Continue" "Type" "submit" "Icon" "arrow-right")}}
@@ -143,6 +153,7 @@
   <p class="card-text">The backup is created when you download it and encrypted with your passphrase.</p>
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
   <input type="hidden" name="passphrase" value="{{.Passphrase}}">
+  <input type="hidden" name="download_grant" value="{{.Grant}}">
   <div class="modal-actions">
     {{template "btn-card" (dict "Label" "Close" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}
     <button type="submit" class="btn-card"><span>Download backup</span>{{template "settings-download-icon"}}</button>
@@ -156,6 +167,7 @@
   <p class="card-text">Restore this backup? The database, the certificates and the keys are replaced by their state at that time, and everything changed since is lost. The hub restarts, and you may have to sign in again.</p>
   {{template "checker"}}
   <input type="hidden" name="name" value="{{.Name}}">
+  {{template "settings-stepup" (dict "ID" "restore" "NoCode" .NoCode "Error" .Error)}}
   <div class="modal-actions">
     {{template "btn-card" (dict "Label" "Cancel" "Variant" "grey" "Icon" "close" "Attrs" (attr "data-modal-close"))}}
     {{template "btn-card" (dict "Label" "Restore and restart" "Type" "submit" "Icon" "reboot")}}
@@ -166,9 +178,13 @@
 {{/* Shown after a restore until a new hub process answers. Data: views.SettingsRestarting. */}}
 {{define "settings-restarting"}}{{$title := "Hub restarting…"}}{{if .Done}}{{$title = "Hub restarted"}}{{end}}{{template "modal-open" (dict "ID" "restart-title" "Title" $title "Variant" "hot" "Size" "sm")}}
 <div class="set-form"{{if not .Done}} hx-get="{{.PollURL}}" hx-trigger="every 2s" hx-target="#modal-root" hx-swap="innerHTML"{{end}} role="status">
-  {{if .Done}}<p class="card-text">The hub is back with the restored data.</p>
+  {{if and .Done .Failed}}<p class="card-text">The hub is back. The restore did not go through. Check the hub log if anything looks wrong.</p>
   <div class="modal-actions">{{template "btn-card" (dict "Label" "Close" "Attrs" (attr "data-modal-close"))}}</div>
-  {{else}}<p class="card-text">Restarting the hub with the restored data. This page reconnects by itself. If your session is not part of the backup you are asked to sign in.</p>
+  {{else if .Done}}<p class="card-text">The hub is back with the restored data. The files it replaced are kept next to the originals as *.before-restore copies; they include the previous keys.</p>
+  <div class="modal-actions">{{template "btn-card" (dict "Label" "Close" "Attrs" (attr "data-modal-close"))}}</div>
+  {{else if .Failed}}<p class="card-text">The restore could not be completed, but the hub had already closed its database. It restarts now to recover. This page reconnects by itself.</p>
+  <div class="bar job-bar is-busy" aria-hidden="true"><i></i></div>
+  {{else}}<p class="card-text">Restarting the hub with the restored data. This page reconnects by itself. If your session is not part of the backup you are asked to sign in. The files it replaces are kept next to the originals as *.before-restore copies; they include the previous keys.</p>
   <div class="bar job-bar is-busy" aria-hidden="true"><i></i></div>{{end}}
 </div>
 {{template "modal-close"}}{{end}}

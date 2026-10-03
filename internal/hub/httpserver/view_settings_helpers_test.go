@@ -16,11 +16,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/pquerna/otp/totp"
 
 	"github.com/phabioo/nexara/internal/config"
 	"github.com/phabioo/nexara/internal/hub/auth"
@@ -185,6 +188,8 @@ type settingsEnv struct {
 	restarts int
 	cookie   *http.Cookie
 	csrf     string
+	secret   string // the operator's TOTP secret
+	bkOpts   backup.Options
 }
 
 func newSettingsEnv(t *testing.T, mods ...func(*update.Options)) *settingsEnv {
@@ -250,11 +255,12 @@ func newSettingsEnv(t *testing.T, mods ...func(*update.Options)) *settingsEnv {
 	}
 
 	se.lay = stgBackupLayout(t, e.st)
-	se.bk = backup.New(backup.Options{
+	se.bkOpts = backup.Options{
 		Layout: se.lay, Snapshot: e.st.Snapshot, Settings: update.NewMemorySettings(), Audit: audit,
 		HubName: "frpi5", HubVersion: "0.1.0", KDF: backup.KDFParams{Time: 1, MemoryKiB: 64, Threads: 1},
 		AuditRestore: func(context.Context, string, store.AuditEntry) error { return nil },
-	})
+	}
+	se.bk = backup.New(se.bkOpts)
 	e.srv.svc = Services{
 		Updates: se.upd, Backup: se.bk, Certs: se.certs, Caps: se.caps, Store: e.st, CA: ca,
 		Restart:    func() { se.restarts++ },
@@ -269,6 +275,11 @@ func newSettingsEnv(t *testing.T, mods ...func(*update.Options)) *settingsEnv {
 		HubHost: func(h grid.HostInfo) bool { return h.Name == "alpha" },
 	}
 	se.cookie, se.csrf = e.signIn()
+	u := e.ensureTOTP()
+	se.secret, err = e.svc.OpenTOTPSecret(u.ID, u.TOTPSecretEnc)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return se
 }
 
@@ -306,6 +317,33 @@ func stgBackupLayout(t *testing.T, st *store.Store) backup.Layout {
 	}
 	_ = st
 	return lay
+}
+
+// stepUp adds a valid step-up (the passphrase and a fresh TOTP code) to form. Every call moves the auth clock on by
+// one TOTP period, because a code works once (replay guard).
+func (s *settingsEnv) stepUp(form url.Values) url.Values {
+	s.t.Helper()
+	s.clock.Advance(31 * time.Second)
+	code, err := totp.GenerateCode(s.secret, s.clock.Now())
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	out := url.Values{}
+	for k, v := range form {
+		out[k] = v
+	}
+	out.Set(fieldStepUpPass, testPass)
+	out.Set(fieldStepUpCode, code)
+	return out
+}
+
+// useBeforeSwap replaces the backup service by one whose restore calls hook before it swaps files, like the app does
+// with the store's Close.
+func (s *settingsEnv) useBeforeSwap(hook func() error) {
+	o := s.bkOpts
+	o.BeforeSwap = hook
+	s.bk = backup.New(o)
+	s.srv.svc.Backup = s.bk
 }
 
 // opts returns the options of an authenticated request; csrf adds the token header, htmx the HX-Request header.
@@ -428,4 +466,17 @@ func (s *settingsEnv) auditFor(action string) []store.AuditEntry {
 		}
 	}
 	return out
+}
+
+var grantField = regexp.MustCompile(`name="download_grant" value="([^"]+)"`)
+
+// downloadGrant runs step 1 of the backup download (with a valid step-up) and returns the grant of the "ready" dialog.
+func (s *settingsEnv) downloadGrant(t *testing.T) string {
+	t.Helper()
+	rec := s.hxPost("/settings/backup/download", s.stepUp(url.Values{"passphrase": {bkPass}, "confirm": {bkPass}}))
+	m := grantField.FindStringSubmatch(rec.Body.String())
+	if rec.Code != http.StatusOK || m == nil {
+		t.Fatalf("no grant: %d %s", rec.Code, abbreviate(rec.Body.String()))
+	}
+	return m[1]
 }
