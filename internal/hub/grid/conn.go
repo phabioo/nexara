@@ -14,6 +14,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/phabioo/nexara/internal/hub/store"
+	"github.com/phabioo/nexara/internal/pki"
 	"github.com/phabioo/nexara/internal/protocol"
 )
 
@@ -28,8 +29,9 @@ type agentConn struct {
 	// (nil when authentication was injected, i.e. in tests).
 	peer *x509.Certificate
 
-	closeOnce sync.Once
-	last      atomic.Int64 // unix nanos of the last sign of life (message or pong)
+	closeOnce   sync.Once
+	badRequests atomic.Int32 // refused cert.csr requests on this connection
+	last        atomic.Int64 // unix nanos of the last sign of life (message or pong)
 
 	mu      sync.Mutex
 	closed  bool
@@ -124,6 +126,11 @@ func (c *agentConn) request(ctx context.Context, typ string, data any, timeout t
 	case <-timer.C:
 		return protocol.Envelope{}, fmt.Errorf("grid: no answer to %s within %s: %w", typ, timeout, context.DeadlineExceeded)
 	case <-ctx.Done():
+		if c.ctx.Err() != nil {
+			// The caller's context may be the connection's own (job start);
+			// both fire together and select picks at random.
+			return protocol.Envelope{}, ErrHostOffline
+		}
 		return protocol.Envelope{}, ctx.Err()
 	case <-c.ctx.Done():
 		return protocol.Envelope{}, ErrHostOffline
@@ -220,7 +227,9 @@ func (g *Grid) serveAgent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	g.accept(st, c, hello)
+	if !g.accept(st, c, hello) {
+		return
+	}
 	go g.watchdog(c)
 	go g.pinger(st, c)
 	g.readLoop(st, c)
@@ -253,10 +262,37 @@ func (g *Grid) handshake(st *hostState, c *agentConn) (hello protocol.Hello, ok 
 		_ = c.ws.Close(websocket.StatusTryAgainLater, "certificate activation failed")
 		return hello, false
 	}
+	// A host removed or re-enrolled while the handshake ran must not be
+	// acknowledged (accept checks again atomically with the installation).
+	g.mu.Lock()
+	valid := g.connValidLocked(st, c)
+	g.mu.Unlock()
+	if !valid {
+		_ = c.ws.Close(websocket.StatusPolicyViolation, "unauthorized")
+		return hello, false
+	}
 	if err := c.send(protocol.TypeHelloAck, env.ID, protocol.HelloAck{Accepted: true}); err != nil {
 		return hello, false
 	}
 	return hello, true
+}
+
+// connValidLocked reports whether st is still the registered host of c and the
+// certificate c authenticated with is still accepted (not revoked, not
+// retired by a re-enrollment or an activated renewal). g.mu must be held.
+func (g *Grid) connValidLocked(st *hostState, c *agentConn) bool {
+	if cur, ok := g.hosts[st.id]; !ok || cur != st {
+		return false
+	}
+	if c.peer == nil {
+		return true // authentication was injected (tests)
+	}
+	fp := pki.Fingerprint(c.peer)
+	if id, ok := g.byFP[fp]; ok {
+		return id == st.id
+	}
+	p, ok := g.livePendingLocked(fp)
+	return ok && p.host == st.id
 }
 
 func (g *Grid) rejectIncompatible(st *hostState, c *agentConn, env protocol.Envelope, hello protocol.Hello, herr error) {
@@ -348,9 +384,15 @@ func (g *Grid) saveStatus(id HostID, status store.HostStatus) {
 }
 
 // accept installs c as the host's connection (replacing an older one), stores
-// the host facts and emits host_online.
-func (g *Grid) accept(st *hostState, c *agentConn, hello protocol.Hello) {
+// the host facts and emits host_online. It returns false, installing nothing,
+// if the host was removed or its certificate revoked in the meantime; the
+// caller then drops the connection.
+func (g *Grid) accept(st *hostState, c *agentConn, hello protocol.Hello) bool {
 	g.mu.Lock()
+	if !g.connValidLocked(st, c) {
+		g.mu.Unlock()
+		return false
+	}
 	old := st.conn
 	st.conn = c
 	st.online = true
@@ -373,6 +415,7 @@ func (g *Grid) accept(st *hostState, c *agentConn, hello protocol.Hello) {
 	g.saveStatus(st.id, status)
 	g.log.Info("agent connected", "host", st.name, "version", hello.AgentVersion)
 	go g.onConnect(st, hello)
+	return true
 }
 
 // onConnect refreshes services and packages and pushes an update to an old agent.

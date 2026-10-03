@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -408,9 +409,33 @@ func TestSettingsRemoveHost(t *testing.T) {
 		t.Errorf("removed = %v", got)
 	}
 	// A plain form post is redirected.
-	rec = s.post("/settings/hosts/alpha/remove", s.opts(true, false)...)
+	s = newSettingsEnv(t)
+	rec = s.post("/settings/hosts/beta/remove", s.opts(true, false)...)
 	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/settings" {
 		t.Errorf("plain post: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
+// C-08: the hub's own host (alpha in this env) cannot be removed, whatever the route or the request style.
+func TestSettingsRefusesRemovingTheHubsOwnHost(t *testing.T) {
+	s := newSettingsEnv(t)
+	for name, rec := range map[string]*httptest.ResponseRecorder{
+		"dialog":     s.hxGet("/settings/hosts/alpha/remove"),
+		"htmx post":  s.hxPost("/settings/hosts/alpha/remove", nil),
+		"plain post": s.post("/settings/hosts/alpha/remove", s.opts(true, false)...),
+	} {
+		if rec.Code != http.StatusConflict {
+			t.Errorf("%s: status %d, want 409", name, rec.Code)
+		}
+		if name != "plain post" {
+			contains(t, rec.Body.String(), "Not removed", "device the hub runs on")
+		}
+		if strings.Contains(rec.Body.String(), `hx-post="/settings/hosts/alpha/remove"`) {
+			t.Errorf("%s offers the removal", name)
+		}
+	}
+	if len(s.hub.removed) != 0 {
+		t.Errorf("the hub's own host was removed: %v", s.hub.removed)
 	}
 }
 

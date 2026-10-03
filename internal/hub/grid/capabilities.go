@@ -83,13 +83,13 @@ func parseCapsOff(v string) []string {
 	return out
 }
 
-// loadCapsOff restores the switches of all known hosts. A failure leaves every
-// capability on (the agents' own configuration still applies) and is logged.
-func (g *Grid) loadCapsOff(ctx context.Context) {
+// loadCapsOff restores the switches of all known hosts. A failure is returned
+// (and stops the hub's startup): carrying on would run with every capability
+// on although the operator switched some off.
+func (g *Grid) loadCapsOff(ctx context.Context) error {
 	m, err := g.opts.Store.ListSettings(ctx, settingCapsOffPrefix)
 	if err != nil {
-		g.log.Warn("grid: reading the capability switches failed", "err", err)
-		return
+		return fmt.Errorf("grid: read capability switches: %w", err)
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -98,6 +98,7 @@ func (g *Grid) loadCapsOff(ctx context.Context) {
 			st.capsOff = parseCapsOff(v)
 		}
 	}
+	return nil
 }
 
 // SetCapability implements CapabilityController.
@@ -150,7 +151,36 @@ func (g *Grid) SetCapability(ctx context.Context, actor Actor, id HostID, capabi
 	}
 	st.capsOff = next
 	c := st.conn
+	var canceled []store.AuditEntry
+	var running []*jobRec
+	if !enabled && capability == protocol.CapPackages {
+		// Queued jobs must not start once packages are off (decision #56); the
+		// running one is told to stop (owner decision, security review C-03).
+		for _, rec := range slices.Clone(st.queue) {
+			rec.cancelBy, rec.cancelWhy = actor.Operator, "packages switched off"
+			if rec.State == JobQueued {
+				if e, ok := g.finishLocked(st, rec, jobOutcome{state: JobCanceled, err: "packages switched off"}); ok {
+					canceled = append(canceled, e)
+				}
+				continue
+			}
+			rec.cancelRequested = true
+			running = append(running, rec)
+		}
+	}
 	g.mu.Unlock()
+	for _, e := range canceled {
+		g.audit(e)
+	}
+	for _, rec := range running {
+		// Best effort: if the agent does not answer, the job ends with the connection.
+		cctx, cancel := context.WithTimeout(ctx, g.to.jobCancel)
+		_, err := rec.conn.request(cctx, protocol.TypeJobCancel, protocol.JobCancel{JobID: rec.ID}, g.to.jobCancel)
+		cancel()
+		if err != nil && !errors.Is(err, ErrHostOffline) {
+			g.log.Warn("grid: canceling the running job after switching packages off failed", "host", name, "err", err)
+		}
+	}
 
 	switch {
 	case !enabled && capability == protocol.CapShell && c != nil:

@@ -234,7 +234,8 @@ func TestAuditCSV(t *testing.T) {
 	if r := got[`'=HYPERLINK("http://x","y")`]; r == nil || r[1] != "fabio" {
 		t.Errorf("formula cell not neutralized: %v", got)
 	}
-	if r := got["'-1+2, with \"quotes\"\nand newline"]; r == nil || r[1] != "'+evil" || r[2] != "'@h" {
+	// AppendAudit replaces the newline of the seeded detail with "?" (C-10).
+	if r := got["'-1+2, with \"quotes\"?and newline"]; r == nil || r[1] != "'+evil" || r[2] != "'@h" {
 		t.Errorf("injection cells not neutralized: %v", got)
 	}
 
@@ -271,5 +272,34 @@ func TestAuditWithoutStore(t *testing.T) {
 	}
 	if rec := a.getAs("/settings/audit.csv"); rec.Code != http.StatusNotImplemented {
 		t.Errorf("csv status %d, want 501", rec.Code)
+	}
+}
+
+// C-07: the export is audited even when the client aborted the download (the
+// request context is cancelled), on the success and on the error path.
+func TestExportAuditedWithCancelledRequestContext(t *testing.T) {
+	a := newAuditEnv(t)
+	for _, result := range []string{store.AuditOK, store.AuditError} {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		r := httptest.NewRequest(http.MethodGet, "/settings/audit.csv", nil).WithContext(ctx)
+		a.srv.exportAudited(r, 42, result)
+	}
+	entries, _, err := a.st.QueryAudit(context.Background(), store.AuditFilter{Actions: []string{"audit.export"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("%d export entries, want 2: %+v", len(entries), entries)
+	}
+	results := map[string]bool{}
+	for _, en := range entries {
+		results[en.Result] = true
+		if en.Detail != "42 rows" {
+			t.Errorf("detail %q", en.Detail)
+		}
+	}
+	if !results[store.AuditOK] || !results[store.AuditError] {
+		t.Errorf("results %v, want ok and error", results)
 	}
 }

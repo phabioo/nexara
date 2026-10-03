@@ -213,10 +213,37 @@ func (s *Service) Series(ctx context.Context, host string, metric Metric, from, 
 	return out, nil
 }
 
-// DiskSeries is Series for every mount of a host at once: it reads the disk
+// MaxDiskSeries bounds the mounts DiskSeries returns. Mount names come from the
+// agent, so a compromised agent or mount churn must not decide how much memory
+// one page load allocates. The History view shows the same number of charts.
+const MaxDiskSeries = 12
+
+// pickMounts chooses at most limit valid mounts from the rows (oldest first):
+// first those of the newest sample, then, if there is room, the ones seen most
+// recently (newer rows first, mount path order within a row).
+func pickMounts(rows []store.DiskRow, limit int) []string {
+	seen := make(map[string]bool)
+	var picked []string
+	for i := len(rows) - 1; i >= 0 && len(picked) < limit; i-- {
+		// Within one row take the mounts in path order, so the choice is stable.
+		names := make([]string, 0, len(rows[i].Disks))
+		for _, d := range rows[i].Disks {
+			if validMount(d.Mount) && !seen[d.Mount] {
+				seen[d.Mount] = true
+				names = append(names, d.Mount)
+			}
+		}
+		sort.Strings(names)
+		picked = append(picked, names[:min(len(names), limit-len(picked))]...)
+	}
+	return picked
+}
+
+// DiskSeries is Series for the mounts of a host at once: it reads the disk
 // rows of the range a single time (instead of once per mount) and returns one
-// Series per mount seen in the range, ordered by mount path. A host without
-// disk data yields an empty slice.
+// Series per mount, ordered by mount path. At most MaxDiskSeries mounts are
+// returned: those of the newest sample in the range, filled up with the most
+// recently seen others. A host without disk data yields an empty slice.
 func (s *Service) DiskSeries(ctx context.Context, host string, from, to time.Time, step time.Duration) ([]Series, error) {
 	out, q, err := s.plan(host, MetricDisk("/"), from, to, step)
 	if err != nil {
@@ -227,17 +254,12 @@ func (s *Service) DiskSeries(ctx context.Context, host string, from, to time.Tim
 		return nil, err
 	}
 	mounts := make(map[string]*Series)
-	for _, r := range rows {
-		for _, d := range r.Disks {
-			if mounts[d.Mount] != nil || !validMount(d.Mount) {
-				continue
-			}
-			ser := out
-			ser.Metric = MetricDisk(d.Mount)
-			ser.Points = make([]Point, len(out.Points))
-			copy(ser.Points, out.Points)
-			mounts[d.Mount] = &ser
-		}
+	for _, m := range pickMounts(rows, MaxDiskSeries) {
+		ser := out
+		ser.Metric = MetricDisk(m)
+		ser.Points = make([]Point, len(out.Points))
+		copy(ser.Points, out.Points)
+		mounts[m] = &ser
 	}
 	diskSeries(rows, out, mounts)
 	res := make([]Series, 0, len(mounts))

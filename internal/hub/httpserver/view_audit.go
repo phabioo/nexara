@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/csv"
 	"errors"
 	"net/http"
@@ -133,19 +134,24 @@ func (s *Server) handleAuditCSV(w http.ResponseWriter, r *http.Request) {
 		f.Cursor = next
 		if entries, next, err = st.QueryAudit(r.Context(), f); err != nil {
 			s.log.Error("audit export", "err", err)
-			return // the stream is cut; the client sees a truncated file
+			s.exportAudited(r, written, store.AuditError) // the stream is cut; the client sees a truncated file
+			return
 		}
 	}
-	s.exportAudited(r, written)
+	s.exportAudited(r, written, store.AuditOK)
 }
 
-// exportAudited records the export in the audit log (best effort).
-func (s *Server) exportAudited(r *http.Request, rows int) {
+// exportAudited records the export in the audit log (best effort). It must
+// not use the request's context: a client that aborts the download cancels it,
+// and the rows it already received would go unrecorded (security review C-07).
+func (s *Server) exportAudited(r *http.Request, rows int, result string) {
 	if s.svc.Store == nil {
 		return
 	}
-	_, err := s.svc.Store.AppendAudit(r.Context(), store.AuditEntry{
-		User: operatorName(r), Action: "audit.export", Result: store.AuditOK, Detail: strconv.Itoa(rows) + " rows",
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+	defer cancel()
+	_, err := s.svc.Store.AppendAudit(ctx, store.AuditEntry{
+		User: operatorName(r), Action: "audit.export", Result: result, Detail: strconv.Itoa(rows) + " rows",
 	})
 	if err != nil {
 		s.log.Warn("audit export entry failed", "err", err)

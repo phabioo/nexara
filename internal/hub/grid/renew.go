@@ -57,6 +57,14 @@ const renewRetryAfter = time.Hour
 // certWarnWithin is when a failing renewal is logged as an error.
 const certWarnWithin = 7 * 24 * time.Hour
 
+// notDueAuditEvery spaces the "certificate not due" audit entries per host: an
+// agent that keeps asking would otherwise fill the audit log.
+const notDueAuditEvery = time.Hour
+
+// maxBadCSRs is how many refused certificate requests one connection may send
+// before the hub closes it (the agent reconnects with its backoff).
+const maxBadCSRs = 5
+
 // maxCSRSize bounds a certificate request (a P-256 CSR is ~300 bytes).
 const maxCSRSize = 8 << 10
 
@@ -294,8 +302,14 @@ func (g *Grid) CheckRenewals(ctx context.Context) {
 
 // onCertCSR signs an agent's certificate request (agent->hub cert.csr).
 func (g *Grid) onCertCSR(st *hostState, c *agentConn, env protocol.Envelope) {
+	// fail answers with an error and counts it against the connection; a peer
+	// that keeps sending requests the hub refuses is disconnected.
 	fail := func(code, msg string) {
 		_ = c.send(protocol.TypeError, env.ID, protocol.Error{Code: code, Message: msg})
+		if int(c.badRequests.Add(1)) >= maxBadCSRs {
+			g.log.Warn("grid: closing a connection after repeated refused certificate requests", "host", st.name)
+			c.close()
+		}
 	}
 	denied := func(result, detail string) {
 		g.audit(store.AuditEntry{User: SystemActor.Operator, Host: st.name, Action: "cert.renew", Detail: detail, Result: result})
@@ -327,8 +341,14 @@ func (g *Grid) onCertCSR(st *hostState, c *agentConn, env protocol.Envelope) {
 	forced := now.Before(st.forceUntil)
 	if !forced && !certDue(st.host, now) {
 		notAfter := st.host.CertNotAfter
+		auditNow := st.lastNotDueAudit.IsZero() || now.Sub(st.lastNotDueAudit) >= notDueAuditEvery || now.Before(st.lastNotDueAudit)
+		if auditNow {
+			st.lastNotDueAudit = now
+		}
 		g.mu.Unlock()
-		denied(store.AuditDenied, "certificate not due, expires "+notAfter.UTC().Format(time.RFC3339))
+		if auditNow {
+			denied(store.AuditDenied, "certificate not due, expires "+notAfter.UTC().Format(time.RFC3339))
+		}
 		fail(protocol.CodeInvalidArgument, "certificate is not due for renewal")
 		return
 	}

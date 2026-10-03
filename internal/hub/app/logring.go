@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"sync"
 	"unicode"
@@ -118,11 +119,21 @@ func (h *ringHandler) WithGroup(name string) slog.Handler {
 	return &c
 }
 
+var secretKeyWords = []string{
+	"pass", "pw", "secret", "token", "key", "cookie", "auth", "csrf", "code", "credential", "cert_pem",
+	"otp", "sid", "session", "csr", "enroll", "private", "hash", "salt", "bearer",
+}
+
+// setupCodeRe matches the format of a setup code (8 characters of the code
+// alphabet, optionally shown as XXXX-XXXX). It catches a code that ended up in
+// the value of an attribute whose name gives nothing away.
+var setupCodeRe = regexp.MustCompile(`\b[A-HJKMNP-Z2-9]{4}-?[A-HJKMNP-Z2-9]{4}\b`)
+
 // secretKey matches attribute names whose value must not be kept. The hub does
 // not log secrets (CLAUDE.md); this is the second line of defence.
 func secretKey(k string) bool {
 	k = strings.ToLower(k)
-	for _, w := range []string{"pass", "secret", "token", "key", "cookie", "auth", "csrf", "code", "credential", "cert_pem"} {
+	for _, w := range secretKeyWords {
 		if strings.Contains(k, w) {
 			return true
 		}
@@ -149,7 +160,7 @@ func appendAttr(parts []string, prefix string, a slog.Attr) []string {
 	if secretKey(key) {
 		return append(parts, key+"=[redacted]")
 	}
-	v := fmt.Sprint(a.Value.Any())
+	v := setupCodeRe.ReplaceAllString(fmt.Sprint(a.Value.Any()), "[redacted]")
 	if strings.ContainsAny(v, " \t\"=") {
 		v = fmt.Sprintf("%q", v)
 	}
