@@ -3,7 +3,6 @@ package httpserver
 import (
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/phabioo/nexara/internal/hub/update"
@@ -38,20 +37,33 @@ func (s *Server) bodyDeadline(p string) time.Duration {
 	return s.bodyTimeout
 }
 
-// exemptFromBodyLimits reports the long-lived paths: the SSE stream, the shell
-// WebSocket and the agent endpoints (WebSocket connection and its mTLS
-// helpers). A read deadline on those would end the connection, because
-// net/http cancels a request whose background read times out.
-//
-// The setup restore upload is exempt as well: it is a backup file of hundreds
-// of megabytes at most, which neither fits maxFormBody nor the fixed deadline.
-// Its handler sits behind the setup session, applies its own size cap and a
-// rolling idle timeout, and checks the CSRF token before reading the file.
-func exemptFromBodyLimits(p string) bool {
-	return p == "/events" || strings.HasPrefix(p, "/events/") || strings.HasSuffix(p, "/shell/ws") ||
-		p == "/grid/connect" || strings.HasPrefix(p, "/grid/agent/") ||
-		isRestoreUpload(p)
+// hasBody reports whether the request carries a body the server has to read:
+// the method does not matter (a GET may announce one too), the announced
+// length or chunked encoding does.
+func hasBody(r *http.Request) bool {
+	if r.Body == nil || r.Body == http.NoBody {
+		return false
+	}
+	switch r.Method {
+	case http.MethodGet, http.MethodHead:
+		return r.ContentLength != 0
+	}
+	return true
 }
+
+// exemptFromBodyCap reports the one path whose body may exceed the form cap:
+// the setup restore upload, a backup file of hundreds of megabytes at most. Its
+// handler sits behind the setup session, applies its own size cap, extends the
+// read deadline per read while the browser keeps sending (idleReader) and
+// checks the CSRF token before reading the file. It starts with the normal
+// deadline like every other body, so a stalled upload cannot hold the
+// connection before the handler has read a byte (security review A-03).
+//
+// The long-lived paths (SSE stream, shell WebSocket, agent endpoints) carry no
+// body, so they never reach the limits; one that announces a body anyway is
+// limited like any other request: net/http cancels a request whose background
+// read times out, which only matters while a body is pending.
+func exemptFromBodyCap(p string) bool { return isRestoreUpload(p) }
 
 // bodyLimits gives every request that has a body a read deadline and a size
 // cap. The deadline starts when the handler chain starts (after the headers)
@@ -60,7 +72,7 @@ func exemptFromBodyLimits(p string) bool {
 // body are not touched.
 func (s *Server) bodyLimits(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if exemptFromBodyLimits(r.URL.Path) || r.Body == nil || r.Body == http.NoBody {
+		if !hasBody(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -69,7 +81,10 @@ func (s *Server) bodyLimits(next http.Handler) http.Handler {
 		if err := rc.SetReadDeadline(time.Now().Add(s.bodyDeadline(r.URL.Path))); err == nil {
 			body = &deadlineBody{ReadCloser: body, rc: rc}
 		}
-		r.Body = http.MaxBytesReader(w, body, bodyCap(r.URL.Path))
+		if !exemptFromBodyCap(r.URL.Path) {
+			body = http.MaxBytesReader(w, body, bodyCap(r.URL.Path))
+		}
+		r.Body = body
 		next.ServeHTTP(w, r)
 	})
 }

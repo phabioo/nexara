@@ -2,7 +2,10 @@ package history
 
 import (
 	"context"
+	"fmt"
 	"reflect"
+	"slices"
+	"sort"
 	"testing"
 	"time"
 
@@ -89,6 +92,82 @@ func TestLocation(t *testing.T) {
 			e := newEnv(t, tc.mod)
 			if got := e.svc.Location(); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("Location() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDiskSeriesBoundsMounts(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	m := minuteOf(t0).Add(-60 * time.Minute)
+	// Mount churn: every minute brings 30 mounts nobody had before, the newest
+	// sample only a few.
+	for i := 0; i < 40; i++ {
+		r, _ := sampleRow(hostA, sample(m, 10))
+		r.Time = m.Add(time.Duration(i) * time.Minute)
+		r.Disks = nil
+		n := 30
+		if i == 39 {
+			n = 3
+		}
+		for j := 0; j < n; j++ {
+			r.Disks = append(r.Disks, store.DiskUsage{Mount: fmt.Sprintf("/m%02d-%02d", i, j), Used: 1, Total: 2})
+		}
+		if err := e.st.MergeMetrics1m(ctx, []store.MetricRow{r}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := e.svc.DiskSeries(ctx, hostA, m.Add(-5*time.Minute), m.Add(50*time.Minute), 5*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != MaxDiskSeries {
+		t.Fatalf("%d series, want %d", len(got), MaxDiskSeries)
+	}
+	var names []string
+	for _, s := range got {
+		names = append(names, string(s.Metric))
+	}
+	if !sort.StringsAreSorted(names) {
+		t.Errorf("series not ordered: %v", names)
+	}
+	for j := 0; j < 3; j++ {
+		want := string(MetricDisk(fmt.Sprintf("/m39-%02d", j)))
+		if !slices.Contains(names, want) {
+			t.Errorf("mount %s of the newest sample missing in %v", want, names)
+		}
+	}
+	// The rest comes from the next newest sample (i = 38), in path order.
+	if !slices.Contains(names, string(MetricDisk("/m38-00"))) || slices.Contains(names, string(MetricDisk("/m10-00"))) {
+		t.Errorf("fill-up should prefer recent mounts: %v", names)
+	}
+}
+
+func TestPickMounts(t *testing.T) {
+	row := func(mounts ...string) store.DiskRow {
+		r := store.DiskRow{}
+		for _, m := range mounts {
+			r.Disks = append(r.Disks, store.DiskUsage{Mount: m})
+		}
+		return r
+	}
+	tests := []struct {
+		name  string
+		rows  []store.DiskRow
+		limit int
+		want  []string
+	}{
+		{"none", nil, 3, nil},
+		{"newest first", []store.DiskRow{row("/old"), row("/b", "/a")}, 3, []string{"/a", "/b", "/old"}},
+		{"newest alone exceeds the limit", []store.DiskRow{row("/old"), row("/c", "/b", "/a")}, 2, []string{"/a", "/b"}},
+		{"invalid names are skipped", []store.DiskRow{row("/ok", "", "/bad\x00")}, 5, []string{"/ok"}},
+		{"duplicates once", []store.DiskRow{row("/a"), row("/a", "/b")}, 5, []string{"/a", "/b"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := pickMounts(tc.rows, tc.limit); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("pickMounts = %v, want %v", got, tc.want)
 			}
 		})
 	}

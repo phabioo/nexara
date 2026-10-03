@@ -141,6 +141,7 @@ type hostState struct {
 	renewRequested   time.Time // last time the hub asked the agent to renew
 	forceUntil       time.Time // an operator asked for a renewal; sign even if not due until then
 	renewUnsupported bool      // the connected agent does not know cert.renew
+	lastNotDueAudit  time.Time // last "certificate not due" audit entry (throttled per hour)
 
 	metrics  *protocol.Metrics
 	history  []float64
@@ -207,7 +208,10 @@ func NewGrid(opts Options) (*Grid, error) {
 		}
 		_, _ = g.addLocked(h)
 	}
-	g.loadCapsOff(ctx)
+	if err := g.loadCapsOff(ctx); err != nil {
+		cancel()
+		return nil, err
+	}
 	return g, nil
 }
 

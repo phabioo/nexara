@@ -47,9 +47,10 @@ func TestBodyLimitsDeadline(t *testing.T) {
 		{"event stream", "GET", "/events", "", false},
 		{"shell websocket", "GET", "/hosts/alpha/shell/ws", "", false},
 		{"agent websocket", "GET", "/grid/connect", "", false},
-		{"agent helper", "POST", "/grid/agent/x", "payload", false},
+		{"agent helper without a body", "GET", "/grid/agent/x", "", false},
+		{"agent helper with a body gets the limits", "POST", "/grid/agent/x", "payload", true},
 		{"event ping", "GET", "/events/ping", "", false},
-		{"setup restore upload", "POST", "/setup/restore/upload", "multipart", false},
+		{"setup restore upload starts with the normal deadline", "POST", "/setup/restore/upload", "multipart", true},
 		{"other setup restore posts keep the limits", "POST", "/setup/restore/confirm", "x=y", true},
 	}
 	for _, tc := range tests {
@@ -97,7 +98,7 @@ func TestBodyLimitsSizeCap(t *testing.T) {
 		{"exactly the cap", "/login", maxFormBody, false},
 		{"one byte over", "/login", maxFormBody + 1, true},
 		{"large enrollment body", "/grid/enroll", 4 << 20, true},
-		{"agent endpoints are not capped", "/grid/agent/x", 4 << 20, false},
+		{"agent endpoints with a body are capped", "/grid/agent/x", 4 << 20, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -222,6 +223,50 @@ func TestBodyLimitsRestoreUpload(t *testing.T) {
 			}
 			if !tc.wantErr && n != int64(len(big)) {
 				t.Errorf("read %d of %d bytes", n, len(big))
+			}
+		})
+	}
+}
+
+// A-03: the paths that used to be exempt from the body limits drop a client
+// that announces a body and then stalls, too. The response may come first (the
+// handler does not read the body); what matters is that the server closes the
+// connection instead of waiting for the missing bytes.
+func TestStalledBodyOnExemptPathsIsDropped(t *testing.T) {
+	tests := []struct {
+		name, method, path, contentType string
+	}{
+		{"event stream", "GET", "/events", ""},
+		{"shell websocket", "GET", "/hosts/alpha/shell/ws", ""},
+		{"agent connect", "GET", "/grid/connect", ""},
+		{"agent download", "GET", "/grid/agent/linux/arm64", ""},
+		{"agent post", "POST", "/grid/agent/linux/arm64", "application/octet-stream"},
+		{"restore upload without a session", "POST", "/setup/restore/upload", "multipart/form-data; boundary=xyz"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			e.srv.bodyTimeout = 150 * time.Millisecond
+			ts := httptest.NewServer(e.srv.Handler())
+			t.Cleanup(ts.Close)
+			conn, err := net.Dial("tcp", ts.Listener.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			req := tc.method + " " + tc.path + " HTTP/1.1\r\nHost: hub\r\n"
+			if tc.contentType != "" {
+				req += "Content-Type: " + tc.contentType + "\r\n"
+			}
+			if _, err := io.WriteString(conn, req+"Content-Length: 1000\r\n\r\nabc"); err != nil {
+				t.Fatal(err)
+			}
+			// 5 s is only the failure bound; the server must hang up after ~150 ms.
+			_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+			_, err = io.Copy(io.Discard, conn)
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
+				t.Fatal("connection with a stalled body is still held open")
 			}
 		})
 	}

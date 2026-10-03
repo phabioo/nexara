@@ -31,11 +31,7 @@ func (s *Server) routesSettingsHosts(mux *http.ServeMux) {
 }
 
 func (s *Server) hostsCard(hosts []grid.HostInfo) views.SettingsHosts {
-	isHub := s.svc.HubHost
-	if isHub == nil {
-		isHub = isHubHost
-	}
-	return views.NewSettingsHosts(hosts, isHub, s.svc.Caps != nil, settingsHostURL)
+	return views.NewSettingsHosts(hosts, s.hubOwn, s.svc.Caps != nil, settingsHostURL)
 }
 
 func (s *Server) certsCard(now time.Time, hosts []grid.HostInfo) views.SettingsCerts {
@@ -104,19 +100,15 @@ func (s *Server) handleHostCapability(w http.ResponseWriter, r *http.Request) {
 		toastFragment("Saved", h.Name+" | "+label+" "+state))
 }
 
-func (s *Server) hubOwn(h grid.HostInfo) bool {
-	if s.svc.HubHost != nil {
-		return s.svc.HubHost(h)
-	}
-	return isHubHost(h)
-}
-
 func (s *Server) handleSettingsRemoveConfirm(w http.ResponseWriter, r *http.Request) {
 	h, ok := s.requireHost(w, r)
 	if !ok {
 		return
 	}
-	d := views.NewOverviewRemove(hostLabel(h), settingsHostURL(h.Name), s.hubOwn(h))
+	if s.refuseHubRemoval(w, r, h) {
+		return
+	}
+	d := views.NewOverviewRemove(hostLabel(h), settingsHostURL(h.Name), false)
 	s.writeFragments(w, r, http.StatusOK, fragment{"overview-remove", d})
 }
 
@@ -125,6 +117,9 @@ func (s *Server) handleSettingsRemoveConfirm(w http.ResponseWriter, r *http.Requ
 func (s *Server) handleSettingsRemove(w http.ResponseWriter, r *http.Request) {
 	h, ok := s.requireHost(w, r)
 	if !ok {
+		return
+	}
+	if s.refuseHubRemoval(w, r, h) {
 		return
 	}
 	if err := s.hub.RemoveHost(r.Context(), ActorFrom(r), h.ID); err != nil {

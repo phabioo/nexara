@@ -68,6 +68,15 @@ func TestLogRingText(t *testing.T) {
 			l.Info("login", "passphrase", "hunter2", "session_token", "abc", "Authorization", "Bearer x", "setup_code", "1234", "ok", "yes")
 		}, "login passphrase=[redacted] session_token=[redacted] Authorization=[redacted] setup_code=[redacted] ok=yes",
 			[]string{"hunter2", "abc", "Bearer", "1234"}},
+		{"more secret key names", func(l *slog.Logger) {
+			l.Info("m", "otp_value", "123456", "pw", "x1", "sid", "s1", "session", "s2", "csr", "c1", "enroll_id", "e1",
+				"private", "p1", "hash", "h1", "salt", "s3", "bearer", "b1", "host", "pi5")
+		}, "m otp_value=[redacted] pw=[redacted] sid=[redacted] session=[redacted] csr=[redacted] enroll_id=[redacted] private=[redacted] hash=[redacted] salt=[redacted] bearer=[redacted] host=pi5",
+			[]string{"123456", "x1", "s1", "s2", "c1", "e1", "p1", "h1", "s3", "b1"}},
+		{"setup code in an innocent attribute", func(l *slog.Logger) {
+			l.Warn("setup", "detail", "wrong try for K7PQ2MXA", "input", "K7PQ-2MXA", "user", "fabio", "note", "database")
+		}, `setup detail="wrong try for [redacted]" input=[redacted] user=fabio note=database`,
+			[]string{"K7PQ2MXA", "K7PQ-2MXA"}},
 		{"redaction applies to attributes added with With", func(l *slog.Logger) { l.With("api_key", "sekret").Info("m") },
 			"m api_key=[redacted]", []string{"sekret"}},
 		{"control characters cannot forge lines", func(l *slog.Logger) { l.Info("a\nb\x1b[31mred\r") }, "a b [31mred ", []string{"\n", "\x1b", "\r"}},

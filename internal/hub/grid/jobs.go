@@ -18,6 +18,7 @@ type jobRec struct {
 	conn            *agentConn // connection the job was started on
 	cancelRequested bool
 	cancelBy        string
+	cancelWhy       string // why the grid canceled it itself, e.g. "packages switched off"
 	seq             uint64
 }
 
@@ -84,7 +85,7 @@ func (g *Grid) StartJob(_ context.Context, actor Actor, id HostID, spec JobSpec)
 
 // pumpLocked starts the head of the queue if nothing is running; g.mu must be held.
 func (g *Grid) pumpLocked(st *hostState) {
-	if st.conn == nil || !st.online || len(st.queue) == 0 {
+	if st.conn == nil || !st.online || len(st.queue) == 0 || !st.capEnabled(protocol.CapPackages) {
 		return
 	}
 	rec := st.queue[0]
@@ -160,6 +161,12 @@ func (g *Grid) finishLocked(st *hostState, rec *jobRec, o jobOutcome) (store.Aud
 			reason = "canceled"
 			if rec.cancelBy != "" {
 				reason += " by " + rec.cancelBy
+			}
+			if rec.cancelWhy != "" {
+				reason += " (" + rec.cancelWhy + ")"
+			}
+			if rec.cancelWhy != "" {
+				reason += " (" + rec.cancelWhy + ")"
 			}
 		}
 		entry.Detail = strings.TrimSpace(rec.Package + " " + reason)
