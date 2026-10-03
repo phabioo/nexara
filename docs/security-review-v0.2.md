@@ -73,7 +73,7 @@ All findings were fixed in wave 9 except where noted; each fix has a regression 
 | A-08 | fixed: idle timeout pinned at 12 h, `session_idle_hours` and `totp_required` ignored |
 | A-09 | fixed: restore audit entries end up in the restored database; first throttled passphrase attempt of a block audited |
 | B-02, B-03, B-04, B-05, B-07 | fixed |
-| B-06 | in progress: step-up with passphrase + TOTP for backup download, restore and update install (#58) |
+| B-06 | fixed: step-up with passphrase + TOTP for backup download, restore and update install (#58) |
 | B-08 | fixed: the Updates card explains a missing rollback copy and shows the command (#61) |
 | C-01 … C-10 | fixed (C-03 per #59, C-08 per #60) |
 
