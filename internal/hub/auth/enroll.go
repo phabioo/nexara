@@ -58,20 +58,22 @@ func (s *Service) EnrollTOTP(ctx context.Context, userID int64, sess store.Sessi
 	if err != nil {
 		return LoginResult{}, fmt.Errorf("auth: look up operator: %w", err)
 	}
-	if err := s.rateCheck(ctx, user.OperatorID, ip); err != nil {
+	res, err := s.reserveAttempt(ctx, user.OperatorID, ip)
+	if err != nil {
 		return LoginResult{}, err
 	}
 	if user.TOTPEnabled {
+		res.refund()
 		return LoginResult{}, ErrAlreadyEnrolled
 	}
 
 	secret := s.PendingTOTPSecret(user, sess)
 	if !s.totp.VerifyTOTP(user.ID, secret, code, s.now()) {
-		s.limiter.fail(user.OperatorID, ip)
 		s.audit(ctx, user.OperatorID, ActionTOTPEnroll, store.AuditDenied, "ip="+cleanText(ip, maxIPLen)+" reason=bad_code")
 		return LoginResult{}, ErrInvalidCode
 	}
 	fail := func(reason string, err error) (LoginResult, error) {
+		res.refund()           // the code was right; the failure is ours
 		s.totp.Forget(user.ID) // the code was not used for anything: let the operator try the next one
 		s.audit(ctx, user.OperatorID, ActionTOTPEnroll, store.AuditError, "ip="+cleanText(ip, maxIPLen)+" reason="+reason)
 		return LoginResult{}, err
@@ -86,13 +88,15 @@ func (s *Service) EnrollTOTP(ctx context.Context, userID int64, sess store.Sessi
 	user.TOTPSecretEnc, user.TOTPEnabled = sealed, true
 
 	if _, err := s.sessions.DeleteAllForUser(ctx, user.ID); err != nil {
+		res.refund()
 		return LoginResult{}, fmt.Errorf("auth: end old sessions: %w", err)
 	}
 	raw, fresh, err := s.sessions.Create(ctx, user, sess.Persistent, ip, sess.UserAgent)
 	if err != nil {
+		res.refund()
 		return LoginResult{}, err
 	}
-	s.limiter.succeed(user.OperatorID, ip)
+	res.succeed()
 	s.audit(ctx, user.OperatorID, ActionTOTPEnroll, store.AuditOK, "ip="+cleanText(ip, maxIPLen))
 	return LoginResult{User: user, SessionID: raw, Session: fresh}, nil
 }

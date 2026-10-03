@@ -109,10 +109,12 @@ func (l *rateLimiter) check(keys ...string) (blocked bool, retry time.Duration, 
 }
 
 // fail records one failure for every key.
-func (l *rateLimiter) fail(keys ...string) {
+func (l *rateLimiter) fail(keys ...string) { l.failAt(l.now(), keys...) }
+
+// failAt records one failure with the timestamp now for every key.
+func (l *rateLimiter) failAt(now time.Time, keys ...string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	now := l.now()
 	l.prune(now)
 	for _, k := range keys {
 		e := l.entries[k]
@@ -131,6 +133,29 @@ func (l *rateLimiter) fail(keys ...string) {
 		if len(e.fails) > l.max {
 			e.fails = e.fails[len(e.fails)-l.max:]
 		}
+	}
+}
+
+// unfail takes back the failure that failAt recorded with the timestamp at
+// (the refund of a reservation whose attempt succeeded). It is a no-op if
+// the failure already left the window.
+func (l *rateLimiter) unfail(key string, at time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	e := l.entries[key]
+	if e == nil {
+		return
+	}
+	for i := len(e.fails) - 1; i >= 0; i-- {
+		if e.fails[i].Equal(at) {
+			e.fails = append(e.fails[:i], e.fails[i+1:]...)
+			break
+		}
+	}
+	if len(e.fails) == 0 {
+		delete(l.entries, key)
+	} else if len(e.fails) < l.max {
+		e.notified = false
 	}
 }
 

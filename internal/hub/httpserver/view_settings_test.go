@@ -3,9 +3,11 @@ package httpserver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -257,33 +259,76 @@ func TestPassphraseChangeLocksAfterWrongEntries(t *testing.T) {
 	if _, err := s.svc.Login(context.Background(), testOperator, testPass, "192.0.2.10", "t", false); !passAccepted(err) {
 		t.Errorf("a locked change must not change the passphrase: %v", err)
 	}
-	if got := len(s.auditFor("user.passphrase")); got != 5 {
-		t.Errorf("%d audit entries for 5 wrong entries", got)
+	// Five wrong entries, and the first throttled attempt of the block (A-09).
+	entries := s.auditFor("user.passphrase")
+	throttled := 0
+	for _, a := range entries {
+		if strings.Contains(a.Detail, "throttled") {
+			throttled++
+		}
+	}
+	if len(entries) != 6 || throttled != 1 {
+		t.Errorf("%d audit entries (%d throttled) for 5 wrong entries and a blocked one: %+v", len(entries), throttled, entries)
 	}
 }
 
-func TestAttemptLimiter(t *testing.T) {
-	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
-	l := &attemptLimiter{max: 2, window: 10 * time.Minute}
-	if _, b := l.blocked(1, now); b {
-		t.Fatal("blocked before any failure")
+// A-02: a session holder firing parallel guesses at the current passphrase
+// gets the limit's worth of evaluations, not one per request.
+func TestPassphraseChangeParallelGuessesAreLimited(t *testing.T) {
+	s := newSettingsEnv(t)
+	long := "a much longer passphrase 42"
+	const n = 40
+	codes := make([]int, n)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			codes[i] = s.hxPost("/settings/passphrase", passphraseForm(fmt.Sprintf("wrong guess %d", i), long, long)).Code
+		}()
 	}
-	l.fail(1, now)
-	l.fail(1, now.Add(time.Minute))
-	if wait, b := l.blocked(1, now.Add(2*time.Minute)); !b || wait != 8*time.Minute {
-		t.Errorf("blocked = %v, wait %v; want blocked for 8m", b, wait)
+	close(start)
+	wg.Wait()
+	evaluated, other := 0, 0
+	for _, c := range codes {
+		switch c {
+		case http.StatusUnprocessableEntity:
+			evaluated++
+		case http.StatusTooManyRequests, http.StatusServiceUnavailable:
+		default:
+			other++
+		}
 	}
-	if _, b := l.blocked(2, now.Add(2*time.Minute)); b {
-		t.Error("another operator is blocked")
+	if evaluated < 1 || evaluated > 5 || other != 0 {
+		t.Fatalf("%d guesses evaluated, %d unexpected answers (want 1-5, 0): %v", evaluated, other, codes)
 	}
-	if _, b := l.blocked(1, now.Add(10*time.Minute)); b {
-		t.Error("still blocked after the oldest failure left the window")
+}
+
+// A-02: one change in flight per operator.
+func TestPassphraseChangeOneAtATime(t *testing.T) {
+	s := newSettingsEnv(t)
+	u, err := s.st.GetUserByOperatorID(context.Background(), testOperator)
+	if err != nil {
+		t.Fatal(err)
 	}
-	l.fail(1, now.Add(11*time.Minute))
-	l.reset(1)
-	if _, b := l.blocked(1, now.Add(11*time.Minute)); b {
-		t.Error("blocked after a reset")
+	done, err := s.srv.auth.BeginOperatorAction(u.ID)
+	if err != nil {
+		t.Fatal(err)
 	}
+	long := "a much longer passphrase 42"
+	rec := s.hxPost("/settings/passphrase", passphraseForm(testPass, long, long))
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status %d, want 429 while another change runs", rec.Code)
+	}
+	done()
+	if rec := s.hxPost("/settings/passphrase", passphraseForm(testPass, long, long)); rec.Code != http.StatusNoContent {
+		t.Fatalf("status %d after the other change ended", rec.Code)
+	}
+}
+
+func TestWaitText(t *testing.T) {
 	for in, want := range map[time.Duration]string{time.Second: "1 minute", 61 * time.Second: "2 minutes", 15 * time.Minute: "15 minutes"} {
 		if got := waitText(in); got != want {
 			t.Errorf("waitText(%v) = %q, want %q", in, got, want)

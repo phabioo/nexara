@@ -765,7 +765,10 @@ func TestResetOperators(t *testing.T) {
 		if err != nil || n != 1 || called != 1 {
 			t.Fatalf("n=%d err=%v called=%d", n, err, called)
 		}
-		if _, ok := e.svc.peekChallenge(res.Challenge); ok {
+		e.svc.chMu.Lock()
+		_, pending := e.svc.challenges[res.Challenge]
+		e.svc.chMu.Unlock()
+		if pending {
 			t.Fatal("pending challenges must be dropped")
 		}
 		// replay state cleared: the code may be used again

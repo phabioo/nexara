@@ -136,8 +136,20 @@ func (b *setupBrowser) post(target string, v url.Values) *httptest.ResponseRecor
 	return b.do(http.MethodPost, target, v)
 }
 
+// freshCode issues a new setup code, like `sudo nexus setup code`: a code
+// works once, so every unlock of a test needs its own.
+func (e *setupEnv) freshCode() {
+	e.t.Helper()
+	code, _, err := e.srv.setup.Codes.Rotate()
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	e.code = code
+}
+
 func (b *setupBrowser) unlock() {
 	b.t.Helper()
+	b.e.freshCode()
 	rec := b.post("/setup/unlock", url.Values{"code": {setup.FormatCode(b.e.code)}})
 	if rec.Code != 303 || rec.Header().Get("Location") != "/setup/trust" {
 		b.t.Fatalf("unlock: %d %q", rec.Code, rec.Header().Get("Location"))
@@ -327,17 +339,12 @@ func TestSetupUnlockPost(t *testing.T) {
 		wantBody(t, rec, "Input locked for 15 minutes", "About 10 minutes left", ` disabled`)
 		wantNoBody(t, rec, `id="f-code"`)
 
-		// Another client is not locked and the printed code still works for it
-		// (a lock must not rotate the code).
+		// Another client is not locked (a lock must not rotate the code).
 		other := e.browser(t)
 		other.ra = "192.0.2.77:4000"
 		rec = other.get("/setup")
 		wantBody(t, rec, `id="f-code"`, "5 attempts")
 		wantNoBody(t, rec, "Input locked")
-		rec = other.post("/setup/unlock", url.Values{"code": {setup.FormatCode(e.code)}})
-		if rec.Code != http.StatusSeeOther {
-			t.Errorf("other client unlock: %d", rec.Code)
-		}
 
 		// After the lock the field is back, and the same code is still valid.
 		e.clock.Add(11 * time.Minute)
@@ -360,6 +367,21 @@ func TestSetupUnlockPost(t *testing.T) {
 			t.Errorf("status %d", rec.Code)
 		}
 	})
+}
+
+// A-06: the setup code is one-time; a successful unlock consumes it.
+func TestSetupCodeWorksOnce(t *testing.T) {
+	e := newSetupEnv(t)
+	code := setup.FormatCode(e.code)
+	wantRedirect(t, e.browser(t).post("/setup/unlock", url.Values{"code": {code}}), "/setup/trust")
+	rec := e.browser(t).post("/setup/unlock", url.Values{"code": {code}})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("second unlock with the same code: %d", rec.Code)
+	}
+	wantBody(t, rec, "Code invalid or expired")
+	// `sudo nexus setup code` issues a new one.
+	e.freshCode()
+	wantRedirect(t, e.browser(t).post("/setup/unlock", url.Values{"code": {setup.FormatCode(e.code)}}), "/setup/trust")
 }
 
 func TestSetupCSRF(t *testing.T) {

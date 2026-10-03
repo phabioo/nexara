@@ -35,6 +35,15 @@ var (
 	ErrSessionExpired = errors.New("auth: session expired")
 	// ErrWeakPassphrase means the passphrase violates the length policy.
 	ErrWeakPassphrase = errors.New("auth: passphrase does not meet the policy")
+	// ErrWrongPassphrase means the current passphrase entered for a
+	// re-authentication or a passphrase change is wrong.
+	ErrWrongPassphrase = errors.New("auth: wrong passphrase")
+	// ErrNoSecondFactor means a step-up needs a TOTP code but the operator has none set up.
+	ErrNoSecondFactor = errors.New("auth: two-factor login is not set up")
+	// ErrBusy means the hub could not take the request now: too many
+	// passphrase checks are waiting, or the operator already has a sensitive
+	// action in flight. Nothing was evaluated or counted; try again shortly.
+	ErrBusy = errors.New("auth: busy, try again shortly")
 	// ErrAlreadyEnrolled means the operator already has two-factor login; enrollment must not replace it.
 	ErrAlreadyEnrolled = errors.New("auth: two-factor login is already set up")
 )
@@ -82,6 +91,12 @@ func UserMessage(err error) string {
 		return "Sign-in timed out. Enter your credentials again."
 	case errors.Is(err, ErrSessionExpired):
 		return "Your session has expired. Sign in again."
+	case errors.Is(err, ErrWrongPassphrase):
+		return "The passphrase is not correct."
+	case errors.Is(err, ErrNoSecondFactor):
+		return "Set up two-factor login first."
+	case errors.Is(err, ErrBusy):
+		return "The hub is busy. Try again in a moment."
 	case errors.Is(err, ErrWeakPassphrase):
 		return "Use a passphrase of at least 12 characters."
 	default:

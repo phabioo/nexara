@@ -189,7 +189,6 @@ type settingsEnv struct {
 
 func newSettingsEnv(t *testing.T, mods ...func(*update.Options)) *settingsEnv {
 	t.Helper()
-	passphraseAttempts = &attemptLimiter{max: 5, window: 15 * time.Minute}
 	e := newEnv(t)
 	r, err := views.New(web.Templates, views.Options{})
 	if err != nil {

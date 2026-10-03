@@ -62,14 +62,17 @@ type LoginResult struct {
 // thief cannot reset it by repeating step one.
 func (s *Service) Login(ctx context.Context, operatorID, passphrase, ip, userAgent string, persistent bool) (LoginResult, error) {
 	operatorID = strings.TrimSpace(operatorID)
-	if err := s.rateCheck(ctx, operatorID, ip); err != nil {
+	// The attempt is counted before it is evaluated and given back when it
+	// turns out right, so parallel guesses cannot outrun the limits (A-01).
+	res, err := s.reserveAttempt(ctx, operatorID, ip)
+	if err != nil {
 		return LoginResult{}, err
 	}
 
 	// Cheap rejections that must not reach argon2: empty input and inputs
 	// that can never be a valid passphrase.
 	if operatorID == "" || passphrase == "" || utf8.RuneCountInString(passphrase) > MaxPassphraseLength {
-		s.loginFailed(ctx, operatorID, ip, "invalid_input")
+		s.loginDenied(ctx, operatorID, ip, "invalid_input")
 		return LoginResult{}, ErrInvalidCredentials
 	}
 
@@ -77,21 +80,26 @@ func (s *Service) Login(ctx context.Context, operatorID, passphrase, ip, userAge
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		if err := s.burnPasswordHash(ctx, passphrase); err != nil {
+			res.refund() // nothing was evaluated
 			return LoginResult{}, err
 		}
-		s.loginFailed(ctx, operatorID, ip, "unknown_user")
+		s.loginDenied(ctx, operatorID, ip, "unknown_user")
 		return LoginResult{}, ErrInvalidCredentials
 	case err != nil:
+		res.refund()
 		return LoginResult{}, fmt.Errorf("auth: look up operator: %w", err)
 	}
 
 	ok, err := s.verifyPassword(ctx, passphrase, user.PassHash)
 	if err != nil {
-		s.audit(ctx, user.OperatorID, ActionLogin, store.AuditError, "ip="+cleanText(ip, maxIPLen)+" reason=stored_hash_unusable")
+		res.refund()
+		if !errors.Is(err, ErrBusy) && ctx.Err() == nil {
+			s.audit(ctx, user.OperatorID, ActionLogin, store.AuditError, "ip="+cleanText(ip, maxIPLen)+" reason=stored_hash_unusable")
+		}
 		return LoginResult{}, fmt.Errorf("auth: verify passphrase: %w", err)
 	}
 	if !ok {
-		s.loginFailed(ctx, user.OperatorID, ip, "bad_passphrase")
+		s.loginDenied(ctx, user.OperatorID, ip, "bad_passphrase")
 		return LoginResult{}, ErrInvalidCredentials
 	}
 
@@ -100,11 +108,15 @@ func (s *Service) Login(ctx context.Context, operatorID, passphrase, ip, userAge
 	if user.TOTPEnabled {
 		id, expires, err := s.newChallenge(user, ip, userAgent, persistent)
 		if err != nil {
+			res.refund()
 			return LoginResult{}, err
 		}
+		// Step one of two: the right passphrase is not a failure, but it
+		// does not reset the counters either (a thief repeating it must not).
+		res.refund()
 		return LoginResult{User: user, Challenge: id, ChallengeExpires: expires}, ErrSecondFactorRequired
 	}
-	return s.finishLogin(ctx, user, ip, userAgent, persistent, "")
+	return s.finishLogin(ctx, user, ip, userAgent, persistent, "", res)
 }
 
 // VerifySecondFactor is step two: it checks the TOTP code for a pending
@@ -112,18 +124,22 @@ func (s *Service) Login(ctx context.Context, operatorID, passphrase, ip, userAge
 // Errors: ErrInvalidChallenge (unknown, expired, used, other IP: sign in
 // again), ErrInvalidCode (wrong, malformed or replayed code: try again),
 // ErrRateLimited. Wrong codes count towards the IP and account limits; after
-// five wrong codes the challenge is discarded.
+// five wrong codes the challenge is discarded. Every attempt is counted
+// (challenge and limits) before the code is evaluated, so parallel requests
+// cannot get more evaluations than the limits allow.
 func (s *Service) VerifySecondFactor(ctx context.Context, challengeID, code, ip string) (LoginResult, error) {
-	ch, ok := s.peekChallenge(challengeID)
+	ch, ok := s.reserveChallengeAttempt(challengeID)
 	if !ok {
 		return LoginResult{}, ErrInvalidChallenge
 	}
-	if err := s.rateCheck(ctx, ch.operatorID, ip); err != nil {
+	res, err := s.reserveAttempt(ctx, ch.operatorID, ip)
+	if err != nil {
+		s.releaseChallengeAttempt(challengeID)
 		return LoginResult{}, err
 	}
 	if ch.ip != ip {
 		s.dropChallenge(challengeID)
-		s.limiter.failIP(ip)
+		res.refundAccount() // only the address that replayed the challenge pays
 		s.audit(ctx, ch.operatorID, ActionSecondFact, store.AuditDenied, "ip="+cleanText(ip, maxIPLen)+" reason=challenge_ip_mismatch")
 		return LoginResult{}, ErrInvalidChallenge
 	}
@@ -131,29 +147,34 @@ func (s *Service) VerifySecondFactor(ctx context.Context, challengeID, code, ip 
 	user, err := s.store.GetUserByID(ctx, ch.userID)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && (!user.TOTPEnabled || len(user.TOTPSecretEnc) == 0)) {
 		s.dropChallenge(challengeID)
+		res.refund()
 		return LoginResult{}, ErrInvalidChallenge
 	}
 	if err != nil {
+		res.refund()
+		s.releaseChallengeAttempt(challengeID)
 		return LoginResult{}, fmt.Errorf("auth: look up operator: %w", err)
 	}
 	secret, err := s.OpenTOTPSecret(user.ID, user.TOTPSecretEnc)
 	if err != nil {
+		res.refund()
+		s.releaseChallengeAttempt(challengeID)
 		s.audit(ctx, user.OperatorID, ActionSecondFact, store.AuditError, "ip="+cleanText(ip, maxIPLen)+" reason=totp_secret_unusable")
 		return LoginResult{}, fmt.Errorf("auth: open TOTP secret: %w", err)
 	}
 
 	if !s.totp.VerifyTOTP(user.ID, secret, code, s.now()) {
-		s.limiter.fail(ch.operatorID, ip)
 		s.challengeFailed(challengeID)
 		s.audit(ctx, user.OperatorID, ActionSecondFact, store.AuditDenied, "ip="+cleanText(ip, maxIPLen)+" reason=bad_code")
 		return LoginResult{}, ErrInvalidCode
 	}
 	// Consume: of two concurrent requests with the same challenge only one gets here with it.
 	if _, ok := s.takeChallenge(challengeID); !ok {
+		res.refund()
 		return LoginResult{}, ErrInvalidChallenge
 	}
 	s.audit(ctx, user.OperatorID, ActionSecondFact, store.AuditOK, "ip="+cleanText(ip, maxIPLen))
-	return s.finishLogin(ctx, user, ip, ch.userAgent, ch.persistent, "second_factor")
+	return s.finishLogin(ctx, user, ip, ch.userAgent, ch.persistent, "second_factor", res)
 }
 
 // Logout ends the session and audits it. Unknown sessions are ignored.
@@ -184,12 +205,13 @@ func (s *Service) Logout(ctx context.Context, rawSessionID, ip string) error {
 
 // --- internals ---------------------------------------------------------------
 
-func (s *Service) finishLogin(ctx context.Context, user store.User, ip, userAgent string, persistent bool, via string) (LoginResult, error) {
+func (s *Service) finishLogin(ctx context.Context, user store.User, ip, userAgent string, persistent bool, via string, res reservation) (LoginResult, error) {
 	raw, sess, err := s.sessions.Create(ctx, user, persistent, ip, userAgent)
 	if err != nil {
+		res.refund()
 		return LoginResult{}, err
 	}
-	s.limiter.succeed(user.OperatorID, ip)
+	res.succeed()
 	detail := "ip=" + cleanText(ip, maxIPLen)
 	if persistent {
 		detail += " persistent"
@@ -201,22 +223,25 @@ func (s *Service) finishLogin(ctx context.Context, user store.User, ip, userAgen
 	return LoginResult{User: user, SessionID: raw, Session: sess}, nil
 }
 
-// rateCheck returns a *RateLimitedError if the IP or account is blocked, and
-// audits the first blocked attempt of each block.
-func (s *Service) rateCheck(ctx context.Context, operatorID, ip string) error {
-	blocked, retry, first := s.limiter.check(operatorID, ip)
+// reserveAttempt counts one attempt against the IP, (account, IP) and
+// account limits before it is evaluated. It returns a *RateLimitedError if
+// one of them is blocked (nothing is counted then) and audits the first
+// blocked attempt of each block.
+func (s *Service) reserveAttempt(ctx context.Context, operatorID, ip string) (reservation, error) {
+	res, blocked, retry, first := s.limiter.reserve(operatorID, ip)
 	if !blocked {
-		return nil
+		return res, nil
 	}
 	if first {
 		s.audit(ctx, operatorID, ActionLoginLocked, store.AuditDenied,
 			fmt.Sprintf("ip=%s retry_after=%ds", cleanText(ip, maxIPLen), int(retry.Seconds())))
 	}
-	return &RateLimitedError{RetryAfter: retry}
+	return reservation{}, &RateLimitedError{RetryAfter: retry}
 }
 
-func (s *Service) loginFailed(ctx context.Context, attempted, ip, reason string) {
-	s.limiter.fail(attempted, ip)
+// loginDenied audits a failed attempt; its count is the reservation made
+// before the attempt was evaluated.
+func (s *Service) loginDenied(ctx context.Context, attempted, ip, reason string) {
 	s.audit(ctx, attempted, ActionLogin, store.AuditDenied, "ip="+cleanText(ip, maxIPLen)+" reason="+reason)
 }
 
@@ -269,8 +294,12 @@ func (s *Service) pruneChallengesLocked(now time.Time) {
 	}
 }
 
-// peekChallenge returns a copy of a live challenge without consuming it.
-func (s *Service) peekChallenge(id string) (challenge, bool) {
+// reserveChallengeAttempt counts one evaluation against a live challenge
+// (under chMu, before the code is looked at) and returns a copy of it. Once
+// maxChallengeFailures evaluations have been handed out, further requests are
+// refused without being evaluated; challengeFailed removes the challenge when
+// the last of them failed.
+func (s *Service) reserveChallengeAttempt(id string) (challenge, bool) {
 	s.chMu.Lock()
 	defer s.chMu.Unlock()
 	c, ok := s.challenges[id]
@@ -281,7 +310,20 @@ func (s *Service) peekChallenge(id string) (challenge, bool) {
 		delete(s.challenges, id)
 		return challenge{}, false
 	}
+	if c.failures >= maxChallengeFailures {
+		return challenge{}, false
+	}
+	c.failures++
 	return *c, true
+}
+
+// releaseChallengeAttempt gives back a reservation whose code was never evaluated.
+func (s *Service) releaseChallengeAttempt(id string) {
+	s.chMu.Lock()
+	defer s.chMu.Unlock()
+	if c, ok := s.challenges[id]; ok && c.failures > 0 {
+		c.failures--
+	}
 }
 
 func (s *Service) takeChallenge(id string) (challenge, bool) {
@@ -302,13 +344,11 @@ func (s *Service) dropChallenge(id string) {
 	s.chMu.Unlock()
 }
 
+// challengeFailed discards the challenge once its last allowed evaluation failed.
 func (s *Service) challengeFailed(id string) {
 	s.chMu.Lock()
 	defer s.chMu.Unlock()
-	if c, ok := s.challenges[id]; ok {
-		c.failures++
-		if c.failures >= maxChallengeFailures {
-			delete(s.challenges, id)
-		}
+	if c, ok := s.challenges[id]; ok && c.failures >= maxChallengeFailures {
+		delete(s.challenges, id)
 	}
 }

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -61,9 +63,6 @@ func TestCodeVerifyAndExpiry(t *testing.T) {
 	if !exp.Equal(clk.t.Add(CodeValidity)) {
 		t.Fatalf("expiry %v", exp)
 	}
-	if err := c.Verify(strings.ToLower(FormatCode(code))); err != nil {
-		t.Fatalf("valid code rejected: %v", err)
-	}
 	clk.Advance(CodeValidity)
 	err := c.Verify(code)
 	var ce *CodeError
@@ -79,6 +78,116 @@ func TestCodeVerifyAndExpiry(t *testing.T) {
 	}
 	if err := c.Verify(announced[1]); err != nil {
 		t.Fatalf("fresh code rejected: %v", err)
+	}
+}
+
+func TestCodeFormatsAreAccepted(t *testing.T) {
+	c := NewCodes(CodeOptions{})
+	code, _, _ := c.Rotate()
+	if err := c.Verify(strings.ToLower(FormatCode(code))); err != nil {
+		t.Fatalf("valid code rejected: %v", err)
+	}
+}
+
+// A-06: a correct code works once.
+func TestCodeIsConsumedByUnlock(t *testing.T) {
+	clk := newClock()
+	var announced []string
+	c := NewCodes(CodeOptions{Now: clk.Now, Announce: func(code string, _ time.Time) { announced = append(announced, code) }})
+	code, _, _ := c.Rotate()
+	if err := c.VerifyFrom("10.0.0.5", code); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := c.Current(); ok {
+		t.Error("Current() still returns the consumed code")
+	}
+	for _, ip := range []string{"10.0.0.5", "10.0.0.6"} {
+		err := c.VerifyFrom(ip, code)
+		var ce *CodeError
+		if !errors.As(err, &ce) {
+			t.Fatalf("reused code from %s accepted: %v", ip, err)
+		}
+	}
+	// It does not come back by itself ...
+	clk.Advance(2 * CodeValidity)
+	c.Tick()
+	if len(announced) != 1 {
+		t.Fatalf("a consumed code was rotated: %v", announced)
+	}
+	if c.Verify(code) == nil {
+		t.Fatal("consumed code valid after the validity period")
+	}
+	// ... only `sudo nexus setup code` issues a new one.
+	fresh, _, _ := c.Rotate()
+	if err := c.Verify(fresh); err != nil {
+		t.Fatalf("fresh code: %v", err)
+	}
+}
+
+// Two clients entering the right code at once: one unlock only.
+func TestCodeIsConsumedOnlyOnce(t *testing.T) {
+	c := NewCodes(CodeOptions{})
+	code, _, _ := c.Rotate()
+	var wg sync.WaitGroup
+	var ok atomic.Int32
+	start := make(chan struct{})
+	for i := range 20 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			if c.VerifyFrom(fmt.Sprintf("10.0.0.%d", i), code) == nil {
+				ok.Add(1)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if ok.Load() != 1 {
+		t.Fatalf("%d unlocks with one code", ok.Load())
+	}
+}
+
+// A-04: IPv6 clients are counted per /64.
+func TestIPv6ClientsShareTheirPrefix(t *testing.T) {
+	c := NewCodes(CodeOptions{})
+	code, _, _ := c.Rotate()
+	for i := 1; i <= MaxAttempts; i++ {
+		c.VerifyFrom(fmt.Sprintf("2001:db8:1:2::%x", i), "WRONGONE")
+	}
+	if ok, _ := c.LockedFor("2001:db8:1:2:ffff::1"); !ok {
+		t.Fatal("the whole /64 should be locked after five wrong codes from it")
+	}
+	if err := c.VerifyFrom("2001:db8:1:2:abcd::1", code); !isLocked(err) {
+		t.Fatalf("right code from the locked /64: %v", err)
+	}
+	if ok, _ := c.LockedFor("2001:db8:1:3::1"); ok {
+		t.Fatal("another /64 must stay unlocked")
+	}
+	if got := c.AttemptsLeftFor("2001:db8:1:3::1"); got != MaxAttempts {
+		t.Fatalf("attempts left of another /64 = %d", got)
+	}
+	if err := c.VerifyFrom("2001:db8:1:3::1", code); err != nil {
+		t.Fatalf("another /64 with the right code: %v", err)
+	}
+	if len(c.perIP) != 0 {
+		t.Fatalf("%d counters left", len(c.perIP))
+	}
+}
+
+func TestIPKey(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"192.0.2.10", "192.0.2.10"},
+		{"::ffff:192.0.2.10", "192.0.2.10"},
+		{"2001:db8:1:2:3:4:5:6", "2001:db8:1:2::/64"},
+		{"fe80::1%eth0", "fe80::/64"},
+		{"", ""},
+		{"garbage", "garbage"},
+	}
+	for _, tt := range tests {
+		if got := ipKey(tt.in); got != tt.want {
+			t.Errorf("ipKey(%q) = %q, want %q", tt.in, got, tt.want)
+		}
 	}
 }
 
@@ -126,8 +235,8 @@ func TestIPLockKeepsCodeValid(t *testing.T) {
 	if ok, _ := c.LockedFor("10.0.0.6"); ok {
 		t.Fatal("other IP locked")
 	}
-	if err := c.VerifyFrom("10.0.0.6", code); err != nil {
-		t.Fatalf("other client with printed code: %v", err)
+	if ok, _ := c.Locked(); ok {
+		t.Fatal("one locked client must not lock everybody")
 	}
 	clk.Advance(2 * time.Second)
 	if err := c.VerifyFrom("10.0.0.5", code); err != nil {
