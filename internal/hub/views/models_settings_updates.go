@@ -281,6 +281,8 @@ type SettingsInstallConfirm struct {
 	PostURL  string
 	Version0 string // plain version for the form
 	Older    bool
+	Error    string // step-up failure
+	NoCode   bool
 }
 
 // NewSettingsInstallConfirm builds the confirm dialog of a staged version.

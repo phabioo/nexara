@@ -300,7 +300,7 @@ func TestUpdatesInstall(t *testing.T) {
 		t.Errorf("dialog for an unstaged version: %d", rec.Code)
 	}
 
-	rec := s.hxPost("/settings/updates/install", url.Values{"version": {"0.2.0"}})
+	rec := s.hxPost("/settings/updates/install", s.stepUp(url.Values{"version": {"0.2.0"}}))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("install: %d %s", rec.Code, rec.Body.String())
 	}
@@ -323,7 +323,7 @@ func TestUpdatesInstall(t *testing.T) {
 		t.Errorf("audit = %+v", got)
 	}
 	// While it runs: no second install, no upload; the status poll shows the phase.
-	rec = s.hxPost("/settings/updates/install", url.Values{"version": {"0.2.0"}})
+	rec = s.hxPost("/settings/updates/install", s.stepUp(url.Values{"version": {"0.2.0"}}))
 	if rec.Code != http.StatusConflict {
 		t.Errorf("second install: %d", rec.Code)
 	}
@@ -337,12 +337,12 @@ func TestUpdatesInstall(t *testing.T) {
 
 func TestUpdatesInstallErrors(t *testing.T) {
 	s := newSettingsEnv(t)
-	if rec := s.hxPost("/settings/updates/install", url.Values{"version": {"0.2.0"}}); rec.Code != 404 {
+	if rec := s.hxPost("/settings/updates/install", s.stepUp(url.Values{"version": {"0.2.0"}})); rec.Code != 404 {
 		t.Errorf("not staged: %d", rec.Code)
 	} else {
 		contains(t, rec.Body.String(), "That version is no longer staged.")
 	}
-	if rec := s.hxPost("/settings/updates/install", url.Values{"version": {"../../etc"}}); rec.Code != 404 {
+	if rec := s.hxPost("/settings/updates/install", s.stepUp(url.Values{"version": {"../../etc"}})); rec.Code != 404 {
 		t.Errorf("path-like version: %d", rec.Code)
 	}
 	if rec := s.post("/settings/updates/install", s.opts(false, true, withForm(url.Values{"version": {"0.2.0"}}))...); rec.Code != 403 {
@@ -361,7 +361,7 @@ func TestUpdatesInstallWithoutHelper(t *testing.T) {
 	if !strings.Contains(body, `hx-swap="innerHTML" disabled>Install now`) {
 		t.Error("Install now is not disabled without a helper")
 	}
-	rec := s.hxPost("/settings/updates/install", url.Values{"version": {"0.2.0"}})
+	rec := s.hxPost("/settings/updates/install", s.stepUp(url.Values{"version": {"0.2.0"}}))
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d", rec.Code)
 	}
@@ -377,7 +377,7 @@ func TestUpdatesCancel(t *testing.T) {
 		t.Errorf("nothing to cancel: %d", rec.Code)
 	}
 	s.upload(t, true, s.bundle("0.2.0", 100).files()...)
-	s.hxPost("/settings/updates/install", url.Values{"version": {"0.2.0"}})
+	s.hxPost("/settings/updates/install", s.stepUp(url.Values{"version": {"0.2.0"}}))
 	rec := s.hxPost("/settings/updates/cancel", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())

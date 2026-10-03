@@ -68,14 +68,17 @@ func NewSettingsBackup(now time.Time, sc backup.Schedule, infos []backup.Info, c
 type BackupPassphraseDialog struct {
 	PostURL string
 	Error   string
+	NoCode  bool // the operator has no authenticator (demo): the step-up asks for the passphrase only
 }
 
 // BackupReadyDialog is step 2: the passphrase was accepted, the browser posts it again to fetch the file.
-// The passphrase stays in the dialog (a hidden field) and nowhere on the server.
+// The passphrase stays in the dialog (a hidden field) and nowhere on the server. Grant is the single-use token the
+// step-up issued; the file is only sent against it.
 type BackupReadyDialog struct {
 	PostURL    string
 	CSRF       string
 	Passphrase string
+	Grant      string
 }
 
 // BackupRestoreConfirm is the confirm dialog of "Restore".
@@ -84,6 +87,8 @@ type BackupRestoreConfirm struct {
 	When    string
 	Reason  string
 	PostURL string
+	Error   string // step-up failure
+	NoCode  bool
 }
 
 // NewBackupRestoreConfirm builds the dialog for one local backup.
@@ -99,7 +104,11 @@ type SettingsRestarting struct {
 	Boot    string
 	PollURL string
 	Done    bool
+	Failed  bool // the restore did not go through, but the hub had closed its database and restarts to recover
 }
 
 // RestartPollURL returns the polling URL for a boot ID.
 func RestartPollURL(boot string) string { return "/settings/restart?boot=" + boot }
+
+// RestartFailedPollURL is the polling URL of the dialog for a restore that failed after the database was closed.
+func RestartFailedPollURL(boot string) string { return RestartPollURL(boot) + "&failed=1" }

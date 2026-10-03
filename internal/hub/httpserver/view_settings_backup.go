@@ -23,10 +23,11 @@ const auditBackupSchedule = "backup.schedule"
 //	POST /settings/backup/schedule   time=HH:MM keep=N
 //	POST /settings/backup/run        "Back up now" (local backup, reason manual)
 //	GET  /settings/backup/download   passphrase dialog
-//	POST /settings/backup/download   HTMX: check the passphrase and answer with the "ready" dialog;
-//	                                 plain form post of that dialog: the encrypted file (attachment)
+//	POST /settings/backup/download   HTMX: check the passphrase and the step-up (passphrase + TOTP code), answer with the
+//	                                 "ready" dialog that carries a single-use grant; plain form post of that dialog,
+//	                                 against the grant: the encrypted file (attachment)
 //	GET  /settings/backup/restore    confirm dialog (?name=)
-//	POST /settings/backup/restore    restore a local backup, then restart the hub
+//	POST /settings/backup/restore    step-up, then restore a local backup and restart the hub
 //	GET  /settings/restart           the restart dialog, polled until a new hub process answers
 //
 // The backup service audits creating, downloading and restoring itself.
@@ -165,11 +166,11 @@ func (s *Server) handleBackupDownloadDialog(w http.ResponseWriter, r *http.Reque
 	if !s.needBackup(w, r) {
 		return
 	}
-	s.writeFragments(w, r, http.StatusOK, fragment{"settings-backup-download", views.BackupPassphraseDialog{PostURL: "/settings/backup/download"}})
+	s.writeFragments(w, r, http.StatusOK, fragment{"settings-backup-download", views.BackupPassphraseDialog{PostURL: "/settings/backup/download", NoCode: stepUpNoCode(r)}})
 }
 
 func (s *Server) backupPassphraseError(w http.ResponseWriter, r *http.Request, status int, msg string) {
-	s.writeFragments(w, r, status, fragment{"settings-backup-download", views.BackupPassphraseDialog{PostURL: "/settings/backup/download", Error: msg}})
+	s.writeFragments(w, r, status, fragment{"settings-backup-download", views.BackupPassphraseDialog{PostURL: "/settings/backup/download", Error: msg, NoCode: stepUpNoCode(r)}})
 }
 
 func (s *Server) handleBackupDownload(w http.ResponseWriter, r *http.Request) {
@@ -189,10 +190,27 @@ func (s *Server) handleBackupDownload(w http.ResponseWriter, r *http.Request) {
 			s.backupPassphraseError(w, r, http.StatusUnprocessableEntity, msg)
 			return
 		}
+		// Last, so that a form with a typo does not use up an attempt or the one-time code.
+		if status, msg := s.stepUp(w, r); status != 0 {
+			s.backupPassphraseError(w, r, status, msg)
+			return
+		}
 		sess, _ := SessionFrom(r)
+		grant, err := downloadGrants.issue(s.now(), sess.IDHash)
+		if err != nil {
+			s.serverError(w, r, err)
+			return
+		}
 		s.writeFragments(w, r, http.StatusOK, fragment{"settings-backup-ready", views.BackupReadyDialog{
-			PostURL: "/settings/backup/download", CSRF: s.auth.CSRFToken(sess), Passphrase: pass,
+			PostURL: "/settings/backup/download", CSRF: s.auth.CSRFToken(sess), Passphrase: pass, Grant: grant,
 		}})
+		return
+	}
+	// Step 2 only fetches the file for the step the dialog above went through: without its grant (single use,
+	// this session, short-lived) nothing is created, whatever else the request carries.
+	sess, ok := SessionFrom(r)
+	if !ok || !downloadGrants.redeem(s.now(), sess.IDHash, r.PostFormValue(fieldDownloadGrant)) {
+		s.renderStub(w, http.StatusForbidden, "This download is no longer valid. Start it again from Settings.")
 		return
 	}
 	s.streamBackup(w, r, pass)
@@ -260,7 +278,27 @@ func (s *Server) handleBackupRestoreDialog(w http.ResponseWriter, r *http.Reques
 	}
 	for _, in := range infos {
 		if in.Name == name && in.Readable {
-			s.writeFragments(w, r, http.StatusOK, fragment{"settings-restore-confirm", views.NewBackupRestoreConfirm(s.now(), in)})
+			c := views.NewBackupRestoreConfirm(s.now(), in)
+			c.NoCode = stepUpNoCode(r)
+			s.writeFragments(w, r, http.StatusOK, fragment{"settings-restore-confirm", c})
+			return
+		}
+	}
+	s.toastError(w, r, http.StatusNotFound, "Not found", "That backup no longer exists or cannot be opened.")
+}
+
+// restoreStepUpError answers a failed step-up with the confirm dialog again, the message in it.
+func (s *Server) restoreStepUpError(w http.ResponseWriter, r *http.Request, name string, status int, msg string) {
+	infos, err := s.svc.Backup.List(r.Context())
+	if err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	for _, in := range infos {
+		if in.Name == name && in.Readable {
+			c := views.NewBackupRestoreConfirm(s.now(), in)
+			c.Error, c.NoCode = msg, stepUpNoCode(r)
+			s.writeFragments(w, r, status, fragment{"settings-restore-confirm", c})
 			return
 		}
 	}
@@ -275,10 +313,26 @@ func (s *Server) handleBackupRestore(w http.ResponseWriter, r *http.Request) {
 		s.toastError(w, r, http.StatusNotFound, "Not available", "Restoring is not available on this hub.")
 		return
 	}
+	name := r.PostFormValue("name")
+	// The heaviest action of the page: confirm the operator again, in this very request.
+	if status, msg := s.stepUp(w, r); status != 0 {
+		s.restoreStepUpError(w, r, name, status, msg)
+		return
+	}
 	// Once started, a restore runs to its end; stopping it halfway is what must not happen.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), settingsOpTimeout)
 	defer cancel()
-	if _, err := s.svc.Backup.RestoreLocal(backup.WithActor(ctx, operatorName(r)), r.PostFormValue("name")); err != nil {
+	if _, err := s.svc.Backup.RestoreLocal(backup.WithActor(ctx, operatorName(r)), name); err != nil {
+		if errors.Is(err, backup.ErrStoreClosed) {
+			// The swap failed after the hub closed its database: this process cannot go on, so restart it like
+			// after a restore and say so instead of "nothing was changed".
+			s.log.Error("settings: restore failed after the database was closed; restarting", "err", err)
+			s.writeFragments(w, r, http.StatusInternalServerError, fragment{"settings-restarting", views.SettingsRestarting{
+				Boot: processBoot, PollURL: views.RestartFailedPollURL(processBoot), Failed: true,
+			}})
+			s.svc.Restart()
+			return
+		}
 		status, msg, known := backupProblem(err)
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
@@ -307,7 +361,11 @@ func (s *Server) handleRestartPoll(w http.ResponseWriter, r *http.Request) {
 	if !validBoot(boot) {
 		boot = ""
 	}
-	d := views.SettingsRestarting{Boot: boot, PollURL: views.RestartPollURL(boot), Done: boot != processBoot}
+	failed := r.URL.Query().Get("failed") == "1"
+	d := views.SettingsRestarting{Boot: boot, PollURL: views.RestartPollURL(boot), Done: boot != processBoot, Failed: failed}
+	if failed {
+		d.PollURL = views.RestartFailedPollURL(boot)
+	}
 	s.writeFragments(w, r, http.StatusOK, fragment{"settings-restarting", d})
 }
 
