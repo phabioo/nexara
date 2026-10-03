@@ -53,6 +53,7 @@ Umfang: 359 Go-Dateien, davon 164 Testdateien.
 - Settings: Karte „History retention“ aus dem Mockup fehlt (Aufbewahrung über `history.retention_days` geht bisher nur per Einstellung); Audit-Karte ohne Gesamtzahl.
 - Audit-Log: bei sehr großen Logs könnte ein Index `audit_log(host, ts)` helfen (Migration).
 - `grid-agent --help` nennt nur `--token`, nicht `--token-file`.
+- TOTP-Pflicht (#51): Operatoren aus v0.1 ohne TOTP richten es bei der nächsten Anmeldung ein; wer die Passphrase kennt, könnte dabei zuerst einrichten und den Besitzer aussperren (Security-Review A-07). Ein Admin-Socket-Befehl „TOTP zurücksetzen“ ist für v0.3 geplant.
 - `govulncheck` lief noch nie (Datenbank aus der Session nicht erreichbar) – erster CI-Lauf zeigt es.
 
 ## UI ausprobieren

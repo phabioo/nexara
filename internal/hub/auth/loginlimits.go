@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -43,6 +44,10 @@ type loginLimits struct {
 	pair *rateLimiter
 	acct *rateLimiter
 
+	// resMu makes "check all three, then count in all three" one step, so
+	// parallel attempts cannot all pass the check before any is counted.
+	resMu sync.Mutex
+
 	mu       sync.Mutex
 	known    map[string]map[string]time.Time // account key -> IP -> last success
 	loadOnce sync.Once
@@ -59,15 +64,37 @@ func newLoginLimits(now func() time.Time, ipMax, acctMax int, window time.Durati
 	}
 }
 
+// ipKey is the address a per-IP counter is kept under. IPv4 addresses count
+// as they are; an IPv6 address stands for its whole /64, because one host or
+// network owns billions of addresses in it and would otherwise get a fresh
+// counter for every guess (security review A-04). IPv4-mapped IPv6 addresses
+// count as IPv4. Text that is no IP address is used as it is.
+func ipKey(ip string) string {
+	ip = strings.ToLower(strings.TrimSpace(ip))
+	a, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ip
+	}
+	a = a.WithZone("").Unmap()
+	if a.Is6() {
+		if p, err := a.Prefix(64); err == nil {
+			return p.String()
+		}
+	}
+	return a.String()
+}
+
+func ipLimitKey(ip string) string { return limiterKey(limiterKeyIP, ipKey(ip)) }
+
 func pairKey(account, ip string) string {
 	// IP first: a very long attacker-chosen account ID is cut at the end of the key.
-	return limiterKey(limiterKeyPair, strings.ToLower(strings.TrimSpace(ip))+"|"+strings.ToLower(strings.TrimSpace(account)))
+	return limiterKey(limiterKeyPair, ipKey(ip)+"|"+strings.ToLower(strings.TrimSpace(account)))
 }
 
 // check reports whether this attempt is blocked, the longest wait and whether
 // this is the first report of a block (audit once per block).
 func (l *loginLimits) check(account, ip string) (blocked bool, retry time.Duration, first bool) {
-	b, r, f := l.ip.check(limiterKey(limiterKeyIP, ip))
+	b, r, f := l.ip.check(ipLimitKey(ip))
 	blocked, retry, first = b, r, f
 	b, r, f = l.pair.check(pairKey(account, ip))
 	blocked, retry, first = blocked || b, max(retry, r), first || f
@@ -78,21 +105,75 @@ func (l *loginLimits) check(account, ip string) (blocked bool, retry time.Durati
 	return blocked, retry, first
 }
 
-// fail records a failed attempt in all three counters.
-func (l *loginLimits) fail(account, ip string) {
-	l.ip.fail(limiterKey(limiterKeyIP, ip))
-	l.pair.fail(pairKey(account, ip))
-	l.acct.fail(limiterKey(limiterKeyAccount, account))
+// reservation is one attempt that was counted before it was evaluated.
+type reservation struct {
+	l          *loginLimits
+	account    string
+	ip         string
+	at         time.Time
+	ipKey      string
+	pairKey    string
+	acctKey    string
+	registered bool
 }
 
-// failIP records a failure that only concerns the address (a challenge replayed from another IP).
-func (l *loginLimits) failIP(ip string) { l.ip.fail(limiterKey(limiterKeyIP, ip)) }
+// reserve checks the three limits and, if none is blocked, counts the
+// attempt as a failure in all three at once, before the passphrase or code is
+// evaluated. N parallel attempts therefore get at most the limit's worth of
+// evaluations. The caller gives the count back with refund or succeed when
+// the attempt was right (or never evaluated). When blocked, nothing is
+// counted and the reservation is unusable.
+func (l *loginLimits) reserve(account, ip string) (r reservation, blocked bool, retry time.Duration, first bool) {
+	l.resMu.Lock()
+	defer l.resMu.Unlock()
+	blocked, retry, first = l.check(account, ip)
+	if blocked {
+		return reservation{}, true, retry, first
+	}
+	at := l.now()
+	r = reservation{
+		l: l, account: account, ip: ip, at: at,
+		ipKey: ipLimitKey(ip), pairKey: pairKey(account, ip), acctKey: limiterKey(limiterKeyAccount, account),
+		registered: true,
+	}
+	l.ip.failAt(at, r.ipKey)
+	l.pair.failAt(at, r.pairKey)
+	l.acct.failAt(at, r.acctKey)
+	return r, false, 0, false
+}
 
-// succeed resets the account's counters and remembers the IP as known.
-func (l *loginLimits) succeed(account, ip string) {
-	l.pair.reset(pairKey(account, ip))
-	l.acct.reset(limiterKey(limiterKeyAccount, account))
-	l.remember(account, ip, l.now())
+// refund takes the whole reservation back: the attempt was not a guess (the
+// first step of a two-step sign-in, a request that never reached argon2).
+func (r reservation) refund() {
+	if !r.registered {
+		return
+	}
+	r.l.ip.unfail(r.ipKey, r.at)
+	r.l.pair.unfail(r.pairKey, r.at)
+	r.l.acct.unfail(r.acctKey, r.at)
+}
+
+// refundAccount takes back the account and pair counts but keeps the
+// address's: a challenge replayed from another IP says nothing about the
+// account's secrets, but the address that tried it is suspect.
+func (r reservation) refundAccount() {
+	if !r.registered {
+		return
+	}
+	r.l.pair.unfail(r.pairKey, r.at)
+	r.l.acct.unfail(r.acctKey, r.at)
+}
+
+// succeed ends a fully successful sign-in: the IP count is given back, the
+// account's counters are reset and the IP is remembered as known.
+func (r reservation) succeed() {
+	if !r.registered {
+		return
+	}
+	r.l.ip.unfail(r.ipKey, r.at)
+	r.l.pair.reset(r.pairKey)
+	r.l.acct.reset(r.acctKey)
+	r.l.remember(r.account, r.ip, r.l.now())
 }
 
 // clear forgets every failure counter (not the known IPs).

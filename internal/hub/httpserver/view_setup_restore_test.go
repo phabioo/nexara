@@ -210,6 +210,7 @@ func (readerCloser) Close() error { return nil }
 // unlockForRestore walks the Unlock form with the restore button.
 func (b *setupBrowser) unlockForRestore() {
 	b.t.Helper()
+	b.e.freshCode()
 	rec := b.post("/setup/unlock", map[string][]string{"code": {setup.FormatCode(b.e.code)}, "restore": {"1"}})
 	wantRedirect(b.t, rec, setupRestorePath)
 }
@@ -231,6 +232,7 @@ func TestSetupRestoreHiddenWithoutBackupService(t *testing.T) {
 	}
 	// A forged restore flag on the unlock form is ignored.
 	b2 := e.browser(t)
+	e.freshCode()
 	wantRedirect(t, b2.post("/setup/unlock", map[string][]string{"code": {setup.FormatCode(e.code)}, "restore": {"1"}}), "/setup/trust")
 }
 
@@ -604,9 +606,6 @@ func TestSetupRestoreConfirmErrors(t *testing.T) {
 		}
 		if len(e.restarts) != 0 {
 			t.Error("a failed restore restarted the hub")
-		}
-		if _, _, ok := e.srv.setup.Codes.Current(); !ok {
-			t.Error("a failed restore must leave the setup code alone")
 		}
 		// The wizard is still there.
 		wantBody(t, b.get(setupRestorePath), `name="backup"`)

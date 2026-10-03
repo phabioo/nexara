@@ -36,6 +36,25 @@ func TestHubDefaults(t *testing.T) {
 	}
 }
 
+// A-08: the idle timeout is fixed at 12 h and totp_required is dead; old files
+// that set them (to anything) keep loading.
+func TestHubIgnoresLegacySecurityKeys(t *testing.T) {
+	for _, hours := range []string{"0", "1", "12", "720", "100000", "-5"} {
+		path := filepath.Join(t.TempDir(), "nexus.yaml")
+		yaml := "security:\n  session_idle_hours: " + hours + "\n  totp_required: true\n"
+		if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		c, err := LoadHub(path)
+		if err != nil {
+			t.Fatalf("session_idle_hours %s: %v", hours, err)
+		}
+		if got := c.SessionIdleTimeout(); got != 12*time.Hour {
+			t.Errorf("session_idle_hours %s: idle timeout %v, want 12h", hours, got)
+		}
+	}
+}
+
 func TestAgentDefaults(t *testing.T) {
 	c := DefaultAgent()
 	if c.Metrics.IntervalSeconds != 2 || c.MetricsInterval() != 2*time.Second || !c.Capabilities.Shell || c.Capabilities.Docker {
@@ -141,7 +160,6 @@ func TestHubValidation(t *testing.T) {
 		{"database", func(c *HubConfig) { c.Storage.Database = "" }, "storage.database"},
 		{"minute days", func(c *HubConfig) { c.Storage.History.MinuteDays = 0 }, "minute_days"},
 		{"hour days", func(c *HubConfig) { c.Storage.History.HourDays = 5000 }, "hour_days"},
-		{"idle hours", func(c *HubConfig) { c.Security.SessionIdleHours = 0 }, "session_idle_hours"},
 		{"attempts", func(c *HubConfig) { c.Security.LoginRateLimit.Attempts = 0 }, "attempts"},
 		{"window", func(c *HubConfig) { c.Security.LoginRateLimit.WindowMinutes = -1 }, "window_minutes"},
 		{"cpu temp", func(c *HubConfig) { c.Alerts.CPUTempC = 5 }, "cpu_temp_c"},

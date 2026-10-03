@@ -68,7 +68,7 @@ var setupMeta = [...]setupStepMeta{
 // setupUnlockLeadShort is the phone copy of the Unlock lead.
 const setupUnlockLeadShort = "Enter the one-time setup code the installer printed, so nobody else in the network can take over this hub."
 
-const setupSessionExpired = "The setup session expired. Enter the setup code again."
+const setupSessionExpired = "The setup session expired. A setup code works once: run sudo nexus setup code on the hub for a new one."
 
 // setupRetention are the selectable history periods, in display order.
 var setupRetention = []struct {

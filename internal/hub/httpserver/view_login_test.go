@@ -3,6 +3,7 @@ package httpserver
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -586,4 +587,16 @@ func TestLoginRedirectsWhenSignedInRendered(t *testing.T) {
 	if rec.Code != 303 || rec.Header().Get("Location") != "/" || strings.Contains(rec.Body.String(), "Authenticate") {
 		t.Errorf("%d %q", rec.Code, rec.Header().Get("Location"))
 	}
+}
+
+// A-04: a full argon2 queue answers 503 with Retry-After, not a 500 that is logged as an error.
+func TestLoginErrorBusy(t *testing.T) {
+	e := newLoginEnv(t)
+	req := httptest.NewRequest(http.MethodPost, "/login", nil)
+	rec := httptest.NewRecorder()
+	e.srv.loginError(rec, req, auth.ErrBusy, loginPage{})
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("status %d, Retry-After %q", rec.Code, rec.Header().Get("Retry-After"))
+	}
+	mustContain(t, rec.Body.String(), "busy")
 }

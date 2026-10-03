@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -14,11 +15,30 @@ import (
 	"github.com/phabioo/nexara/internal/hub/store"
 )
 
+// SessionIdleTimeout is the idle timeout of browser sessions. It is not
+// configurable (decision #52).
+const SessionIdleTimeout = config.SessionIdle
+
+const (
+	// maxHashWaiters is how many requests may wait for an argon2 slot; more
+	// are refused with ErrBusy instead of queueing behind a flood.
+	maxHashWaiters = 8
+	// maxUnknownWaiters is the same for the single slot that sign-ins for
+	// unknown operator IDs share. They can occupy at most one of the argon2
+	// slots, so a flood of made-up IDs cannot starve the real operator.
+	maxUnknownWaiters = 3
+)
+
 // Config wires a Service. Use ConfigFromHub for the values of nexus.yaml.
 type Config struct {
-	Store       *store.Store
-	SecretKey   []byte        // from LoadOrCreateSecretKey
-	IdleTimeout time.Duration // session idle timeout (12 h by default)
+	Store     *store.Store
+	SecretKey []byte // from LoadOrCreateSecretKey
+
+	// IdleTimeout is ignored: the session idle timeout is fixed at
+	// SessionIdleTimeout (decision #52, security review A-08).
+	//
+	// Deprecated: kept so existing callers compile.
+	IdleTimeout time.Duration
 
 	// RateAttempts failures within RateWindow block an IP, and an (account,
 	// IP) pair. AccountRateAttempts is the higher threshold for the account
@@ -50,7 +70,6 @@ func ConfigFromHub(c config.HubConfig, st *store.Store, secretKey []byte) Config
 	return Config{
 		Store:        st,
 		SecretKey:    secretKey,
-		IdleTimeout:  c.SessionIdleTimeout(),
 		RateAttempts: c.Security.LoginRateLimit.Attempts,
 		RateWindow:   c.LoginRateWindow(),
 	}
@@ -78,9 +97,20 @@ type Service struct {
 
 	// hashSem bounds concurrent argon2 computations; every one allocates
 	// Memory KiB, which matters on a Pi.
-	hashSem   chan struct{}
-	dummyOnce sync.Once
-	dummyHash string
+	hashSem     chan struct{}
+	hashWaiters atomic.Int32
+	dummyOnce   sync.Once
+	dummyHash   string
+
+	// unknownSem admits one unknown-user verification at a time.
+	unknownSem     chan struct{}
+	unknownWaiters atomic.Int32
+
+	// Per-operator limit and in-flight guard of the sensitive actions
+	// (passphrase change, step-up); see operator.go.
+	opLimit *rateLimiter
+	opMu    sync.Mutex
+	opBusy  map[int64]struct{}
 
 	// deleteAllUsers is what ResetOperators calls; see ResetOperators.
 	deleteAllUsers func(ctx context.Context) (int64, error)
@@ -93,9 +123,6 @@ func NewService(cfg Config) (*Service, error) {
 	}
 	if len(cfg.SecretKey) != SecretKeyLen {
 		return nil, errors.New("auth: secret key must be 32 bytes")
-	}
-	if cfg.IdleTimeout <= 0 {
-		cfg.IdleTimeout = 12 * time.Hour
 	}
 	if cfg.RateAttempts < 1 {
 		cfg.RateAttempts = 5
@@ -134,13 +161,16 @@ func NewService(cfg Config) (*Service, error) {
 		enrollKey:  enrollKey,
 		params:     cfg.HashParams,
 		now:        cfg.Now,
-		sessions:   NewManager(cfg.Store, cfg.IdleTimeout, cfg.Now),
+		sessions:   NewManager(cfg.Store, SessionIdleTimeout, cfg.Now),
 		cookies:    NewCookies(append([]CookieOption{WithCookieClock(cfg.Now)}, cfg.CookieOptions...)...),
 		limiter:    newLoginLimits(cfg.Now, cfg.RateAttempts, cfg.AccountRateAttempts, cfg.RateWindow),
 		totp:       NewTOTPVerifier(),
 		onAuditErr: cfg.OnAuditError,
 		challenges: map[string]*challenge{},
 		hashSem:    make(chan struct{}, 2),
+		unknownSem: make(chan struct{}, 1),
+		opLimit:    newRateLimiter(cfg.Now, cfg.RateAttempts, cfg.RateWindow),
+		opBusy:     map[int64]struct{}{},
 	}
 	if cfg.DemoPasswordOnly {
 		if s.cookies.Secure() {
@@ -207,9 +237,26 @@ func (s *Service) ClearLoginLimits() { s.limiter.clear() }
 // TOTPReset clears replay state for a user whose 2FA was changed.
 func (s *Service) TOTPReset(userID int64) { s.totp.Forget(userID) }
 
+// acquireHash waits for one of the argon2 slots. At most maxHashWaiters
+// requests wait; the rest get ErrBusy at once, so a flood cannot build an
+// unbounded queue of goroutines and open requests (security review A-04).
 func (s *Service) acquireHash(ctx context.Context) error {
+	return acquireSlot(ctx, s.hashSem, &s.hashWaiters, maxHashWaiters)
+}
+
+func acquireSlot(ctx context.Context, sem chan struct{}, waiters *atomic.Int32, maxWait int32) error {
 	select {
-	case s.hashSem <- struct{}{}:
+	case sem <- struct{}{}:
+		return nil
+	default:
+	}
+	if waiters.Add(1) > maxWait {
+		waiters.Add(-1)
+		return ErrBusy
+	}
+	defer waiters.Add(-1)
+	select {
+	case sem <- struct{}{}:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -232,6 +279,10 @@ func (s *Service) burnPasswordHash(ctx context.Context, pass string) error {
 	s.dummyOnce.Do(func() {
 		s.dummyHash, _ = HashPassword("nexus-timing-equalizer", s.params)
 	})
+	if err := acquireSlot(ctx, s.unknownSem, &s.unknownWaiters, maxUnknownWaiters); err != nil {
+		return err
+	}
+	defer func() { <-s.unknownSem }()
 	_, err := s.verifyPassword(ctx, pass, s.dummyHash)
 	return err
 }
@@ -245,6 +296,9 @@ const (
 	ActionSecondFact  = "login.2fa"
 	ActionLogout      = "logout"
 	ActionUserReset   = "user.reset"
+	// ActionReauth records a step-up: passphrase and TOTP code entered again
+	// before a sensitive action.
+	ActionReauth = "user.reauth"
 	// ActionTOTPEnroll records that an operator set up two-factor login
 	// after signing in with the passphrase only (decision #51).
 	ActionTOTPEnroll = "user.totp_enroll"

@@ -54,9 +54,13 @@ type HistorySection struct {
 
 // SecuritySection holds session and login policy.
 type SecuritySection struct {
-	SessionIdleHours int              `yaml:"session_idle_hours"`
-	TOTPRequired     bool             `yaml:"totp_required"` // true from v0.2
-	LoginRateLimit   LoginRateSection `yaml:"login_rate_limit"`
+	// SessionIdleHours is ignored: the idle timeout is fixed at SessionIdle
+	// (decision #52). The key is still read so existing nexus.yaml files load.
+	SessionIdleHours int `yaml:"session_idle_hours"`
+	// TOTPRequired is ignored: two-factor login is mandatory for every
+	// operator (decision #51). The key is still read so existing files load.
+	TOTPRequired   bool             `yaml:"totp_required"`
+	LoginRateLimit LoginRateSection `yaml:"login_rate_limit"`
 }
 
 // LoginRateSection limits failed logins per IP and per account.
@@ -168,9 +172,6 @@ func (c HubConfig) Validate() error {
 	if d := c.Storage.History.HourDays; d < 1 || d > 3650 {
 		p.addf("storage.history.hour_days is %d, must be 1-3650", d)
 	}
-	if h := c.Security.SessionIdleHours; h < 1 || h > 720 {
-		p.addf("security.session_idle_hours is %d, must be 1-720", h)
-	}
 	if n := c.Security.LoginRateLimit.Attempts; n < 1 || n > 100 {
 		p.addf("security.login_rate_limit.attempts is %d, must be 1-100", n)
 	}
@@ -203,10 +204,13 @@ func (c HubConfig) Location() *time.Location {
 	return loc
 }
 
-// SessionIdleTimeout is the idle timeout of browser sessions.
-func (c HubConfig) SessionIdleTimeout() time.Duration {
-	return time.Duration(c.Security.SessionIdleHours) * time.Hour
-}
+// SessionIdle is the idle timeout of browser sessions. It is not
+// configurable (decision #52).
+const SessionIdle = 12 * time.Hour
+
+// SessionIdleTimeout is the idle timeout of browser sessions: always
+// SessionIdle, whatever security.session_idle_hours says.
+func (c HubConfig) SessionIdleTimeout() time.Duration { return SessionIdle }
 
 // LoginRateWindow is the sliding window of the login rate limit.
 func (c HubConfig) LoginRateWindow() time.Duration {
